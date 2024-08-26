@@ -1,0 +1,39 @@
+{
+    "dependencies": [
+      "lz4",
+      "fmt",
+      "cryptopp",
+      "gtest",
+      "libpq",
+      "efsw",
+      "redis-plus-plus",
+      "boost-algorithm",
+      "boost-dll",
+      "boost-asio",
+      "boost-json",
+      "boost-system",
+      "boost-container",
+      "boost-filesystem",
+      "sndfile",
+      "libsamplerate",
+      "libplist",
+      "boost-process",
+      {
+        "name": "aws-sdk-cpp",
+        "default-features": true,
+        "features": [
+          "ssm"
+        ]
+      },
+      {
+        "name": "cpp-httplib",
+        "default-features": true,
+        "features": [
+          "openssl"
+        ]
+      },
+      "curl",
+      "openssl",
+      "librabbitmq"
+    ]
+  }

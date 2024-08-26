@@ -10,3 +10,51 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 CMakeUserPresets.json
+
+# VS Code specific settings
+.vscode/
+.history/
+
+# User-specific settings
+*.code-workspace
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# vcpkg package manager
+vcpkg_installed/
+vcpkg/installed/
+.vcpkg-root
+vcpkg/downloads/
+
+# Build directories
+build/
+out/
+bin/
+obj/
+*.obj
+*.exe
+*.dll
+*.lib
+*.pdb
+*.ilk
+
+# CMake build files
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+CMakeLists.txt.user
+
+# Other build artifacts
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+
+# OS-specific files
+.DS_Store
+Thumbs.db
