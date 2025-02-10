@@ -14,26 +14,10 @@
       "boost-system",
       "boost-container",
       "boost-filesystem",
-      "sndfile",
-      "libsamplerate",
       "libplist",
       "boost-process",
-      {
-        "name": "aws-sdk-cpp",
-        "default-features": true,
-        "features": [
-          "ssm"
-        ]
-      },
-      {
-        "name": "cpp-httplib",
-        "default-features": true,
-        "features": [
-          "openssl"
-        ]
-      },
       "curl",
       "openssl",
-      "librabbitmq"
-    ]
+    ],
+    "builtin-baseline": "3508985146f1b1d248c67ead13f8f54be5b4f5da"
   }
