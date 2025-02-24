@@ -6,7 +6,13 @@
       "gtest",
       "libpq",
       "efsw",
-      "redis-plus-plus",
+      {
+        "name": "redis-plus-plus",
+        "features": [
+          "cxx17",
+          "tls"
+        ]
+      },
       "boost-algorithm",
       "boost-dll",
       "boost-asio",
