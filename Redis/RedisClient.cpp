@@ -98,8 +98,9 @@ namespace Redis
 				
 				return { false, fmt::format("failed to set value {}: {}", key, err.what()) };
 			}
-
 		}
+
+		return { false, "RedisConnector is not connected" };
 	}
 
 	auto RedisClient::get(const std::string& key) -> std::tuple<std::string, std::optional<std::string>>
@@ -141,6 +142,7 @@ namespace Redis
 			}
 		}
 
+		return { "", "RedisConnector is not connected" };
 	}
 
 	auto RedisClient::set_ttl(const std::string& key, std::uint32_t ttl_sec) -> std::tuple<bool, std::optional<std::string>>

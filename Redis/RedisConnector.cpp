@@ -61,7 +61,7 @@ namespace Redis
 
 			return { true, std::nullopt };
 		}
-		catch(const std::exception& e)
+		catch(const std::exception& err)
 		{
 			redis_.reset();
 
