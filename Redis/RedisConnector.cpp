@@ -1,9 +1,6 @@
 #include "RedisConnector.h"
 
-#include "Job.h"
 #include "Logger.h"
-#include "Converter.h"
-#include "ThreadWorker.h"
 
 #include "fmt/format.h"
 #include "fmt/xchar.h"
@@ -92,8 +89,5 @@ namespace Redis
 
 		return std::make_shared<sw::redis::Transaction>(redis_->transaction(false, false));
 	}
-
-
-
 
 }

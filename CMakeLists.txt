@@ -21,6 +21,7 @@ option(BUILD_THREAD_LIB "Build thread library" ON)
 option(BUILD_DATABASE_LIB "Build database library" ON)
 option(BUILD_NETWORK_LIB "Build network library" ON)
 option(BUILD_SAMPLES "Build samples" ON)
+option(BUILD_REDIS_LIB "Build redis library" ON)
 
 add_subdirectory(Utilities)
 add_subdirectory(ThreadPool)

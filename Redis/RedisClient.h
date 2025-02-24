@@ -8,9 +8,6 @@
 #include <vector>
 #include <utility>
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
-
 namespace Redis
 {
 	class RedisClient
