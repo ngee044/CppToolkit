@@ -23,6 +23,7 @@
       "libplist",
       "boost-process",
       "curl",
+      "librabbitmq",
       "openssl"
     ],
     "builtin-baseline": "3508985146f1b1d248c67ead13f8f54be5b4f5da"
