@@ -18,7 +18,7 @@ namespace RabbitMQ
 		return *this;
 	}
 
-	auto SSLOptions::ca_cert() const -> const std::string& { return ca_cert_; }
+	auto SSLOptions::ca_cert() const -> std::string { return ca_cert_; }
 
 	auto SSLOptions::client_cert(const std::string& value) -> SSLOptions&
 	{

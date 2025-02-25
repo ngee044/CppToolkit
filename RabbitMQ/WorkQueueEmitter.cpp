@@ -25,13 +25,4 @@ namespace RabbitMQ
 	{
 		return basic_publish(target_channel_id, "", queue_name, message, "", content_type, DeliveryMode::Persistent, true, expiration_millisecond);
 	}
-
-	auto WorkQueueEmitter::publish_async(const int& target_channel_id,
-											 const std::string& queue_name,
-											 const std::string& message,
-											 const std::string& content_type,
-											 const std::optional<uint32_t>& expiration_millisecond) -> std::tuple<bool, std::optional<std::string>>
-	{
-		return basic_publish_async(target_channel_id, "", queue_name, message, "", content_type, DeliveryMode::Persistent, true, expiration_millisecond);
-	}
 }
