@@ -51,7 +51,16 @@ namespace RabbitMQ
 
 	auto RabbitMQBase::wait_stop() -> std::tuple<bool, std::optional<std::string>>
 	{
-		return std::tuple<bool, std::optional<std::string>>();
+		if (stop_future_ != std::nullopt)
+		{
+			return { false, "already created future object" };
+		}
+
+		stop_future_ = stop_promise_.get_future();
+		stop_future_.value().wait();
+		stop_future_.reset();
+
+		return { true, std::nullopt };
 	}
 
 	auto RabbitMQBase::stop() -> void
