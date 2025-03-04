@@ -8,12 +8,19 @@ set(HEADER_FILES
 	KafkaConfig.h
 	KafkaConsumer.h
 	KafkaProducer.h
+	KafkaMessage.h
+	DeliveryResult.hpp
+	KafkaAdmin.h
+	KafkaCommon.h
 )
 
 set(SOURCE_FILES
 	KafkaConfig.cpp
 	KafkaConsumer.cpp
 	KafkaProducer.cpp
+	KafkaMessage.cpp
+	KafkaAdmin.cpp
+	
 )
 
 find_package(unofficial-modern-cpp-kafka CONFIG REQUIRED)

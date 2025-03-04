@@ -1,33 +1,41 @@
 #pragma once
 
 #include "KafkaConfig.h"
+#include "KafkaCommon.h"
+#include "KafkaMessage.h"
 
 #include <kafka/KafkaProducer.h>
 
+
+#include <future>
 #include <memory>
-#include <atomic>
 #include <string>
 #include <tuple>
 #include <optional>
+#include <unordered_map>
 
 namespace Kafka
 {
+	class SendResult
+	{
+
+	};
+
 	class KafkaProducer
 	{
 	public:
 		KafkaProducer(const KafkaConfig& config);
 		~KafkaProducer();
 
-		auto init_producer() -> std::tuple<bool, std::optional<std::string>>;
-		auto send_message(const std::string& message) -> std::tuple<bool, std::optional<std::string>>;
+		auto send(const KafkaMessage& message);
+		auto send_async(const KafkaMessage& message);
 
-		auto flush_messages(int timeout_ms) -> void;
+		auto is_connected() -> bool;
+		auto flush() -> void;
+		auto close() -> void;
 
 	private:
-		bool initialized_;
-		KafkaConfig config_;
-
 		std::unique_ptr<kafka::clients::producer::KafkaProducer> producer_;
-		std::atomic<bool> running_;
+
 	};
 } 
