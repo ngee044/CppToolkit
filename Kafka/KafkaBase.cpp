@@ -60,11 +60,6 @@ namespace Kafka
 		}
 	}
 
-	auto KafkaBase::basic_disconnect() -> std::tuple<bool, std::optional<std::string>>
-	{
-		return std::tuple<bool, std::optional<std::string>>();
-	}
-
 	auto KafkaBase::create_thread_pool() -> std::tuple<bool, std::optional<std::string>>
 	{
 		auto [destroyed, destroy_error] = destroy_thread_pool();

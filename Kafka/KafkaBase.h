@@ -28,8 +28,8 @@ namespace Kafka
 		auto stop() -> std::tuple<bool, std::optional<std::string>>;
 
 	protected:
-		auto basic_connect() -> std::tuple<bool, std::optional<std::string>>;
-		auto basic_disconnect() -> std::tuple<bool, std::optional<std::string>>;
+		virtual auto connect() -> std::tuple<bool, std::optional<std::string>> = 0;
+		virtual auto disconnect() -> std::tuple<bool, std::optional<std::string>> = 0;
 
 		auto create_thread_pool() -> std::tuple<bool, std::optional<std::string>>;
 		auto destroy_thread_pool() -> std::tuple<bool, std::optional<std::string>>;
