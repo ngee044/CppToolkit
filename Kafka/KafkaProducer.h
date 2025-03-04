@@ -1,11 +1,7 @@
 #pragma once
+#include "KafkaBase.h"
 
-#include "KafkaConfig.h"
-#include "KafkaCommon.h"
-#include "KafkaMessage.h"
 #include "DeliveryResult.hpp"
-#include <kafka/KafkaProducer.h>
-
 
 #include <future>
 #include <memory>
@@ -16,7 +12,7 @@
 
 namespace Kafka
 {
-	class KafkaProducer
+	class KafkaProducer : public KafkaBase
 	{
 	public:
 		KafkaProducer(const KafkaConfig& config);
@@ -27,13 +23,11 @@ namespace Kafka
 		auto send_async(const KafkaMessage& message, std::function<void(const DeliveryResult&)>);
 		auto send_batch(const std::vector<KafkaMessage>& messages) -> std::vector<DeliveryResult>;
 
-
 		auto is_connected() -> bool;
 		auto flush() -> void;
 		auto close() -> void;
 
 	private:
-		std::unique_ptr<kafka::clients::producer::KafkaProducer> producer_;
 
 	};
 } 
