@@ -3,7 +3,7 @@
 #include "KafkaConfig.h"
 #include "KafkaCommon.h"
 #include "KafkaMessage.h"
-
+#include "DeliveryResult.hpp"
 #include <kafka/KafkaProducer.h>
 
 
@@ -16,11 +16,6 @@
 
 namespace Kafka
 {
-	class SendResult
-	{
-
-	};
-
 	class KafkaProducer
 	{
 	public:
@@ -28,7 +23,10 @@ namespace Kafka
 		~KafkaProducer();
 
 		auto send(const KafkaMessage& message);
-		auto send_async(const KafkaMessage& message);
+		auto send_async(const KafkaMessage& message) -> std::future<DeliveryResult>; 
+		auto send_async(const KafkaMessage& message, std::function<void(const DeliveryResult&)>);
+		auto send_batch(const std::vector<KafkaMessage>& messages) -> std::vector<DeliveryResult>;
+
 
 		auto is_connected() -> bool;
 		auto flush() -> void;
