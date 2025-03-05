@@ -44,32 +44,32 @@ namespace Kafka
 		message_headers_.push_back({key, value});
 	}
 
-	auto KafkaMessage::get_headers() const -> std::vector<MessageHeader>
+	auto KafkaMessage::get_headers() const -> const std::vector<MessageHeader>&
 	{
 		return message_headers_;
 	}
 
-	auto KafkaMessage::topic() const -> std::string
+	auto KafkaMessage::topic() const -> const kafka::Topic&
 	{
 		return topic_;
 	}
 
-	auto KafkaMessage::key() const -> std::string
+	auto KafkaMessage::key() const -> const std::string&
 	{
 		return key_;
 	}
 
-	auto KafkaMessage::value() const -> std::string
+	auto KafkaMessage::value() const -> const std::string&
 	{
 		return value_;
 	}
 
-	auto KafkaMessage::partition() -> int
+	auto KafkaMessage::partition() const -> kafka::Partition
 	{
 		return partition_;
 	}
 
-	auto KafkaMessage::timestamp() -> int64_t
+	auto KafkaMessage::timestamp() const -> int64_t
 	{
 		return timestamp_;
 	}

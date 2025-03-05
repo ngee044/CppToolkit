@@ -17,6 +17,14 @@ using namespace Thread;
 
 namespace Kafka
 {
+	enum class KafkaStatus
+	{
+		Disconnected,
+		Connecting,
+		Connected,
+		Disconnecting,
+		Error
+	};
 	class KafkaBase
 	{
 	public:
@@ -26,6 +34,9 @@ namespace Kafka
 		auto start() -> std::tuple<bool, std::optional<std::string>>;
 		auto wait_stop() -> std::tuple<bool, std::optional<std::string>>;
 		auto stop() -> std::tuple<bool, std::optional<std::string>>;
+
+        auto get_status() const -> KafkaStatus { return status_; }
+        auto is_connected() const -> bool { return status_ == KafkaStatus::Connected; }
 
 	protected:
 		virtual auto connect() -> std::tuple<bool, std::optional<std::string>> = 0;
@@ -41,7 +52,8 @@ namespace Kafka
 		
 		std::promise<void> stop_promise_;
 		std::optional<std::future<void>> stop_future_;
-		
+
+		KafkaStatus status_;
 		KafkaConfig config_;
 	};
 }

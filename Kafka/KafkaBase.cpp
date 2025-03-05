@@ -50,7 +50,7 @@ namespace Kafka
 
 	auto KafkaBase::stop() -> std::tuple<bool, std::optional<std::string>>
 	{
-		basic_disconnect();
+		disconnect();
 
 		destroy_thread_pool();
 

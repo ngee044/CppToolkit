@@ -7,10 +7,10 @@
 #include <kafka/KafkaConsumer.h>
 
 #include <memory>
-#include <atomic>
 #include <string>
 #include <tuple>
 #include <optional>
+#include <chrono>
 
 namespace Kafka
 {
@@ -23,15 +23,19 @@ namespace Kafka
 		KafkaConsumer(const KafkaConfig& config);
 		~KafkaConsumer();
 
-		auto subscribe(const std::string& topic) -> std::tuple<bool, std::optional<std::string>>;
+		auto subscribe() -> std::tuple<bool, std::optional<std::string>>;
 		auto unsubscribe() -> std::tuple<bool, std::optional<std::string>>;
 
-		std::vector<KafkaMessage> poll(std::chrono::milliseconds timeout_ms);
+		auto poll(std::chrono::milliseconds timeout_ms) -> std::tuple<bool, std::optional<std::string>>;
 
 		auto commit_sync() -> void;
 		auto commit_async() -> void;
 
-		auto is_connected() -> bool;
-		auto close();
+		auto close() -> void;
+
+	protected:
+		auto connect() -> std::tuple<bool, std::optional<std::string>> override;
+		auto disconnect() -> std::tuple<bool, std::optional<std::string>> override;
+
 	};
 } 

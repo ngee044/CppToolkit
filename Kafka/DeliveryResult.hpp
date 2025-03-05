@@ -7,7 +7,7 @@ namespace Kafka {
 
 class DeliveryResult {
 public:
-    enum class Status { SUCCESS, FAILURE };
+    enum class Status { Success, Failed };
 
     DeliveryResult(Status status, const std::string& message, std::optional<std::string> error = std::nullopt)
 		: status_(status), message_(message), error_(error), timestamp_(std::chrono::system_clock::now()) {}
