@@ -9,6 +9,7 @@
 
 #include <future>
 
+using namespace Utilities;
 namespace Kafka
 {
 	KafkaBase::KafkaBase(const KafkaConfig& config)
@@ -19,6 +20,7 @@ namespace Kafka
 
 	KafkaBase::~KafkaBase()
 	{
+		stop();
 	}
 
 	auto KafkaBase::start() -> std::tuple<bool, std::optional<std::string>>
@@ -29,6 +31,13 @@ namespace Kafka
 		if (!created)
 		{
 			return { false, create_error };
+		}
+
+		auto [success, error_message] = connect();
+		if (!success)
+		{
+			Logger::handle().write(LogTypes::Error, fmt::format("connect start error = {}", error_message.value()));
+			return { false, error_message };
 		}
 
 		return thread_pool_->start();
@@ -58,6 +67,8 @@ namespace Kafka
 		{
 			stop_promise_.set_value();
 		}
+
+		return { true, std::nullopt };
 	}
 
 	auto KafkaBase::create_thread_pool() -> std::tuple<bool, std::optional<std::string>>

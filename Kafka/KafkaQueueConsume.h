@@ -19,7 +19,7 @@ namespace Kafka
 	{
 	public:
 		KafkaQueueConsume(const KafkaConfig& config);
-		~KafkaQueueConsume();
+		virtual ~KafkaQueueConsume();
 
 		auto subscribe(const std::string& topic) -> std::tuple<bool, std::optional<std::string>>;
 		auto unsubscribe() -> std::tuple<bool, std::optional<std::string>>;

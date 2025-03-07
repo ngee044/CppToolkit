@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
 set(HEADER_FILES
 	KafkaConfig.h
+	KafkaBase.h
 	KafkaQueueConsume.h
 	KafkaQueueEmitter.h
 	KafkaMessage.h
@@ -18,6 +19,7 @@ set(SOURCE_FILES
 	KafkaConfig.cpp
 	KafkaQueueConsume.cpp
 	KafkaQueueEmitter.cpp
+	KafkaBase.cpp
 	KafkaMessage.cpp
 	KafkaAdmin.cpp
 	

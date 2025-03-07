@@ -23,3 +23,7 @@ endif()
 if(BUILD_DATABASE_LIB)
 	add_subdirectory(DatabaseSample)
 endif()
+
+if(BUILD_KAFKA_LIB AND BUILD_SAMPLES)
+	add_subdirectory(KafkaSample)
+endif()

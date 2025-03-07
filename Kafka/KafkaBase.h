@@ -50,6 +50,7 @@ namespace Kafka
 		std::unique_ptr<kafka::clients::producer::KafkaProducer> producer_;
 		std::unique_ptr<kafka::clients::consumer::KafkaConsumer> consumer_;
 		
+		// Variables to be deleted if not used
 		std::promise<void> stop_promise_;
 		std::optional<std::future<void>> stop_future_;
 
