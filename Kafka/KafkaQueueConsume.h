@@ -4,8 +4,6 @@
 
 #include "KafkaBase.h"
 
-#include <kafka/KafkaConsumer.h>
-
 #include <memory>
 #include <string>
 #include <tuple>
@@ -17,16 +15,16 @@ namespace Kafka
 	using MessageCallback = std::function<void(const KafkaMessage&)>;
 	using ErrorCallback = std::function<void(KafkaError, const std::string&)>;
 
-	class KafkaConsumer : public KafkaBase
+	class KafkaQueueConsume : public KafkaBase
 	{
 	public:
-		KafkaConsumer(const KafkaConfig& config);
-		~KafkaConsumer();
+		KafkaQueueConsume(const KafkaConfig& config);
+		~KafkaQueueConsume();
 
-		auto subscribe() -> std::tuple<bool, std::optional<std::string>>;
+		auto subscribe(const std::string& topic) -> std::tuple<bool, std::optional<std::string>>;
 		auto unsubscribe() -> std::tuple<bool, std::optional<std::string>>;
 
-		auto poll(std::chrono::milliseconds timeout_ms) -> std::tuple<bool, std::optional<std::string>>;
+		auto poll(std::chrono::milliseconds timeout_ms) -> std::vector<KafkaMessage>;
 
 		auto commit_sync() -> void;
 		auto commit_async() -> void;

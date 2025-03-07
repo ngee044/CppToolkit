@@ -1,4 +1,4 @@
-#include "KafkaProducer.h"
+#include "KafkaQueueEmitter.h"
 
 #include "Logger.h"
 
@@ -8,22 +8,22 @@ using namespace Utilities;
 
 namespace Kafka
 {
-	KafkaProducer::KafkaProducer(const KafkaConfig& config)
+	KafkaQueueEmitter::KafkaQueueEmitter(const KafkaConfig& config)
 		: KafkaBase(config)
 	{
-		Logger::handle().write(LogTypes::Information, "KafkaProducer initialized");
+		Logger::handle().write(LogTypes::Information, "KafkaQueueEmitter initialized");
 	}
 
-	KafkaProducer::~KafkaProducer()
+	KafkaQueueEmitter::~KafkaQueueEmitter()
 	{
 		if (is_connected())
 		{
-			Logger::handle().write(LogTypes::Information, "KafkaProducer disconnect");
+			Logger::handle().write(LogTypes::Information, "KafkaQueueEmitter disconnect");
 			disconnect();
 		}
 	}
 
-	auto KafkaProducer::send(const KafkaMessage& message) -> DeliveryResult
+	auto KafkaQueueEmitter::send(const KafkaMessage& message) -> DeliveryResult
 	{
 		if (!is_connected() || producer_ == nullptr)
 		{
@@ -71,7 +71,7 @@ namespace Kafka
 		
 	}
 
-	auto KafkaProducer::send_batch(const std::vector<KafkaMessage>& messages) -> std::vector<DeliveryResult>
+	auto KafkaQueueEmitter::send_batch(const std::vector<KafkaMessage>& messages) -> std::vector<DeliveryResult>
 	{
 		std::vector<DeliveryResult> delivery_results;
 		for (const auto& message : messages)
@@ -91,24 +91,24 @@ namespace Kafka
 		return delivery_results;
 	}
 
-	auto KafkaProducer::flush() -> void
+	auto KafkaQueueEmitter::flush() -> void
 	{
 		if (producer_== nullptr)
 		{
-			Logger::handle().write(LogTypes::Error, "KafkaProducer is nullptr");
+			Logger::handle().write(LogTypes::Error, "KafkaQueueEmitter is nullptr");
 			return;
 		}
 
 		producer_->flush();
 	}
 
-	auto KafkaProducer::close() -> void
+	auto KafkaQueueEmitter::close() -> void
 	{
 		disconnect();
 
 	}
 
-	auto KafkaProducer::connect() -> std::tuple<bool, std::optional<std::string>>
+	auto KafkaQueueEmitter::connect() -> std::tuple<bool, std::optional<std::string>>
 	{
 		Logger::handle().write(LogTypes::Information, "Connecting Kafka Producer");
 
@@ -131,7 +131,7 @@ namespace Kafka
 		}
 	}
 
-	auto KafkaProducer::disconnect() -> std::tuple<bool, std::optional<std::string>>
+	auto KafkaQueueEmitter::disconnect() -> std::tuple<bool, std::optional<std::string>>
 	{
 		Logger::handle().write(LogTypes::Information, "DisConnecting Kafka Producer");
 
@@ -157,7 +157,7 @@ namespace Kafka
 		
 	}
 
-	auto KafkaProducer::create_producer_record(const KafkaMessage& message) -> kafka::clients::producer::ProducerRecord
+	auto KafkaQueueEmitter::create_producer_record(const KafkaMessage& message) -> kafka::clients::producer::ProducerRecord
 	{
 		auto line = message.value();
 

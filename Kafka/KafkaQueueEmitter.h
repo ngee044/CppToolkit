@@ -15,11 +15,11 @@
 
 namespace Kafka
 {
-	class KafkaProducer : public KafkaBase
+	class KafkaQueueEmitter : public KafkaBase
 	{
 	public:
-		KafkaProducer(const KafkaConfig& config);
-		virtual ~KafkaProducer();
+		KafkaQueueEmitter(const KafkaConfig& config);
+		virtual ~KafkaQueueEmitter();
 
 		auto send(const KafkaMessage& message) -> DeliveryResult;
 		auto send_batch(const std::vector<KafkaMessage>& messages) -> std::vector<DeliveryResult>;
