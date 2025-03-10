@@ -247,8 +247,11 @@ namespace Network
 		{
 			current_socket->open(boost::asio::ip::tcp::v4());
 			current_socket->bind(boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0));
+#if BOOST_VERSION >= 106600
+			current_socket->connect(boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address(ip), port));
+#else
 			current_socket->connect(boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(ip), port));
-
+#endif	
 			current_socket->set_option(boost::asio::ip::tcp::no_delay(true));
 			current_socket->set_option(boost::asio::socket_base::keep_alive(true));
 			current_socket->set_option(boost::asio::socket_base::receive_buffer_size(buffer_size()));
