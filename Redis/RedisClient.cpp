@@ -61,46 +61,45 @@ namespace Redis
 			{
 				return { false, connect_error };
 			}
-
+		}
 			auto transaction = redis_connector_->get_transaction();
-			if (transaction == nullptr)
-			{
-				return { false, "Transaction is null" };
-			}
-
-			try
-			{
-				transaction->set(key, value);
-				if (ttl_sec > 0)
-				{
-					transaction->expire(key, ttl_sec);
-				}
-				auto results = transaction->exec();
-
-				if (!results.get<bool>(0))
-				{
-					return { false, "Failed to set key" };
-				}
-
-				if (ttl_sec > 0)
-				{
-					if (!results.get<bool>(1))
-					{
-						return { false, "Failed to set ttl" };
-					}
-				}
-
-				return { true, std::nullopt };
-			}
-			catch (const sw::redis::Error& err)
-			{
-				redis_connector_->disconnect();
-				
-				return { false, fmt::format("failed to set value {}: {}", key, err.what()) };
-			}
+		if (transaction == nullptr)
+		{
+			return { false, "Transaction is null" };
 		}
 
-		return { false, "RedisConnector is not connected" };
+		try
+		{
+			transaction->set(key, value);
+			if (ttl_sec > 0)
+			{
+				transaction->expire(key, ttl_sec);
+			}
+			auto results = transaction->exec();
+
+			if (!results.get<bool>(0))
+			{
+				return { false, "Failed to set key" };
+			}
+
+			if (ttl_sec > 0)
+			{
+				if (!results.get<bool>(1))
+				{
+					return { false, "Failed to set ttl" };
+				}
+			}
+
+			return { true, std::nullopt };
+		}
+		catch (const sw::redis::Error& err)
+		{
+			redis_connector_->disconnect();
+			
+			return { false, fmt::format("failed to set value {}: {}", key, err.what()) };
+		}
+
+		return { false, "[redis set] RedisConnector is not connected" };
 	}
 
 	auto RedisClient::get(const std::string& key) -> std::tuple<std::string, std::optional<std::string>>
@@ -117,32 +116,32 @@ namespace Redis
 			{
 				return { "", fmt::format("failed to get value: {}", connect_error.value()) };
 			}
-
-			auto redis = redis_connector_->get_redis();
-			if (redis == nullptr)
-			{
-				return { "", "failed to get redis connection." };
-			}
-
-			try
-			{
-				auto result = redis->get(key);
-				if (!result.has_value())
-				{
-					return { "", fmt::format("failed to get value: {}", key) };
-				}
-
-				return { result.value(), std::nullopt };
-			}
-			catch (const sw::redis::Error& err)
-			{
-				redis_connector_->disconnect();
-
-				return { "", fmt::format("failed to get value {}: {}", key, err.what()) };
-			}
 		}
 
-		return { "", "RedisConnector is not connected" };
+		auto redis = redis_connector_->get_redis();
+		if (redis == nullptr)
+		{
+			return { "", "failed to get redis connection." };
+		}
+
+		try
+		{
+			auto result = redis->get(key);
+			if (!result.has_value())
+			{
+				return { "", fmt::format("failed to get value: {}", key) };
+			}
+
+			return { result.value(), std::nullopt };
+		}
+		catch (const sw::redis::Error& err)
+		{
+			redis_connector_->disconnect();
+
+			return { "", fmt::format("failed to get value {}: {}", key, err.what()) };
+		}
+
+		return { "", "[redis get] RedisConnector is not connected" };
 	}
 
 	auto RedisClient::set_ttl(const std::string& key, std::uint32_t ttl_sec) -> std::tuple<bool, std::optional<std::string>>
