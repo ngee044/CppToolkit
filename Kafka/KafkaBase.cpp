@@ -15,6 +15,7 @@ namespace Kafka
 	KafkaBase::KafkaBase(const KafkaConfig& config)
 		: config_(config)
 		, thread_pool_(nullptr)
+		, status_(KafkaStatus::Disconnected)
 	{
 	}
 
