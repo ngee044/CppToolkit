@@ -105,7 +105,6 @@ namespace Kafka
 	auto KafkaQueueEmitter::close() -> void
 	{
 		disconnect();
-
 	}
 
 	auto KafkaQueueEmitter::connect() -> std::tuple<bool, std::optional<std::string>>
@@ -120,7 +119,12 @@ namespace Kafka
 		try
 		{
 			producer_ = std::make_unique<kafka::clients::producer::KafkaProducer>(config_.get_properties());
-			
+			if (producer_ != nullptr)
+			{
+				status_ = KafkaStatus::Connected;
+				Logger::handle().write(LogTypes::Information, "Kafka Producer Connected");
+			}
+
 			return { true, std::nullopt };
 		}
 		catch(const kafka::KafkaException& e)
@@ -133,18 +137,27 @@ namespace Kafka
 
 	auto KafkaQueueEmitter::disconnect() -> std::tuple<bool, std::optional<std::string>>
 	{
-		Logger::handle().write(LogTypes::Information, "DisConnecting Kafka Producer");
+		if (status_ == KafkaStatus::Disconnected)
+		{
+			return { true, std::nullopt };
+		}
 
 		if (producer_ == nullptr)
 		{
 			return { false, "producer is nullptr"};
 		}
 
+		status_ = KafkaStatus::Disconnecting;
+
 		try
 		{
 			producer_->flush();
 			producer_->close();
 			producer_.reset();
+
+			status_ = KafkaStatus::Disconnected;
+
+			Logger::handle().write(LogTypes::Information, "Kafka Producer Disconnected");
 
 			return { true, std::nullopt };
 		}

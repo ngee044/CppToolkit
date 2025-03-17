@@ -13,7 +13,6 @@ namespace Kafka
 	KafkaQueueConsume::KafkaQueueConsume(const KafkaConfig& config)
 		: KafkaBase(config)
 	{
-		status_ = KafkaStatus::Disconnected;
 		Logger::handle().write(LogTypes::Information, "KafkaQueueConsume initalized");
 	}
 
@@ -77,8 +76,6 @@ namespace Kafka
 	{
 		Logger::handle().write(LogTypes::Information, "KafkaConsumer Connecting....");
 
-		status_ = KafkaStatus::Connected;
-
 		try
 		{
 			if (consumer_ != nullptr)
@@ -87,7 +84,11 @@ namespace Kafka
 			}
 
 			consumer_ = std::make_unique<kafka::clients::consumer::KafkaConsumer>(config_.get_properties());
-			status_ = KafkaStatus::Connected;
+			if (consumer_ != nullptr)
+			{
+				status_ = KafkaStatus::Connected;
+				Logger::handle().write(LogTypes::Information, "KafkaConsumer Connected");
+			}
 
 			return { true, std::nullopt };
 		}
@@ -104,20 +105,27 @@ namespace Kafka
 
 	auto KafkaQueueConsume::disconnect() -> std::tuple<bool, std::optional<std::string>>
 	{
-		Logger::handle().write(LogTypes::Information, "KafkaConsumer Disconnecting...");
-
+		if (status_ == KafkaStatus::Disconnected)
+		{
+			return {true, std::nullopt};
+		}
+		
 		if (consumer_ == nullptr)
 		{
 			return {false, "Consumer is nullptr"};
 		}
 
 		status_ = KafkaStatus::Disconnecting;
+
 		try
 		{
 			consumer_->close();
 			consumer_.reset();
 
 			status_ = KafkaStatus::Disconnected;
+			
+			Logger::handle().write(LogTypes::Information, "KafkaConsumer Disconnected");
+
 			return {true, std::nullopt};
 		}
 		catch (const kafka::KafkaException& e)
