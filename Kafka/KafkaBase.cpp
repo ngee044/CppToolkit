@@ -21,7 +21,10 @@ namespace Kafka
 
 	KafkaBase::~KafkaBase()
 	{
-		stop();
+		if (status_ != KafkaStatus::Disconnected)
+		{
+			stop();
+		}
 	}
 
 	auto KafkaBase::start() -> std::tuple<bool, std::optional<std::string>>

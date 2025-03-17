@@ -104,6 +104,11 @@ namespace Kafka
 
 	auto KafkaQueueEmitter::close() -> void
 	{
+		if (!is_connected() || consumer_ == nullptr)
+		{
+			return;
+		}
+
 		disconnect();
 	}
 
@@ -179,7 +184,7 @@ namespace Kafka
 																			  : kafka::Key(message.key().c_str(), message.key().size()), 
 														kafka::Value(line.c_str(), line.size()));
 
-		if (message.partition() >= 0)
+		if (message.partition() > 0)
 		{
 			record.setPartition(message.partition());
 		}
