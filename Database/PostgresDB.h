@@ -15,6 +15,10 @@ namespace Database
 		auto execute_query_and_get_result(const std::string& sql_query)
 			-> std::tuple<std::optional<std::vector<std::vector<std::variant<int, double, std::string, std::vector<std::string>>>>>, std::optional<std::string>> override;
 
+		auto execute_command(const std::string& sql) -> std::tuple<bool, std::optional<std::string>>;
+		auto escape_string(const std::string input) -> std::string;	
+
+		auto handler() -> PGconn* { return connection_; }
 	protected:
 		auto parse_postgres_array(const std::string& array_string) const -> std::vector<std::string>;
 

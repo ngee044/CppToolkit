@@ -101,6 +101,48 @@ namespace Database
 		return { result_data, fmt::format("there are selected rows: {}", result_data.size()) };
 	}
 
+	auto PostgresDB::execute_command(const std::string& sql) -> std::tuple<bool, std::optional<std::string>> 
+	{
+        if (!connection_)
+		{
+			return { false, fmt::format("there is no created PGconn: {}", PQerrorMessage(connection_)) };
+		}
+
+        PGresult* postgre_result = PQexec(connection_, sql.c_str());
+        if (PQresultStatus(postgre_result) != PGRES_COMMAND_OK)
+        {
+            auto error_message = PQerrorMessage(connection_);
+			std::string error = fmt::format("Error executing command: {}", error_message);
+			Logger::handle().write(LogTypes::Error, error);
+            PQclear(postgre_result);
+            return { false, error };
+        }
+		
+        PQclear(postgre_result);
+        return { true, std::nullopt };
+	}
+
+	auto PostgresDB::escape_string(const std::string input) -> std::string 
+	{
+		if (!connection_)
+		{
+			return input;
+		}
+        char* buffer = new char[input.size() * 2 + 1];
+        int error = 0;
+        size_t len = PQescapeStringConn(connection_, buffer, input.c_str(), input.size(), &error);
+
+        std::string escaped(buffer, len);
+        delete[] buffer;
+
+        if (error != 0)
+        {
+			Logger::handle().write(LogTypes::Error, fmt::format("Error escaping string: {}", PQerrorMessage(connection_)) );
+        }
+
+        return escaped;
+	}
+
 	auto PostgresDB::parse_postgres_array(const std::string& array_string) const -> std::vector<std::string>
 	{
 		std::vector<std::string> elements;
