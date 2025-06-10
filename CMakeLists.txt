@@ -24,7 +24,12 @@ option(BUILD_SAMPLES "Build samples" ON)
 option(BUILD_RABBIT_MQ_LIB "Build rabbitmq library" ON)
 option(BUILD_REDIS_LIB "Build redis library" ON)
 option(BUILD_KAFKA_LIB "Build redis library" ON)
-option(BUILD_GAME_NETWORK_SESSION "Build game network session library" ON)
+
+if(WIN32)
+    option(BUILD_GAME_NETWORK_SESSION "Build game network session library" ON)
+else()
+    option(BUILD_GAME_NETWORK_SESSION "Build game network session library" OFF)
+endif()
 
 add_subdirectory(Utilities)
 add_subdirectory(ThreadPool)
