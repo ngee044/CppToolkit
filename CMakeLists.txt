@@ -36,7 +36,7 @@ add_subdirectory(ThreadPool)
 add_subdirectory(Database)
 
 if (BUILD_GAME_NETWORK_SESSION)
-    add_subdirectory(GameNetworkSession)
+    add_subdirectory(GameNetwork)
     add_subdirectory(GameDatabase)
 endif()
 if (BUILD_NETWORK_LIB)
