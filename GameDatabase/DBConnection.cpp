@@ -4,6 +4,7 @@
 #include <fmt/xchar.h>
 
 #include <iostream>
+#include <cstdint>
 
 namespace GameDataBase
 {
@@ -138,6 +139,135 @@ namespace GameDataBase
 		::SQLFreeStmt(statement_, SQL_CLOSE);
 	}
 
+	auto DBConnection::bind_param(std::int32_t param_index, bool* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_param(param_index, SQL_C_TINYINT, SQL_TINYINT, sizeof(bool), value, index);
+	}
+
+	auto DBConnection::bind_param(std::int32_t param_index, std::int8_t* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_param(param_index, SQL_C_TINYINT, SQL_TINYINT, sizeof(std::int8_t), value, index);
+	}
+
+	auto DBConnection::bind_param(std::int32_t param_index, std::int16_t* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_param(param_index, SQL_C_SHORT, SQL_SMALLINT, sizeof(std::int16_t), value, index);
+	}
+
+	auto DBConnection::bind_param(std::int32_t param_index, std::int32_t* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_param(param_index, SQL_C_LONG, SQL_INTEGER, sizeof(std::int32_t), value, index);
+	}
+
+	auto DBConnection::bind_param(std::int32_t param_index, std::int64_t* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_param(param_index, SQL_C_SBIGINT, SQL_BIGINT, sizeof(std::int64_t), value, index);
+	}
+
+	auto DBConnection::bind_param(std::int32_t param_index, float* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_param(param_index, SQL_C_FLOAT, SQL_REAL, 0, value, index);	
+	}
+	
+	auto DBConnection::bind_param(std::int32_t param_index, double* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_param(param_index, SQL_C_DOUBLE, SQL_DOUBLE, 0, value, index);
+	}
+
+	auto DBConnection::bind_param(std::int32_t param_index, TIMESTAMP_STRUCT* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_param(param_index, SQL_C_TYPE_TIMESTAMP, SQL_TYPE_TIMESTAMP, sizeof(TIMESTAMP_STRUCT), value, index);
+	}
+
+	auto DBConnection::bind_param(std::int32_t param_index, WCHAR* str, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		SQLULEN size = static_cast<SQLULEN>((::wcslen(str) + 1) * 2);
+		*index = SQL_NTSL;
+
+		if (size > WVARCHAR_MAX)
+		{
+			return bind_param(param_index, SQL_C_WCHAR, SQL_WLONGVARCHAR, size, (SQLPOINTER)str, index);
+		}
+		else
+		{
+			return bind_param(param_index, SQL_C_WCHAR, SQL_WVARCHAR, size, (SQLPOINTER)str, index);
+		}
+	}
+
+	auto DBConnection::bind_param(std::int32_t param_index, BYTE* bin, std::int32_t size, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		if (bin == nullptr)
+		{
+			*index = SQL_NULL_DATA;
+			size = 1;
+		}
+		else
+		{
+			*index = static_cast<SQLLEN>(size);
+		}
+
+		if (size > WVARCHAR_MAX)
+		{
+			return bind_param(param_index, SQL_C_BINARY, SQL_LONGVARBINARY, size, (BYTE*)bin, index);
+		}
+		else
+		{
+			return bind_param(param_index, SQL_C_BINARY, SQL_BINARY, size, (BYTE*)bin, index);
+		}
+	}
+
+	auto DBConnection::bind_column(std::int32_t column_index, bool* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_column(column_index, SQL_C_TINYINT, sizeof(bool), value, index);
+	}
+
+	auto DBConnection::bind_column(std::int32_t column_index, std::int8_t* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_column(column_index, SQL_C_TINYINT, sizeof(std::int8_t), value, index);
+	}
+
+	auto DBConnection::bind_column(std::int32_t column_index, std::int16_t* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_column(column_index, SQL_C_SHORT, sizeof(std::int16_t), value, index);
+	}
+
+	auto DBConnection::bind_column(std::int32_t column_index, std::int32_t* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_column(column_index, SQL_C_LONG, sizeof(std::int32_t), value, index);
+	}
+
+	auto DBConnection::bind_column(std::int32_t column_index, std::int64_t* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_column(column_index, SQL_C_SBIGINT, sizeof(std::int64_t), value, index);
+	}
+
+	auto DBConnection::bind_column(std::int32_t column_index, float* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_column(column_index, SQL_C_FLOAT, sizeof(float), value, index);
+	}
+
+	auto DBConnection::bind_column(std::int32_t column_index, double* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_column(column_index, SQL_C_DOUBLE, sizeof(double), value, index);
+	}
+	
+	auto DBConnection::bind_column(std::int32_t column_index, TIMESTAMP_STRUCT* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_column(column_index, SQL_C_TYPE_TIMESTAMP, sizeof(TIMESTAMP_STRUCT), value, index);
+	}
+
+	auto DBConnection::bind_column(std::int32_t column_index, WCHAR* str, std::int32_t size, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return bind_column(column_index, SQL_C_WCHAR, size, str, index);
+	}
+
+	auto DBConnection::bind_column(std::int32_t column_index, BYTE* bin, std::int32_t size, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
+	{
+
+		return bind_column(column_index, SQL_BINARY, size, bin, index);
+	}
+
+	/*protected*/
 	auto DBConnection::bind_param(SQLUSMALLINT param_index, SQLSMALLINT c_type, SQLSMALLINT sql_types, SQLULEN length, SQLPOINTER ptr, SQLLEN* index)
 		-> std::tuple<bool, std::optional<std::string>>
 	{

@@ -85,5 +85,7 @@ namespace GameDataBase
 			}
 			connections_.push_back(connection);
 		}
+		
+		return { true, std::nullopt };
 	}
 } 
