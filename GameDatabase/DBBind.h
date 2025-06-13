@@ -131,7 +131,7 @@ namespace GameDataBase
 		std::shared_ptr<DBConnection> db_connection_;
 		const WCHAR* query_;
 		SQLLEN param_index_[param_count > 0 ? param_count : 1];
-		SQLLEN column_index_[param_count > 0 ? param_count : 1];
+		SQLLEN column_index_[column_count > 0 ? column_count : 1];
 		std::uint64_t param_flag_;
 		std::uint64_t column_flag_;
 
