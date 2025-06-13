@@ -7,11 +7,13 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(SOURCE_FILES 
 	DBConnection.cpp
 	DBConnectionPool.cpp
+	DBBind.cpp
 )
 
 set (HEADER_FILES
 	DBConnection.h
 	DBConnectionPool.h
+	DBBind.h
 )
 
 project(${LIBRARY_NAME} VERSION 1.0.0.0)
