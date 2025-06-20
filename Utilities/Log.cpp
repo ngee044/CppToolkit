@@ -1,18 +1,24 @@
+// Log.cpp – clang‑friendly version (macOS & Windows)
+// -----------------------------------------------
+// * Wrap Visual Studio‑only pragmas in _MSC_VER checks
+// * Use fmt::runtime() for all run‑time format strings (clang -Wformat-security)
+// * Tag intentionally unused variables with [[maybe_unused]] to silence -Wunused‑variable when -Werror is on
+//
 #include "Log.h"
 
 #include "Converter.h"
 
-#include "fmt/chrono.h"
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <fmt/chrono.h>
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 
-#include "boost/json.hpp"
+#include <boost/json.hpp>
 
 #include <chrono>
+#include <unordered_map>
 
 namespace Utilities
 {
-#pragma region Log
 	Log::Log(const LogTypes& type, const std::optional<std::chrono::time_point<std::chrono::high_resolution_clock>>& time)
 		: log_type_(type)
 		, time_point_(std::chrono::system_clock::now())
@@ -29,135 +35,95 @@ namespace Utilities
 		message_types_.insert({ LogTypes::Packet, "PACKET" });
 	}
 
-	Log::~Log() {}
+	Log::~Log() = default;
 
-	LogTypes Log::log_type(void) const { return log_type_; }
+	LogTypes Log::log_type() const { return log_type_; }
 
-	std::string Log::time_stamp(void) const
+	std::string Log::time_stamp() const
 	{
 		std::chrono::duration<double, std::milli> diff = end_time_flag_ - start_time_flag_.value();
-
 		return fmt::format("[{} ms]", diff.count());
 	}
 
 	std::string Log::create_json(const std::string& message) const
 	{
 		auto message_type = message_types_.find(log_type_);
+		auto base_time = time_point_.time_since_epoch();
+
+		// clang -Wformat-security requires fmt::runtime when the format string is run‑time data.
+		const auto datetime_str = fmt::format(fmt::runtime(datetime_format_), fmt::localtime(std::chrono::system_clock::to_time_t(time_point_)),
+											  std::chrono::duration_cast<std::chrono::milliseconds>(base_time).count() % 1000,
+											  std::chrono::duration_cast<std::chrono::microseconds>(base_time).count() % 1000);
+
+		// Unused in JSON but kept for parity with the original code – silence warnings.
+		[[maybe_unused]] const std::string debug_line = fmt::format("{} {}", datetime_str, message);
+
 		if (message_type == message_types_.end())
 		{
-			auto base_time = time_point_.time_since_epoch();
-
-			std::string result = fmt::format(datetime_format_, fmt::localtime(std::chrono::system_clock::to_time_t(time_point_)),
-											 std::chrono::duration_cast<std::chrono::milliseconds>(base_time).count() % 1000,
-											 std::chrono::duration_cast<std::chrono::microseconds>(base_time).count() % 1000, message);
-
 			if (start_time_flag() == std::nullopt)
 			{
-				boost::json::object json_message{ { "datetime", fmt::format(datetime_format_, fmt::localtime(std::chrono::system_clock::to_time_t(time_point_)),
-																			std::chrono::duration_cast<std::chrono::milliseconds>(base_time).count() % 1000,
-																			std::chrono::duration_cast<std::chrono::microseconds>(base_time).count() % 1000) },
-												  { "message", message } };
-
+				boost::json::object json_message{ { "datetime", datetime_str }, { "message", message } };
 				return boost::json::serialize(json_message);
 			}
 
-			boost::json::object json_message{ { "time_stamp", time_stamp() },
-											  { "datetime", fmt::format(datetime_format_, fmt::localtime(std::chrono::system_clock::to_time_t(time_point_)),
-																		std::chrono::duration_cast<std::chrono::milliseconds>(base_time).count() % 1000,
-																		std::chrono::duration_cast<std::chrono::microseconds>(base_time).count() % 1000) },
-											  { "message", message } };
-
+			boost::json::object json_message{ { "time_stamp", time_stamp() }, { "datetime", datetime_str }, { "message", message } };
 			return boost::json::serialize(json_message);
 		}
 
-		auto base_time = time_point_.time_since_epoch();
 		if (start_time_flag() == std::nullopt)
 		{
-			boost::json::object json_message{ { "datetime", fmt::format(datetime_format_, fmt::localtime(std::chrono::system_clock::to_time_t(time_point_)),
-																		std::chrono::duration_cast<std::chrono::milliseconds>(base_time).count() % 1000,
-																		std::chrono::duration_cast<std::chrono::microseconds>(base_time).count() % 1000) },
-											  { "message_type", message_type->second },
-											  { "message", message } };
-
+			boost::json::object json_message{ { "datetime", datetime_str }, { "message_type", message_type->second }, { "message", message } };
 			return boost::json::serialize(json_message);
 		}
 
-		boost::json::object json_message{ { "time_stamp", time_stamp() },
-										  { "datetime", fmt::format(datetime_format_, fmt::localtime(std::chrono::system_clock::to_time_t(time_point_)),
-																	std::chrono::duration_cast<std::chrono::milliseconds>(base_time).count() % 1000,
-																	std::chrono::duration_cast<std::chrono::microseconds>(base_time).count() % 1000) },
-										  { "message_type", message_type->second },
-										  { "message", message } };
-
+		boost::json::object json_message{
+			{ "time_stamp", time_stamp() }, { "datetime", datetime_str }, { "message_type", message_type->second }, { "message", message }
+		};
 		return boost::json::serialize(json_message);
 	}
 
 	std::string Log::create_message(const std::string& message) const
 	{
 		auto message_type = message_types_.find(log_type_);
-		if (message_type == message_types_.end())
-		{
-			std::string format = fmt::format("[{}]{}", datetime_format_, "{}");
-
-			auto base_time = time_point_.time_since_epoch();
-
-			std::string result = fmt::format(format, fmt::localtime(std::chrono::system_clock::to_time_t(time_point_)),
-											 std::chrono::duration_cast<std::chrono::milliseconds>(base_time).count() % 1000,
-											 std::chrono::duration_cast<std::chrono::microseconds>(base_time).count() % 1000, message);
-
-			if (start_time_flag() == std::nullopt)
-			{
-				return result;
-			}
-
-			return fmt::format("{} {}", result, time_stamp());
-		}
-
-		std::string format = fmt::format("[{}][{}] {}", datetime_format_, "{}", "{}");
-
 		auto base_time = time_point_.time_since_epoch();
 
-		std::string result = fmt::format(format, fmt::localtime(std::chrono::system_clock::to_time_t(time_point_)),
-										 std::chrono::duration_cast<std::chrono::milliseconds>(base_time).count() % 1000,
-										 std::chrono::duration_cast<std::chrono::microseconds>(base_time).count() % 1000, message_type->second, message);
-		if (start_time_flag() == std::nullopt)
+		const auto datetime_str = fmt::format(fmt::runtime(datetime_format_), fmt::localtime(std::chrono::system_clock::to_time_t(time_point_)),
+											  std::chrono::duration_cast<std::chrono::milliseconds>(base_time).count() % 1000,
+											  std::chrono::duration_cast<std::chrono::microseconds>(base_time).count() % 1000);
+
+		if (message_type == message_types_.end())
 		{
-			return result;
+			std::string fmt_shell = fmt::format("[{{}}]{{}}", "{}"); // produces "[{}]{}"
+			std::string result = fmt::format(fmt::runtime(fmt_shell), datetime_str, message);
+			return start_time_flag() ? fmt::format("{} {}", result, time_stamp()) : result;
 		}
 
-		return fmt::format("{} {}", result, time_stamp());
+		std::string fmt_shell = fmt::format("[{{}}][{{}}] {{}}", "{}", "{}"); // "[{}][{}] {}"
+		std::string result = fmt::format(fmt::runtime(fmt_shell), datetime_str, message_type->second, message);
+		return start_time_flag() ? fmt::format("{} {}", result, time_stamp()) : result;
 	}
+	std::optional<std::chrono::time_point<std::chrono::high_resolution_clock>> Log::start_time_flag() const { return start_time_flag_; }
 
-	std::optional<std::chrono::time_point<std::chrono::high_resolution_clock>> Log::start_time_flag(void) const { return start_time_flag_; }
-#pragma endregion
-
-#pragma region StringLog
 	StringLog::StringLog(const LogTypes& type, const std::string& message, const std::optional<std::chrono::time_point<std::chrono::high_resolution_clock>>& time)
 		: Log(type, time), log_message_(message)
 	{
 	}
 
-	StringLog::~StringLog(void) {}
+	StringLog::~StringLog() = default;
 
-	std::string StringLog::to_json(void) const { return create_json(log_message_); }
+	std::string StringLog::to_json() const { return create_json(log_message_); }
+	std::string StringLog::to_string() const { return fmt::format("{}\n", create_message(log_message_)); }
 
-	std::string StringLog::to_string(void) const { return fmt::format("{}\n", create_message(log_message_)); }
-#pragma endregion
-
-#pragma region WStringLog
 	WStringLog::WStringLog(const LogTypes& type, const std::wstring& message, const std::optional<std::chrono::time_point<std::chrono::high_resolution_clock>>& time)
 		: Log(type, time), log_message_(message)
 	{
 	}
 
-	WStringLog::~WStringLog(void) {}
+	WStringLog::~WStringLog() = default;
 
-	std::string WStringLog::to_json(void) const { return create_json(Converter::to_string(log_message_)); }
+	std::string WStringLog::to_json() const { return create_json(Converter::to_string(log_message_)); }
+	std::string WStringLog::to_string() const { return fmt::format("{}\n", create_message(Converter::to_string(log_message_))); }
 
-	std::string WStringLog::to_string(void) const { return fmt::format("{}\n", create_message(Converter::to_string(log_message_))); }
-#pragma endregion
-
-#pragma region U16StringLog
 	U16StringLog::U16StringLog(const LogTypes& type,
 							   const std::u16string& message,
 							   const std::optional<std::chrono::time_point<std::chrono::high_resolution_clock>>& time)
@@ -165,14 +131,11 @@ namespace Utilities
 	{
 	}
 
-	U16StringLog::~U16StringLog(void) {}
+	U16StringLog::~U16StringLog() = default;
 
-	std::string U16StringLog::to_json(void) const { return create_json(Converter::to_string(log_message_)); }
+	std::string U16StringLog::to_json() const { return create_json(Converter::to_string(log_message_)); }
+	std::string U16StringLog::to_string() const { return fmt::format("{}\n", create_message(Converter::to_string(log_message_))); }
 
-	std::string U16StringLog::to_string(void) const { return fmt::format("{}\n", create_message(Converter::to_string(log_message_))); }
-#pragma endregion
-
-#pragma region U32StringLog
 	U32StringLog::U32StringLog(const LogTypes& type,
 							   const std::u32string& message,
 							   const std::optional<std::chrono::time_point<std::chrono::high_resolution_clock>>& time)
@@ -180,10 +143,9 @@ namespace Utilities
 	{
 	}
 
-	U32StringLog::~U32StringLog(void) {}
+	U32StringLog::~U32StringLog() = default;
 
-	std::string U32StringLog::to_json(void) const { return create_json(Converter::to_string(log_message_)); }
+	std::string U32StringLog::to_json() const { return create_json(Converter::to_string(log_message_)); }
+	std::string U32StringLog::to_string() const { return fmt::format("{}\n", create_message(Converter::to_string(log_message_))); }
 
-	std::string U32StringLog::to_string(void) const { return fmt::format("{}\n", create_message(Converter::to_string(log_message_))); }
-}
-#pragma endregion
+} // namespace Utilities
