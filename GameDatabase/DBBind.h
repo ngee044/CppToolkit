@@ -43,9 +43,7 @@ namespace GameDatabase
 		{
 			if (db_connection_ == nullptr)
 			{
-				// TODO
-				// Handle error: db_connection_ is null
-				return;
+				throw std::invalid_argument("db_connection cannot be null");
 			}
 
 			memset(param_index_, 0, sizeof(param_index_));
@@ -60,7 +58,25 @@ namespace GameDatabase
 
 		auto validate() -> std::tuple<bool, std::optional<std::string>>
 		{
-			return param_flag_ == FullBits<param_count>::value && column_flag_ == FullBits<column_count>::value;
+			bool param_valid = param_flag_ == FullBits<param_count>::value;
+			bool column_valid = column_flag_ == FullBits<column_count>::value;
+			bool is_valid = param_valid && column_valid;
+			
+			if (!is_valid)
+			{
+				std::string error_msg = "Binding validation failed: ";
+				if (!param_valid)
+				{
+					error_msg += "parameters not fully bound ";
+				}
+				if (!column_valid)
+				{
+					error_msg += "columns not fully bound";
+				}
+				return { false, error_msg };
+			}
+			
+			return { true, std::nullopt };
 		}
 
 		auto execute() -> std::tuple<bool, std::optional<std::string>>
@@ -83,7 +99,7 @@ namespace GameDatabase
 		template<typename T>
 		auto bind_param(std::int32_t index, T* value) -> void
 		{
-			db_connection_->bind_param(index + 1, &value, &param_index_[index]);
+			db_connection_->bind_param(index + 1, value, &param_index_[index]);
 			param_flag_ |= (1LL << index);
 		}
 
@@ -110,7 +126,7 @@ namespace GameDatabase
 		template<std::int32_t N>
 		auto bind_column(std::int32_t index, WCHAR(&value)[N]) -> void
 		{
-			db_connection_->bind_column(index + 1, value, N -1, &column_index_[index]);
+			db_connection_->bind_column(index + 1, value, N - 1, &column_index_[index]);
 			column_flag_ |= (1LL << index);
 		}
 
@@ -120,10 +136,17 @@ namespace GameDatabase
 			column_flag_ |= (1LL << index);
 		}
 
+		template<typename T>
+		auto bind_column(std::int32_t index, T* value) -> void
+		{
+			db_connection_->bind_column(index + 1, value, &column_index_[index]);
+			column_flag_ |= (1LL << index);
+		}
+
 		template<typename T, std::int32_t N>
 		auto bind_column(std::int32_t index, T(&value)[N]) -> void
 		{
-			db_connection_->bind_column(index + 1, value, sizeof(T) * N, &column_index_[index]);
+			db_connection_->bind_column(index + 1, (BYTE*)value, sizeof(T) * N, &column_index_[index]);
 			column_flag_ |= (1LL << index);
 		}
 

@@ -52,10 +52,22 @@ namespace GameDatabase
 
 		if (!SQL_SUCCEEDED(ret_code))
 		{
-			// TODO
-			// Handle error
+			std::string error_msg = "Failed to connect to the database. ";
+			
+			// Get detailed error information
+			SQLWCHAR sql_state[6] = {};
+			SQLINTEGER native_error = 0;
+			SQLWCHAR message[SQL_MAX_MESSAGE_LENGTH] = {};
+			SQLSMALLINT message_length = 0;
+			
+			if (SQL_SUCCEEDED(SQLGetDiagRecW(SQL_HANDLE_DBC, connection_, 1, sql_state, &native_error, message, SQL_MAX_MESSAGE_LENGTH, &message_length)))
+			{
+				std::wstring wmsg(message);
+				error_msg += std::string(wmsg.begin(), wmsg.end());
+			}
+			
 			handle_error(ret_code);
-			return { false, "Failed to connect to the database." };
+			return { false, error_msg };
 		}
 
 		if (::SQLAllocHandle(SQL_HANDLE_STMT, connection_, &statement_) != SQL_SUCCESS)
@@ -347,10 +359,18 @@ namespace GameDatabase
 				break; // Error retrieving error record
 			}
 
-			// TODO
-			// Log the error message
-			std::wcout.imbue(std::locale("kor"));
-			std::wcout << message << std::endl;
+			// Log error message to console with proper encoding
+			try
+			{
+				std::wcout << L"SQL Error [" << sql_state << L"]: " << message << std::endl;
+			}
+			catch (...)
+			{
+				// Fallback to narrow string output if wide character output fails
+				std::wstring wmsg(message);
+				std::string narrow_msg(wmsg.begin(), wmsg.end());
+				std::cout << "SQL Error: " << narrow_msg << std::endl;
+			}
 
 			index++;
 		}
