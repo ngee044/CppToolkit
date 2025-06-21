@@ -11,11 +11,12 @@
 #include "ThreadWorker.h"
 
 #include <iostream>
-#include <format>
 #include <chrono>
 #include <thread>
 #include <random>
 #include <iomanip>
+#include <fmt/format.h>
+#include <fmt/core.h>
 
 using namespace GameDatabase;
 using namespace Utilities;
@@ -34,13 +35,150 @@ struct PlayerInfo
 
 struct ItemInfo
 {
-	std::int64_t item_id;
-	std::wstring item_name;
+	std::int64_t item_id;	std::wstring item_name;
 	std::int32_t item_type;
 	std::int32_t rarity;
 	std::int32_t attack_power;
 	std::int32_t defense_power;
 	std::int64_t price;
+};
+
+// DBBind implementations for type-safe database operations
+class PlayerCreateBind : public DBBind<2, 1>
+{
+public:
+	PlayerCreateBind(std::shared_ptr<DBConnection> connection)
+		: DBBind<2, 1>(connection, L"INSERT INTO players (username, nickname) OUTPUT INSERTED.player_id VALUES (?, ?)")
+	{
+		bind_column(0, &player_id_);
+	}
+
+	auto set_player_data(const std::wstring& username, const std::wstring& nickname) -> std::tuple<bool, std::optional<std::string>>
+	{
+		if (username.length() >= std::size(username_) || nickname.length() >= std::size(nickname_))
+		{
+			return { false, "Username or nickname too long" };
+		}
+		
+		wcscpy_s(username_, std::size(username_), username.c_str());
+		wcscpy_s(nickname_, std::size(nickname_), nickname.c_str());
+		
+		bind_param(0, username_);
+		bind_param(1, nickname_);
+		
+		return { true, std::nullopt };
+	}
+
+	auto get_created_player_id() const -> std::int64_t { return player_id_; }
+
+private:
+	WCHAR username_[51];
+	WCHAR nickname_[51];
+	std::int64_t player_id_ = 0;
+};
+class PlayerQueryBind : public DBBind<0, 6>
+{
+public:
+	PlayerQueryBind(std::shared_ptr<DBConnection> connection)
+		: DBBind<0, 6>(connection, L"SELECT player_id, username, nickname, level, experience, gold FROM players ORDER BY player_id")
+	{
+		bind_column(0, &player_id_);
+		bind_column(1, username_);
+		bind_column(2, nickname_);
+		bind_column(3, &level_);
+		bind_column(4, &experience_);
+		bind_column(5, &gold_);
+	}
+
+	auto get_player_info() const -> PlayerInfo
+	{
+		PlayerInfo player;
+		player.player_id = player_id_;
+		player.username = std::wstring(username_);
+		player.nickname = std::wstring(nickname_);
+		player.level = level_;
+		player.experience = experience_;
+		player.gold = gold_;
+		return player;
+	}
+
+private:
+	std::int64_t player_id_;
+	WCHAR username_[51];
+	WCHAR nickname_[51];
+	std::int32_t level_;
+	std::int64_t experience_;
+	std::int64_t gold_;
+};
+
+class SinglePlayerQueryBind : public DBBind<1, 6>
+{
+public:
+	SinglePlayerQueryBind(std::shared_ptr<DBConnection> connection, std::int64_t player_id)
+		: DBBind<1, 6>(connection, L"SELECT player_id, username, nickname, level, experience, gold FROM players WHERE player_id = ?")
+		, search_id_(player_id)
+	{
+		bind_param(0, &search_id_);
+		bind_column(0, &player_id_);
+		bind_column(1, username_);
+		bind_column(2, nickname_);
+		bind_column(3, &level_);
+		bind_column(4, &experience_);
+		bind_column(5, &gold_);
+	}
+
+	auto get_player_info() const -> PlayerInfo
+	{
+		PlayerInfo player;
+		player.player_id = player_id_;
+		player.username = std::wstring(username_);
+		player.nickname = std::wstring(nickname_);
+		player.level = level_;
+		player.experience = experience_;
+		player.gold = gold_;
+		return player;
+	}
+
+private:
+	std::int64_t search_id_;
+	std::int64_t player_id_;
+	WCHAR username_[51];
+	WCHAR nickname_[51];
+	std::int32_t level_;
+	std::int64_t experience_;
+	std::int64_t gold_;
+};
+class GoldUpdateBind : public DBBind<2, 0>
+{
+public:
+	GoldUpdateBind(std::shared_ptr<DBConnection> connection, bool is_deduct)
+		: DBBind<2, 0>(connection, is_deduct ? 
+			L"UPDATE players SET gold = gold - ? WHERE player_id = ? AND gold >= ?" :
+			L"UPDATE players SET gold = gold + ? WHERE player_id = ?")
+		, is_deduct_(is_deduct)
+	{
+	}
+
+	auto set_update_data(std::int64_t amount, std::int64_t player_id, std::int64_t min_required = 0) -> void
+	{
+		amount_ = amount;
+		player_id_ = player_id;
+		min_required_ = min_required;
+		
+		bind_param(0, &amount_);
+		bind_param(1, &player_id_);
+		
+		if (is_deduct_)
+		{
+			bind_param(2, &min_required_);
+		}
+	}
+
+private:
+	bool is_deduct_;
+	std::int64_t amount_;
+	std::int64_t player_id_;
+	std::int64_t min_required_;
 };
 
 // Global variables for configuration
@@ -51,8 +189,7 @@ int stress_test_operations_ = 1000;
 
 #ifdef _DEBUG
 LogTypes write_file_ = LogTypes::All;
-LogTypes write_console_ = LogTypes::All;
-#else
+LogTypes write_console_ = LogTypes::All;#else
 LogTypes write_file_ = LogTypes::None;
 LogTypes write_console_ = LogTypes::Information;
 #endif
@@ -66,6 +203,7 @@ auto demo_player_operations(std::shared_ptr<DBConnectionPool> pool) -> void;
 auto demo_transaction_handling(std::shared_ptr<DBConnectionPool> pool) -> void;
 auto demo_cache_system(std::shared_ptr<DBConnectionPool> pool, std::shared_ptr<DBCache> cache) -> void;
 auto demo_stored_procedures(std::shared_ptr<DBConnectionPool> pool) -> void;
+auto demo_stress_test(std::shared_ptr<DBConnectionPool> pool) -> void;
 auto cleanup_test_data(std::shared_ptr<DBConnectionPool> pool) -> void;
 
 auto main(int32_t argc, char* argv[]) -> int32_t
@@ -77,76 +215,91 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	Logger::handle().console_mode(write_console_);
 	Logger::handle().log_root(arguments.program_folder());
 
-	Logger::handle().start("GameDatabaseClient");
+	Logger::handle().start("GameDatabaseSample");
+	Logger::handle().write(LogTypes::Information, "=== GameDatabase Module Comprehensive Demo ===");
 
-	// 1. Initialize Database Connection Pool
-	auto connection_pool = std::make_shared<DBConnectionPool>();
-	
-	std::wstring wconn_str = Converter::to_wstring(connection_string_);
-	auto [connect_success, connect_error] = connection_pool->connect(connection_pool_size_, wconn_str);
-	if (!connect_success)
+	try
 	{
-		Logger::handle().write(LogTypes::Error, std::format("Failed to connect to database: {}", connect_error.value_or("Unknown error")));
-		return -1;
-	}
-	
-	Logger::handle().write(LogTypes::Information, "Connected to database");
+		// 1. Initialize Database Connection Pool
+		auto connection_pool = std::make_shared<DBConnectionPool>();
+		
+		std::wstring wconn_str = Converter::to_wstring(connection_string_);
+		auto [connect_success, connect_error] = connection_pool->connect(connection_pool_size_, wconn_str);
+		if (!connect_success)
+		{
+			throw std::runtime_error("Failed to connect to database: " + connect_error.value_or("Unknown error"));
+		}
+		
+		Logger::handle().write(LogTypes::Information, "✓ Connected to database with pool size: " + std::to_string(connection_pool_size_));
+		// 2. Initialize Migration System
+		auto migration = std::make_shared<DBMigration>(connection_pool);
+		
+		auto [init_success, init_error] = migration->initialize();
+		if (!init_success)
+		{
+			throw std::runtime_error("Failed to initialize migration system: " + init_error.value_or("Unknown error"));
+		}
+		Logger::handle().write(LogTypes::Information, "✓ Migration system initialized");
 
+		// Setup database schema
+		auto [schema_success, schema_error] = setup_database_schema(migration);
+		if (!schema_success)
+		{
+			throw std::runtime_error("Failed to setup database schema: " + schema_error.value_or("Unknown error"));
+		}
+		Logger::handle().write(LogTypes::Information, "✓ Database schema setup completed");
 
-	// 2. Initialize Migration System
-	auto migration = std::make_shared<DBMigration>(connection_pool);
-	
-	auto [init_success, init_error] = migration->initialize();
-	if (!init_success)
-	{
-		Logger::handle().write(LogTypes::Error, std::format("Failed to initialize migration system: {}", init_error.value_or("Unknown error")));
+		// 3. Initialize Cache System
+		Logger::handle().write(LogTypes::Information, "✓ Initializing Memory Cache...");
+		auto cache = std::make_shared<DBCache>(); // Default memory cache backend
+		Logger::handle().write(LogTypes::Information, "✓ Memory cache initialized");
+
+		// Run demonstrations
+		Logger::handle().write(LogTypes::Information, "\n=== Starting Demonstrations ===\n");
+
+		// Demo 1: Connection Pool
+		demo_connection_pool(connection_pool);
+
+		// Demo 2: Player Operations with DBBind (Type-Safe)
+		demo_player_operations(connection_pool);
+
+		// Demo 3: Transaction Handling with RAII Guard
+		demo_transaction_handling(connection_pool);
+
+		// Demo 4: Smart Cache System
+		demo_cache_system(connection_pool, cache);
+
+		// Demo 5: Stored Procedures
+		demo_stored_procedures(connection_pool);
+
+		// Demo 6: Stress Test (Optional)
+		if (stress_test_operations_ > 0)
+		{
+			demo_stress_test(connection_pool);
+		}
+
+		// Cleanup
+		Logger::handle().write(LogTypes::Information, "\n=== Cleanup ===");
+		cleanup_test_data(connection_pool);
+		
+		auto [cache_clear_success, cache_clear_error] = cache->clear();
+		if (cache_clear_success)
+		{
+			Logger::handle().write(LogTypes::Information, "✓ Cache cleared");
+		}
 		
 		connection_pool->clear();
-		return -1;
-	}
-	Logger::handle().write(LogTypes::Information, "Migration system initialized");
+		Logger::handle().write(LogTypes::Information, "✓ Connection pool closed");
 
-	// Setup database schema
-	auto [schema_success, schema_error] = setup_database_schema(migration);
-	if (!schema_success)
+		Logger::handle().write(LogTypes::Information, "\n=== All demonstrations completed successfully! ===");
+	}
+	catch (const std::exception& e)
 	{
-		Logger::handle().write(LogTypes::Error, std::format("Failed to setup database schema: {}", schema_error.value_or("Unknown error")));
-		connection_pool->clear();
+		Logger::handle().write(LogTypes::Error, fmt::format("Critical error: {}", e.what()));
+		Logger::handle().stop();
+		Logger::destroy();
 		return -1;
 	}
-	// 3. Initialize Cache System
-	Logger::handle().write(LogTypes::Information, "Initializing Memory Cache...");
-	
-	auto cache = std::make_shared<DBCache>(); // Default memory cache backend
-	Logger::handle().write(LogTypes::Information, "✓ Memory cache initialized");	// Run demonstrations
-	Logger::handle().write(LogTypes::Information, "\n=== Starting Demonstrations ===\n");
-
-	// Demo 1: Connection Pool
-	demo_connection_pool(connection_pool);
-
-	// Demo 2: Player Operations (CRUD)
-	demo_player_operations(connection_pool);
-
-	// Demo 3: Transaction Handling
-	demo_transaction_handling(connection_pool);
-
-	// Demo 4: Cache System
-	demo_cache_system(connection_pool, cache);
-
-	// Demo 5: Stored Procedures
-	demo_stored_procedures(connection_pool);
-
-	// Cleanup
-	Logger::handle().write(LogTypes::Information, "=== Cleanup ===");
-	cleanup_test_data(connection_pool);
-	cache->clear();
-	Logger::handle().write(LogTypes::Information, "Cache cleared");
-	
-	connection_pool->clear();
-	Logger::handle().write(LogTypes::Information, "Connection pool closed");
-
-	Logger::handle().write(LogTypes::Information, "=== All demonstrations completed successfully! ===");
-
 	Logger::handle().stop();
 	Logger::destroy();
 	
@@ -205,7 +358,6 @@ auto print_help_message() -> void
 	std::cout << "  GameDatabaseSample --pool-size 20\n";
 	std::cout << "  GameDatabaseSample --stress-test --stress-threads 8\n\n";
 }
-
 auto setup_database_schema(std::shared_ptr<DBMigration> migration) -> std::tuple<bool, std::optional<std::string>>
 {
 	// Migration 1: Create player table
@@ -227,7 +379,11 @@ auto setup_database_schema(std::shared_ptr<DBMigration> migration) -> std::tuple
 							L");";
 	migration_v1.down_script = L"DROP TABLE IF EXISTS players;";
 
-	migration->register_migration(migration_v1);
+	auto [reg1_success, reg1_error] = migration->register_migration(migration_v1);
+	if (!reg1_success)
+	{
+		return { false, "Failed to register player table migration: " + reg1_error.value_or("Unknown error") };
+	}
 
 	// Migration 2: Create items table
 	MigrationInfo migration_v2;
@@ -258,8 +414,11 @@ auto setup_database_schema(std::shared_ptr<DBMigration> migration) -> std::tuple
 							L"(N'미스릴 주괴', 4, 3, 0, 0, 500, 999);";
 	migration_v2.down_script = L"DROP TABLE IF EXISTS items;";
 
-	migration->register_migration(migration_v2);
-
+	auto [reg2_success, reg2_error] = migration->register_migration(migration_v2);
+	if (!reg2_success)
+	{
+		return { false, "Failed to register items table migration: " + reg2_error.value_or("Unknown error") };
+	}
 	// Migration 3: Create inventory table
 	MigrationInfo migration_v3;
 	migration_v3.version = 3;
@@ -279,7 +438,11 @@ auto setup_database_schema(std::shared_ptr<DBMigration> migration) -> std::tuple
 							L");";
 	migration_v3.down_script = L"DROP TABLE IF EXISTS inventory;";
 
-	migration->register_migration(migration_v3);
+	auto [reg3_success, reg3_error] = migration->register_migration(migration_v3);
+	if (!reg3_success)
+	{
+		return { false, "Failed to register inventory table migration: " + reg3_error.value_or("Unknown error") };
+	}
 
 	// Migration 4: Create stored procedures
 	MigrationInfo migration_v4;
@@ -320,156 +483,179 @@ auto setup_database_schema(std::shared_ptr<DBMigration> migration) -> std::tuple
 							L"END;\n";
 	migration_v4.down_script = L"DROP PROCEDURE IF EXISTS sp_add_experience;";
 
-	migration->register_migration(migration_v4);
+	auto [reg4_success, reg4_error] = migration->register_migration(migration_v4);
+	if (!reg4_success)
+	{
+		return { false, "Failed to register stored procedure migration: " + reg4_error.value_or("Unknown error") };
+	}
 
 	// Run migrations to latest version
 	return migration->migrate_to_latest();
 }
-
 auto demo_connection_pool(std::shared_ptr<DBConnectionPool> pool) -> void
 {
 	Logger::handle().write(LogTypes::Information, "\n--- Demo 1: Connection Pool Management ---");
 	
-	// Demonstrate getting and returning connections
-	std::vector<std::shared_ptr<DBConnection>> connections;
+	try
+	{
+		// Demonstrate getting and returning connections
+		std::vector<std::shared_ptr<DBConnection>> connections;
 		Logger::handle().write(LogTypes::Information, "Getting multiple connections from pool...");
-	for (int i = 0; i < 5; ++i)
-	{
-		auto conn = pool->pop();
-		if (conn)
+		
+		for (int i = 0; i < 5; ++i)
 		{
-			connections.push_back(conn);
-			Logger::handle().write(LogTypes::Information, std::format("  ✓ Got connection {}", i + 1));
+			auto conn = pool->pop();
+			if (conn)
+			{
+				connections.push_back(conn);
+				Logger::handle().write(LogTypes::Information, fmt::format("  ✓ Got connection {}", i + 1));
+			}
+			else
+			{
+				Logger::handle().write(LogTypes::Warning, fmt::format("  ⚠ Failed to get connection {}", i + 1));
+			}
 		}
-	}
 
-	// Execute simple query on each connection
-	Logger::handle().write(LogTypes::Information, "Executing queries on connections...");
-	for (size_t i = 0; i < connections.size(); ++i)
-	{
-		auto [success, error] = connections[i]->execute(L"SELECT 1 as test");
-		if (success)
+		// Execute simple query on each connection
+		Logger::handle().write(LogTypes::Information, "Executing queries on connections...");
+		for (size_t i = 0; i < connections.size(); ++i)
 		{
-			Logger::handle().write(LogTypes::Information, std::format("  ✓ Connection {} query successful", i + 1));
+			auto [success, error] = connections[i]->execute(L"SELECT 1 as test");
+			if (success)
+			{
+				Logger::handle().write(LogTypes::Information, fmt::format("  ✓ Connection {} query successful", i + 1));
+			}
+			else
+			{
+				Logger::handle().write(LogTypes::Error, fmt::format("  ✗ Connection {} query failed: {}", i + 1, error.value_or("Unknown error")));
+			}
 		}
-	}
 
-	// Return connections to pool
-	Logger::handle().write(LogTypes::Information, "Returning connections to pool...");
-	for (auto& conn : connections)
-	{
-		pool->push(conn);
+		// Return connections to pool
+		Logger::handle().write(LogTypes::Information, "Returning connections to pool...");
+		for (auto& conn : connections)
+		{
+			pool->push(conn);
+		}
+		Logger::handle().write(LogTypes::Information, "✓ All connections returned to pool");
 	}
-	Logger::handle().write(LogTypes::Information, "✓ All connections returned to pool");
+	catch (const std::exception& e)
+	{
+		Logger::handle().write(LogTypes::Error, fmt::format("Connection pool demo failed: {}", e.what()));
+	}
 }
-
 auto demo_player_operations(std::shared_ptr<DBConnectionPool> pool) -> void
 {
-	Logger::handle().write(LogTypes::Information, "\n--- Demo 2: Player Operations (Direct Connection) ---");
+	Logger::handle().write(LogTypes::Information, "\n--- Demo 2: Type-Safe Player Operations with DBBind ---");
 	
 	auto connection = pool->pop();
-
-	// 1. Create players
-	Logger::handle().write(LogTypes::Information, "Creating players...");
-	std::vector<std::pair<std::wstring, std::wstring>> players = {
-		{L"player_hero", L"영웅"},
-		{L"player_warrior", L"전사"},
-		{L"player_mage", L"마법사"},
-		{L"player_archer", L"궁수"},
-		{L"player_healer", L"힐러"}
-	};
-
-	for (const auto& [username, nickname] : players)
+	if (!connection)
 	{
-		std::wstring query = L"INSERT INTO players (username, nickname) OUTPUT INSERTED.player_id VALUES (?, ?)";
-		auto [exec_success, exec_error] = connection->execute(query);
-		if (!exec_success)
-		{
-			Logger::handle().write(LogTypes::Error, 
-				std::format("Failed to prepare insert statement: {}", exec_error.value_or("Unknown error")));
-			continue;
-		}
-
-		// Bind parameters
-		SQLLEN username_indicator = 0, nickname_indicator = 0;
-		WCHAR username_buf[51], nickname_buf[51];
-		wcscpy_s(username_buf, username.c_str());
-		wcscpy_s(nickname_buf, nickname.c_str());
-		
-		connection->bind_param(1, username_buf, &username_indicator);
-		connection->bind_param(2, nickname_buf, &nickname_indicator);
-
-		// Bind output column
-		std::int64_t new_player_id = 0;
-		SQLLEN result_indicator = 0;
-		connection->bind_column(1, &new_player_id, &result_indicator);
-
-		auto [fetch_success, fetch_error] = connection->fetch();
-		if (fetch_success)
-		{
-			Logger::handle().write(LogTypes::Information, 
-				std::format("  ✓ Created player: {} ({}) - ID: {}", 
-					Converter::to_string(username), 
-					Converter::to_string(nickname),
-					new_player_id
-				)
-			);
-		}
+		Logger::handle().write(LogTypes::Error, "Failed to get connection from pool");
+		return;
 	}
 
-	// 2. Query players
-	Logger::handle().write(LogTypes::Information, "\nQuerying player data...");
-	
-	std::wstring query = L"SELECT player_id, username, nickname, level, experience, gold FROM players ORDER BY player_id";
-	auto [query_success, query_error] = connection->execute(query);
-	
-	if (query_success)
+	try
 	{
-		std::int64_t player_id;
-		WCHAR username[51], nickname[51];
-		std::int32_t level;
-		std::int64_t experience, gold;
-		SQLLEN indicators[6];
+		// 1. Create players using type-safe DBBind
+		Logger::handle().write(LogTypes::Information, "Creating players with type-safe binding...");
+		std::vector<std::pair<std::wstring, std::wstring>> players = {
+			{L"hero_001", L"영웅"},
+			{L"warrior_002", L"전사"},
+			{L"mage_003", L"마법사"},
+			{L"archer_004", L"궁수"},
+			{L"healer_005", L"힐러"}
+		};
 
-		connection->bind_column(1, &player_id, &indicators[0]);
-		connection->bind_column(2, username, 50, &indicators[1]);
-		connection->bind_column(3, nickname, 50, &indicators[2]);
-		connection->bind_column(4, &level, &indicators[3]);
-		connection->bind_column(5, &experience, &indicators[4]);
-		connection->bind_column(6, &gold, &indicators[5]);
-
-		Logger::handle().write(LogTypes::Information, "\nPlayer List:");
-		Logger::handle().write(LogTypes::Information, "ID | Username | Nickname | Level | Gold");
-		Logger::handle().write(LogTypes::Information, "---|----------|----------|-------|------");
-		
-		auto [fetch_success, fetch_error] = connection->fetch();
-		while (fetch_success)
+		for (const auto& [username, nickname] : players)
 		{
-			Logger::handle().write(LogTypes::Information,
-				std::format("{:2d} | {:8s} | {:8s} | {:5d} | {:5d}g",
-					player_id,
-					Converter::to_string(std::wstring(username)),
-					Converter::to_string(std::wstring(nickname)),
-					level,
-					gold
-				)
-			);
-			auto [next_success, next_error] = connection->fetch();
-			fetch_success = next_success;
+			auto player_bind = std::make_unique<PlayerCreateBind>(connection);
+			
+			auto [bind_success, bind_error] = player_bind->set_player_data(username, nickname);
+			if (!bind_success)
+			{
+				Logger::handle().write(LogTypes::Error, fmt::format("Failed to bind player data: {}", bind_error.value_or("Unknown error")));
+				continue;
+			}
+			
+			auto [exec_success, exec_error] = player_bind->execute();
+			if (!exec_success)
+			{
+				Logger::handle().write(LogTypes::Error, fmt::format("Failed to execute player creation: {}", exec_error.value_or("Unknown error")));
+				continue;
+			}
+
+			auto [fetch_success, fetch_error] = player_bind->fetch();
+			if (fetch_success)
+			{
+				std::int64_t new_id = player_bind->get_created_player_id();
+				Logger::handle().write(LogTypes::Information, 
+					fmt::format("  ✓ Created player: {} ({}) - ID: {}", 
+						Converter::to_string(username), 
+						Converter::to_string(nickname),
+						new_id
+					)
+				);
+			}
+			else
+			{
+				Logger::handle().write(LogTypes::Error, fmt::format("Failed to fetch created player: {}", fetch_error.value_or("Unknown error")));
+			}
 		}
+		// 2. Query players using type-safe binding
+		Logger::handle().write(LogTypes::Information, "\nQuerying player data with type-safe binding...");
+		
+		auto player_query = std::make_unique<PlayerQueryBind>(connection);
+		auto [query_success, query_error] = player_query->execute();
+		
+		if (query_success)
+		{
+			Logger::handle().write(LogTypes::Information, "\nPlayer List:");
+			Logger::handle().write(LogTypes::Information, "ID | Username     | Nickname | Level | Gold");
+			Logger::handle().write(LogTypes::Information, "---|------------- |----------|-------|------");
+			
+			auto [fetch_success, fetch_error] = player_query->fetch();
+			while (fetch_success)
+			{
+				auto player = player_query->get_player_info();
+				Logger::handle().write(LogTypes::Information,
+					fmt::format("{:2d} | {:12s} | {:8s} | {:5d} | {:5d}g",
+						player.player_id,
+						Converter::to_string(player.username),
+						Converter::to_string(player.nickname),
+						player.level,
+						player.gold
+					)
+				);
+				auto [next_success, next_error] = player_query->fetch();
+				fetch_success = next_success;
+			}
+		}
+		else
+		{
+			Logger::handle().write(LogTypes::Error, fmt::format("Failed to query players: {}", query_error.value_or("Unknown error")));
+		}
+	}
+	catch (const std::exception& e)
+	{
+		Logger::handle().write(LogTypes::Error, fmt::format("Player operations demo failed: {}", e.what()));
 	}
 
 	pool->push(connection);
 }
-
 auto demo_transaction_handling(std::shared_ptr<DBConnectionPool> pool) -> void
 {
-	Logger::handle().write(LogTypes::Information, "\n--- Demo 3: Transaction Handling ---");
+	Logger::handle().write(LogTypes::Information, "\n--- Demo 3: RAII Transaction Handling ---");
 	
 	auto connection = pool->pop();
+	if (!connection)
+	{
+		Logger::handle().write(LogTypes::Error, "Failed to get connection from pool");
+		return;
+	}
 
 	// Scenario: Transfer gold between players (must be atomic)
-	Logger::handle().write(LogTypes::Information, "Demonstrating gold transfer with transaction...");
+	Logger::handle().write(LogTypes::Information, "Demonstrating gold transfer with RAII transaction guard...");
 	
 	auto transaction = std::make_shared<DBTransaction>(connection);
 	
@@ -477,249 +663,394 @@ auto demo_transaction_handling(std::shared_ptr<DBConnectionPool> pool) -> void
 	std::int64_t receiver_id = 2;
 	std::int64_t transfer_amount = 500;
 
-	auto [begin_success, begin_error] = transaction->begin();
-	if (!begin_success)
+	try
 	{
-		Logger::handle().write(LogTypes::Error, "Failed to begin transaction");
-		pool->push(connection);
+		// Begin transaction with RAII guard
+		TransactionGuard guard(transaction);
+		
+		auto [begin_success, begin_error] = transaction->begin();
+		if (!begin_success)
+		{
+			throw std::runtime_error("Failed to begin transaction: " + begin_error.value_or("Unknown error"));
+		}
+
+		// Deduct from sender using type-safe binding
+		auto deduct_bind = std::make_unique<GoldUpdateBind>(connection, true);  // true = deduct
+		deduct_bind->set_update_data(transfer_amount, sender_id, transfer_amount);
+		
+		auto [deduct_success, deduct_error] = deduct_bind->execute();
+		if (!deduct_success)
+		{
+			throw std::runtime_error("Failed to prepare deduct query: " + deduct_error.value_or("Unknown error"));
+		}
+		
+		if (connection->row_count() == 0)
+		{
+			throw std::runtime_error("Insufficient gold for transfer");
+		}
+
+		// Add to receiver
+		auto add_bind = std::make_unique<GoldUpdateBind>(connection, false);  // false = add
+		add_bind->set_update_data(transfer_amount, receiver_id);
+		
+		auto [add_success, add_error] = add_bind->execute();
+		if (!add_success)
+		{
+			throw std::runtime_error("Failed to prepare add query: " + add_error.value_or("Unknown error"));
+		}
+
+		// Explicit commit (RAII guard will auto-rollback if exception occurs)
+		auto [commit_success, commit_error] = guard.commit();
+		if (!commit_success)
+		{
+			throw std::runtime_error("Failed to commit transaction: " + commit_error.value_or("Unknown error"));
+		}
+		
+		Logger::handle().write(LogTypes::Information, 
+			fmt::format("✓ Successfully transferred {} gold from Player {} to Player {}", 
+				transfer_amount, sender_id, receiver_id));
+	}
+	catch (const std::exception& e)
+	{
+		Logger::handle().write(LogTypes::Error, 
+			fmt::format("Transaction failed: {} (RAII guard will auto-rollback)", e.what()));
+	}
+
+	pool->push(connection);
+}
+auto demo_cache_system(std::shared_ptr<DBConnectionPool> pool, std::shared_ptr<DBCache> cache) -> void
+{
+	Logger::handle().write(LogTypes::Information, "\n--- Demo 4: Smart Cache System ---");
+	
+	auto connection = pool->pop();
+	if (!connection)
+	{
+		Logger::handle().write(LogTypes::Error, "Failed to get connection from pool");
 		return;
 	}
 
 	try
 	{
-		// Check sender's balance
-		std::wstring check_query = L"SELECT gold FROM players WHERE player_id = ?";
-		auto [check_success, check_error] = connection->execute(check_query);
-		if (!check_success)
+		// Smart cache query helper using cache_query function
+		auto get_player_with_cache = [&](std::int64_t player_id) -> std::tuple<bool, std::optional<std::string>, std::optional<PlayerInfo>>
 		{
-			throw std::runtime_error("Failed to prepare balance check query");
-		}
-
-		SQLLEN sender_indicator = 0;
-		connection->bind_param(1, &sender_id, &sender_indicator);
+			std::string cache_key = fmt::format("player:{}", player_id);
+			
+			return cache->cache_query<PlayerInfo>(
+				cache_key,
+				[&]() -> std::tuple<bool, std::optional<std::string>, PlayerInfo>
+				{
+					// Query from database using type-safe binding
+					auto player_query = std::make_unique<SinglePlayerQueryBind>(connection, player_id);
+					
+					auto [exec_success, exec_error] = player_query->execute();
+					if (!exec_success)
+					{
+						return { false, exec_error, PlayerInfo{} };
+					}
+					
+					auto [fetch_success, fetch_error] = player_query->fetch();
+					if (!fetch_success)
+					{
+						return { false, fetch_error, PlayerInfo{} };
+					}
+					
+					return { true, std::nullopt, player_query->get_player_info() };
+				},
+				std::chrono::seconds(300)  // 5 minute TTL
+			);
+		};
 		
-		std::int64_t sender_gold = 0;
-		SQLLEN gold_indicator = 0;
-		connection->bind_column(1, &sender_gold, &gold_indicator);
+		// Test cache miss -> cache hit performance
+		Logger::handle().write(LogTypes::Information, "Testing cache performance (first call - cache miss):");
 		
-		auto [fetch_success, fetch_error] = connection->fetch();
-		if (!fetch_success)
+		std::vector<std::chrono::microseconds> first_call_times;
+		for (int i = 1; i <= 3; ++i)
 		{
-			throw std::runtime_error("Failed to check sender balance");
+			auto start = std::chrono::high_resolution_clock::now();
+			auto [success, error, player_data] = get_player_with_cache(i);
+			auto end = std::chrono::high_resolution_clock::now();
+			
+			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+			first_call_times.push_back(duration);
+			
+			if (success && player_data.has_value())
+			{
+				auto player = player_data.value();
+				Logger::handle().write(LogTypes::Information, 
+					fmt::format("  ✓ Player {}: {} ({}μs - DB)", 
+						player.player_id,
+						Converter::to_string(player.nickname),
+						duration.count()));
+			}
+			else
+			{
+				Logger::handle().write(LogTypes::Error, 
+					fmt::format("  ✗ Failed to get player {}: {}", i, error.value_or("Unknown error")));
+			}
 		}
-
-		if (sender_gold < transfer_amount)
+		// Test cache hit performance
+		Logger::handle().write(LogTypes::Information, "\nSecond call (should hit cache):");
+		
+		std::vector<std::chrono::microseconds> second_call_times;
+		for (int i = 1; i <= 3; ++i)
 		{
-			throw std::runtime_error("Insufficient gold");
+			auto start = std::chrono::high_resolution_clock::now();
+			auto [success, error, player_data] = get_player_with_cache(i);
+			auto end = std::chrono::high_resolution_clock::now();
+			
+			auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+			second_call_times.push_back(duration);
+			
+			if (success && player_data.has_value())
+			{
+				auto player = player_data.value();
+				Logger::handle().write(LogTypes::Information, 
+					fmt::format("  ✓ Player {}: {} ({}μs - cached)", 
+						player.player_id,
+						Converter::to_string(player.nickname),
+						duration.count()));
+			}
 		}
+		
+		// Calculate performance improvement
+		auto avg_db_time = std::accumulate(first_call_times.begin(), first_call_times.end(), std::chrono::microseconds(0)) / first_call_times.size();
+		auto avg_cache_time = std::accumulate(second_call_times.begin(), second_call_times.end(), std::chrono::microseconds(0)) / second_call_times.size();
+		
+		double speedup = static_cast<double>(avg_db_time.count()) / avg_cache_time.count();
+		
+		Logger::handle().write(LogTypes::Information, 
+			fmt::format("\nPerformance Summary:"));
+		Logger::handle().write(LogTypes::Information, 
+			fmt::format("  Average DB Time: {:.2f}μs", avg_db_time.count()));
+		Logger::handle().write(LogTypes::Information, 
+			fmt::format("  Average Cache Time: {:.2f}μs", avg_cache_time.count()));
+		Logger::handle().write(LogTypes::Information, 
+			fmt::format("  ✓ Cache is {:.1f}x faster", speedup));
 
-		// Deduct from sender
-		std::wstring deduct_query = L"UPDATE players SET gold = gold - ? WHERE player_id = ?";
-		auto [deduct_exec_success, deduct_exec_error] = connection->execute(deduct_query);
-		if (!deduct_exec_success)
-		{
-			throw std::runtime_error("Failed to prepare deduct query");
-		}
-
-		SQLLEN amount_indicator = 0, sender_id_indicator = 0;
-		connection->bind_param(1, &transfer_amount, &amount_indicator);
-		connection->bind_param(2, &sender_id, &sender_id_indicator);
-
-		// Add to receiver
-		std::wstring add_query = L"UPDATE players SET gold = gold + ? WHERE player_id = ?";
-		auto [add_exec_success, add_exec_error] = connection->execute(add_query);
-		if (!add_exec_success)
-		{
-			throw std::runtime_error("Failed to prepare add query");
-		}
-
-		SQLLEN amount_indicator2 = 0, receiver_id_indicator = 0;
-		connection->bind_param(1, &transfer_amount, &amount_indicator2);
-		connection->bind_param(2, &receiver_id, &receiver_id_indicator);
-
-		// Commit transaction
-		auto [commit_success, commit_error] = transaction->commit();
-		if (commit_success)
-		{
-			Logger::handle().write(LogTypes::Information, 
-				std::format("✓ Successfully transferred {} gold from Player {} to Player {}", 
-					transfer_amount, sender_id, receiver_id));
-		}
-		else
-		{
-			throw std::runtime_error("Failed to commit transaction");
-		}
+		// Show cache statistics
+		auto stats = cache->get_statistics();
+		Logger::handle().write(LogTypes::Information, "\nCache Statistics:");
+		Logger::handle().write(LogTypes::Information, fmt::format("  Total Hits: {}", stats.total_hits));
+		Logger::handle().write(LogTypes::Information, fmt::format("  Total Misses: {}", stats.total_misses));
+		Logger::handle().write(LogTypes::Information, fmt::format("  Hit Rate: {:.1f}%", stats.hit_rate * 100));
+		Logger::handle().write(LogTypes::Information, fmt::format("  Entry Count: {}", stats.current_entry_count));
+		Logger::handle().write(LogTypes::Information, fmt::format("  Memory Usage: {:.2f} KB", stats.current_size_bytes / 1024.0));
 	}
 	catch (const std::exception& e)
 	{
-		Logger::handle().write(LogTypes::Error, std::format("Transaction failed: {}. Rolling back...", e.what()));
-		transaction->rollback();
-		Logger::handle().write(LogTypes::Information, "✓ Transaction rolled back successfully");
+		Logger::handle().write(LogTypes::Error, fmt::format("Cache demo failed: {}", e.what()));
 	}
 
 	pool->push(connection);
 }
-
-auto demo_cache_system(std::shared_ptr<DBConnectionPool> pool, std::shared_ptr<DBCache> cache) -> void
-{
-	Logger::handle().write(LogTypes::Information, "\n--- Demo 4: Cache System ---");
-	
-	auto connection = pool->pop();
-
-	// 1. Cache player data
-	Logger::handle().write(LogTypes::Information, "Caching player data...");
-	
-	std::wstring query = L"SELECT player_id, username, nickname, level, experience, gold FROM players";
-	auto [query_success, query_error] = connection->execute(query);
-	
-	if (query_success)
-	{
-		std::int64_t player_id;
-		WCHAR username[51], nickname[51];
-		std::int32_t level;
-		std::int64_t experience, gold;
-		SQLLEN indicators[6];
-
-		connection->bind_column(1, &player_id, &indicators[0]);
-		connection->bind_column(2, username, 50, &indicators[1]);
-		connection->bind_column(3, nickname, 50, &indicators[2]);
-		connection->bind_column(4, &level, &indicators[3]);
-		connection->bind_column(5, &experience, &indicators[4]);
-		connection->bind_column(6, &gold, &indicators[5]);
-
-		int cached_count = 0;
-		auto [fetch_success, fetch_error] = connection->fetch();
-		while (fetch_success)
-		{
-			PlayerInfo player;
-			player.player_id = player_id;
-			player.username = std::wstring(username);
-			player.nickname = std::wstring(nickname);
-			player.level = level;
-			player.experience = experience;
-			player.gold = gold;
-
-			std::string cache_key = "player:" + std::to_string(player_id);
-			auto [set_success, set_error] = cache->set(cache_key, player, std::chrono::seconds(300)); // 5 minute TTL
-			if (set_success)
-			{
-				cached_count++;
-			}
-
-			auto [next_success, next_error] = connection->fetch();
-			fetch_success = next_success;
-		}
-		Logger::handle().write(LogTypes::Information, std::format("  ✓ Cached {} player records", cached_count));
-	}
-
-	// 2. Test cache performance
-	Logger::handle().write(LogTypes::Information, "\nTesting cache performance...");
-	
-	auto start_db = std::chrono::high_resolution_clock::now();
-	for (int i = 0; i < 100; ++i)
-	{
-		std::wstring single_query = L"SELECT nickname FROM players WHERE player_id = ?";
-		auto [exec_success, exec_error] = connection->execute(single_query);
-		if (exec_success)
-		{
-			std::int64_t test_id = 1;
-			SQLLEN id_indicator = 0;
-			connection->bind_param(1, &test_id, &id_indicator);
-			
-			WCHAR nickname_result[51];
-			SQLLEN nickname_indicator = 0;
-			connection->bind_column(1, nickname_result, 50, &nickname_indicator);
-			connection->fetch();
-		}
-	}
-	auto end_db = std::chrono::high_resolution_clock::now();
-	auto db_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_db - start_db);
-
-	auto start_cache = std::chrono::high_resolution_clock::now();
-	for (int i = 0; i < 100; ++i)
-	{
-		auto [found, error, data] = cache->get<PlayerInfo>("player:1");
-		if (found && data.has_value())
-		{
-			auto player = data.value();
-		}
-	}
-	auto end_cache = std::chrono::high_resolution_clock::now();
-	auto cache_duration = std::chrono::duration_cast<std::chrono::microseconds>(end_cache - start_cache);
-
-	Logger::handle().write(LogTypes::Information, std::format("  Database: 100 queries in {:.2f} ms ({:.2f} μs/query)",
-		db_duration.count() / 1000.0, db_duration.count() / 100.0));
-	Logger::handle().write(LogTypes::Information, std::format("  Cache: 100 reads in {:.2f} ms ({:.2f} μs/read)",
-		cache_duration.count() / 1000.0, cache_duration.count() / 100.0));
-	Logger::handle().write(LogTypes::Information, std::format("  ✓ Cache is {:.1f}x faster",
-		static_cast<double>(db_duration.count()) / cache_duration.count()));
-
-	// 3. Show cache statistics
-	auto stats = cache->get_statistics();
-	Logger::handle().write(LogTypes::Information, "\nCache Statistics:");
-	Logger::handle().write(LogTypes::Information, std::format("  Total Hits: {}", stats.total_hits));
-	Logger::handle().write(LogTypes::Information, std::format("  Total Misses: {}", stats.total_misses));
-	Logger::handle().write(LogTypes::Information, std::format("  Hit Rate: {:.1f}%", stats.hit_rate * 100));
-	Logger::handle().write(LogTypes::Information, std::format("  Entry Count: {}", stats.current_entry_count));
-	Logger::handle().write(LogTypes::Information, std::format("  Memory Usage: {:.2f} KB", stats.current_size_bytes / 1024.0));
-
-	pool->push(connection);
-}
-
 auto demo_stored_procedures(std::shared_ptr<DBConnectionPool> pool) -> void
 {
 	Logger::handle().write(LogTypes::Information, "\n--- Demo 5: Stored Procedures ---");
 	
 	auto connection = pool->pop();
-
-	// Test experience/level up procedure
-	Logger::handle().write(LogTypes::Information, "Testing experience and level up system...");
-	
-	auto sp_add_exp = std::make_shared<DBStoredProcedure>(connection, L"sp_add_experience");
-	
-	std::int64_t player_id = 1;
-	std::int64_t exp_amount = 2500; // Should cause level up
-	
-	sp_add_exp->add_input_parameter(L"@player_id", player_id);
-	sp_add_exp->add_input_parameter(L"@exp_amount", exp_amount);
-	sp_add_exp->add_output_parameter(L"@new_level", SQL_INTEGER);
-	sp_add_exp->add_output_parameter(L"@level_up", SQL_BIT);
-
-	auto [exp_success, exp_error] = sp_add_exp->execute();
-	if (exp_success)
+	if (!connection)
 	{
-		std::int32_t new_level;
-		bool level_up;
-		sp_add_exp->get_output_parameter(L"@new_level", new_level);
-		sp_add_exp->get_output_parameter(L"@level_up", level_up);
+		Logger::handle().write(LogTypes::Error, "Failed to get connection from pool");
+		return;
+	}
 
-		Logger::handle().write(LogTypes::Information, 
-			std::format("  ✓ Added {} experience to Player {}", exp_amount, player_id));
-		if (level_up)
+	try
+	{
+		// Test experience/level up procedure
+		Logger::handle().write(LogTypes::Information, "Testing experience and level up system...");
+		
+		auto sp_add_exp = std::make_shared<DBStoredProcedure>(connection, L"sp_add_experience");
+		
+		std::int64_t player_id = 1;
+		std::int64_t exp_amount = 2500; // Should cause level up for level 1 player
+		
+		sp_add_exp->add_input_parameter(L"@player_id", player_id);
+		sp_add_exp->add_input_parameter(L"@exp_amount", exp_amount);
+		sp_add_exp->add_output_parameter(L"@new_level", SQL_INTEGER);
+		sp_add_exp->add_output_parameter(L"@level_up", SQL_BIT);
+
+		auto [exp_success, exp_error] = sp_add_exp->execute();
+		if (exp_success)
 		{
-			Logger::handle().write(LogTypes::Information, 
-				std::format("  ✓ LEVEL UP! Player {} is now level {}", player_id, new_level));
+			std::int32_t new_level;
+			bool level_up;
+			
+			auto [level_success, level_error] = sp_add_exp->get_output_parameter(L"@new_level", new_level);
+			auto [levelup_success, levelup_error] = sp_add_exp->get_output_parameter(L"@level_up", level_up);
+			
+			if (level_success && levelup_success)
+			{
+				Logger::handle().write(LogTypes::Information, 
+					fmt::format("  ✓ Added {} experience to Player {}", exp_amount, player_id));
+				
+				if (level_up)
+				{
+					Logger::handle().write(LogTypes::Information, 
+						fmt::format("  ✓ LEVEL UP! Player {} is now level {}", player_id, new_level));
+				}
+				else
+				{
+					Logger::handle().write(LogTypes::Information, 
+						fmt::format("  ✓ Player {} remains at level {}", player_id, new_level));
+				}
+			}
+			else
+			{
+				Logger::handle().write(LogTypes::Error, "Failed to retrieve output parameters");
+			}
 		}
 		else
 		{
-			Logger::handle().write(LogTypes::Information, 
-				std::format("  ✓ Player {} remains at level {}", player_id, new_level));
+			Logger::handle().write(LogTypes::Error, 
+				fmt::format("Failed to execute stored procedure: {}", exp_error.value_or("Unknown error")));
 		}
+	}
+	catch (const std::exception& e)
+	{
+		Logger::handle().write(LogTypes::Error, fmt::format("Stored procedure demo failed: {}", e.what()));
 	}
 
 	pool->push(connection);
 }
+auto demo_stress_test(std::shared_ptr<DBConnectionPool> pool) -> void
+{
+	Logger::handle().write(LogTypes::Information, "\n--- Demo 6: Concurrent Stress Test ---");
+	
+	Logger::handle().write(LogTypes::Information, 
+		fmt::format("Running stress test with {} threads, {} operations per thread", 
+			stress_test_threads_, stress_test_operations_));
 
+	auto thread_pool = std::make_shared<ThreadPool>();
+	thread_pool->start(stress_test_threads_);
+
+	std::atomic<std::int32_t> success_count(0);
+	std::atomic<std::int32_t> error_count(0);
+	
+	auto start_time = std::chrono::high_resolution_clock::now();
+	
+	// Launch stress test tasks
+	std::vector<std::future<void>> futures;
+	for (int thread_id = 0; thread_id < stress_test_threads_; ++thread_id)
+	{
+		auto future = thread_pool->enqueue([&, thread_id]()
+		{
+			try
+			{
+				for (int op = 0; op < stress_test_operations_; ++op)
+				{
+					auto connection = pool->pop();
+					if (!connection)
+					{
+						error_count++;
+						continue;
+					}
+
+					// Perform simple player query
+					auto player_query = std::make_unique<SinglePlayerQueryBind>(connection, 1);
+					auto [exec_success, exec_error] = player_query->execute();
+					
+					if (exec_success)
+					{
+						auto [fetch_success, fetch_error] = player_query->fetch();
+						if (fetch_success)
+						{
+							success_count++;
+						}
+						else
+						{
+							error_count++;
+						}
+					}
+					else
+					{
+						error_count++;
+					}
+					
+					pool->push(connection);
+				}
+			}
+			catch (const std::exception& e)
+			{
+				Logger::handle().write(LogTypes::Error, 
+					fmt::format("Thread {} error: {}", thread_id, e.what()));
+				error_count++;
+			}
+		});
+		
+		futures.push_back(std::move(future));
+	}
+	
+	// Wait for all tasks to complete
+	for (auto& future : futures)
+	{
+		future.wait();
+	}
+	
+	auto end_time = std::chrono::high_resolution_clock::now();
+	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+	
+	std::int32_t total_operations = stress_test_threads_ * stress_test_operations_;
+	double ops_per_second = (static_cast<double>(success_count) / duration.count()) * 1000;
+	
+	Logger::handle().write(LogTypes::Information, 
+		fmt::format("\nStress Test Results:"));
+	Logger::handle().write(LogTypes::Information, 
+		fmt::format("  Total Operations: {}", total_operations));
+	Logger::handle().write(LogTypes::Information, 
+		fmt::format("  Successful: {}", success_count.load()));
+	Logger::handle().write(LogTypes::Information, 
+		fmt::format("  Failed: {}", error_count.load()));
+	Logger::handle().write(LogTypes::Information, 
+		fmt::format("  Duration: {}ms", duration.count()));
+	Logger::handle().write(LogTypes::Information, 
+		fmt::format("  ✓ Throughput: {:.2f} ops/sec", ops_per_second));
+	
+	thread_pool->stop();
+}
 auto cleanup_test_data(std::shared_ptr<DBConnectionPool> pool) -> void
 {
 	auto connection = pool->pop();
+	if (!connection)
+	{
+		Logger::handle().write(LogTypes::Error, "Failed to get connection for cleanup");
+		return;
+	}
 
-	// Clean up in reverse order of foreign key dependencies
-	connection->execute(L"DELETE FROM inventory");
-	connection->execute(L"DELETE FROM players");
-	// Keep items table as it's reference data
-
-	Logger::handle().write(LogTypes::Information, "✓ Test data cleaned up");
+	try
+	{
+		// Clean up in reverse order of foreign key dependencies
+		Logger::handle().write(LogTypes::Information, "Cleaning up test data...");
+		
+		auto [inv_success, inv_error] = connection->execute(L"DELETE FROM inventory");
+		if (inv_success)
+		{
+			Logger::handle().write(LogTypes::Information, "  ✓ Inventory data cleared");
+		}
+		else
+		{
+			Logger::handle().write(LogTypes::Warning, 
+				fmt::format("  ⚠ Failed to clear inventory: {}", inv_error.value_or("Unknown error")));
+		}
+		
+		auto [player_success, player_error] = connection->execute(L"DELETE FROM players");
+		if (player_success)
+		{
+			Logger::handle().write(LogTypes::Information, "  ✓ Player data cleared");
+		}
+		else
+		{
+			Logger::handle().write(LogTypes::Warning, 
+				fmt::format("  ⚠ Failed to clear players: {}", player_error.value_or("Unknown error")));
+		}
+		
+		// Keep items table as it contains reference data
+		Logger::handle().write(LogTypes::Information, "✓ Test data cleanup completed (items table preserved)");
+	}
+	catch (const std::exception& e)
+	{
+		Logger::handle().write(LogTypes::Error, fmt::format("Cleanup failed: {}", e.what()));
+	}
 
 	pool->push(connection);
 }
