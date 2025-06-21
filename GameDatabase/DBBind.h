@@ -17,7 +17,7 @@ namespace GameDataBase
 
 	template<>
 	struct FullBits<1> 
-	{ 
+	{
 		enum 
 		{ 
 			value = 1 

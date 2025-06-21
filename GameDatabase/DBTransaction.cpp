@@ -1,222 +1,222 @@
 #include "DBTransaction.h"
-#include <format>
+// // #include <format>
 
 namespace GameDataBase
 {
-    DBTransaction::DBTransaction(std::shared_ptr<DBConnection> connection, IsolationLevel isolation_level)
-        : connection_(connection)
-        , is_active_(false)
-        , is_committed_(false)
-        , isolation_level_(isolation_level)
-    {
-    }
+	DBTransaction::DBTransaction(std::shared_ptr<DBConnection> connection, IsolationLevel isolation_level)
+		: connection_(connection)
+		, is_active_(false)
+		, is_committed_(false)
+		, isolation_level_(isolation_level)
+	{
+	}
 
-    DBTransaction::~DBTransaction()
-    {
-        // 커밋되지 않은 활성 트랜잭션은 자동 롤백
-        if (is_active_ && !is_committed_)
-        {
-            rollback();
-        }
-    }
+	DBTransaction::~DBTransaction()
+	{
+		// 커밋되지 않은 활성 트랜잭션은 자동 롤백
+		if (is_active_ && !is_committed_)
+		{
+			rollback();
+		}
+	}
 
-    auto DBTransaction::begin() -> std::tuple<bool, std::optional<std::string>>
-    {
-        std::lock_guard<std::mutex> lock(transaction_mutex_);
+	auto DBTransaction::begin() -> std::tuple<bool, std::optional<std::string>>
+	{
+		std::lock_guard<std::mutex> lock(transaction_mutex_);
 
-        if (is_active_)
-        {
-            return { false, "Transaction is already active" };
-        }
+		if (is_active_)
+		{
+			return { false, "Transaction is already active" };
+		}
 
-        if (!connection_)
-        {
-            return { false, "Database connection is null" };
-        }
+		if (!connection_)
+		{
+			return { false, "Database connection is null" };
+		}
 
-        // 격리 수준 설정
-        auto [isolation_success, isolation_error] = set_isolation_level(isolation_level_);
-        if (!isolation_success)
-        {
-            return { false, isolation_error };
-        }
+		// 격리 수준 설정
+		auto [isolation_success, isolation_error] = set_isolation_level(isolation_level_);
+		if (!isolation_success)
+		{
+			return { false, isolation_error };
+		}
 
-        // 트랜잭션 시작
-        auto [success, error] = connection_->execute(L"BEGIN TRANSACTION");
-        if (success)
-        {
-            is_active_ = true;
-            is_committed_ = false;
-        }
+		// 트랜잭션 시작
+		auto [success, error] = connection_->execute(L"BEGIN TRANSACTION");
+		if (success)
+		{
+			is_active_ = true;
+			is_committed_ = false;
+		}
 
-        return { success, error };
-    }
+		return { success, error };
+	}
 
-    auto DBTransaction::commit() -> std::tuple<bool, std::optional<std::string>>
-    {
-        std::lock_guard<std::mutex> lock(transaction_mutex_);
+	auto DBTransaction::commit() -> std::tuple<bool, std::optional<std::string>>
+	{
+		std::lock_guard<std::mutex> lock(transaction_mutex_);
 
-        if (!is_active_)
-        {
-            return { false, "No active transaction to commit" };
-        }
+		if (!is_active_)
+		{
+			return { false, "No active transaction to commit" };
+		}
 
-        if (is_committed_)
-        {
-            return { false, "Transaction already committed" };
-        }
+		if (is_committed_)
+		{
+			return { false, "Transaction already committed" };
+		}
 
-        auto [success, error] = connection_->execute(L"COMMIT TRANSACTION");
-        if (success)
-        {
-            is_active_ = false;
-            is_committed_ = true;
-        }
+		auto [success, error] = connection_->execute(L"COMMIT TRANSACTION");
+		if (success)
+		{
+			is_active_ = false;
+			is_committed_ = true;
+		}
 
-        return { success, error };
-    }
+		return { success, error };
+	}
 
-    auto DBTransaction::rollback() -> std::tuple<bool, std::optional<std::string>>
-    {
-        std::lock_guard<std::mutex> lock(transaction_mutex_);
+	auto DBTransaction::rollback() -> std::tuple<bool, std::optional<std::string>>
+	{
+		std::lock_guard<std::mutex> lock(transaction_mutex_);
 
-        if (!is_active_)
-        {
-            return { false, "No active transaction to rollback" };
-        }
+		if (!is_active_)
+		{
+			return { false, "No active transaction to rollback" };
+		}
 
-        auto [success, error] = connection_->execute(L"ROLLBACK TRANSACTION");
-        if (success)
-        {
-            is_active_ = false;
-            is_committed_ = false;
-        }
+		auto [success, error] = connection_->execute(L"ROLLBACK TRANSACTION");
+		if (success)
+		{
+			is_active_ = false;
+			is_committed_ = false;
+		}
 
-        return { success, error };
-    }
+		return { success, error };
+	}
 
-    auto DBTransaction::set_isolation_level(IsolationLevel level) -> std::tuple<bool, std::optional<std::string>>
-    {
-        if (!connection_)
-        {
-            return { false, "Database connection is null" };
-        }
+	auto DBTransaction::set_isolation_level(IsolationLevel level) -> std::tuple<bool, std::optional<std::string>>
+	{
+		if (!connection_)
+		{
+			return { false, "Database connection is null" };
+		}
 
-        std::wstring isolation_query;
-        switch (level)
-        {
-            case IsolationLevel::READ_UNCOMMITTED:
-                isolation_query = L"SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED";
-                break;
-            case IsolationLevel::READ_COMMITTED:
-                isolation_query = L"SET TRANSACTION ISOLATION LEVEL READ COMMITTED";
-                break;
-            case IsolationLevel::REPEATABLE_READ:
-                isolation_query = L"SET TRANSACTION ISOLATION LEVEL REPEATABLE READ";
-                break;
-            case IsolationLevel::SERIALIZABLE:
-                isolation_query = L"SET TRANSACTION ISOLATION LEVEL SERIALIZABLE";
-                break;
-            default:
-                return { false, "Invalid isolation level" };
-        }
+		std::wstring isolation_query;
+		switch (level)
+		{
+			case IsolationLevel::READ_UNCOMMITTED:
+				isolation_query = L"SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED";
+				break;
+			case IsolationLevel::READ_COMMITTED:
+				isolation_query = L"SET TRANSACTION ISOLATION LEVEL READ COMMITTED";
+				break;
+			case IsolationLevel::REPEATABLE_READ:
+				isolation_query = L"SET TRANSACTION ISOLATION LEVEL REPEATABLE READ";
+				break;
+			case IsolationLevel::SERIALIZABLE:
+				isolation_query = L"SET TRANSACTION ISOLATION LEVEL SERIALIZABLE";
+				break;
+			default:
+				return { false, "Invalid isolation level" };
+		}
 
-        auto [success, error] = connection_->execute(isolation_query);
-        if (success)
-        {
-            isolation_level_ = level;
-        }
+		auto [success, error] = connection_->execute(isolation_query);
+		if (success)
+		{
+			isolation_level_ = level;
+		}
 
-        return { success, error };
-    }
+		return { success, error };
+	}
 
-    auto DBTransaction::create_savepoint(const std::wstring& savepoint_name) -> std::tuple<bool, std::optional<std::string>>
-    {
-        std::lock_guard<std::mutex> lock(transaction_mutex_);
+	auto DBTransaction::create_savepoint(const std::wstring& savepoint_name) -> std::tuple<bool, std::optional<std::string>>
+	{
+		std::lock_guard<std::mutex> lock(transaction_mutex_);
 
-        if (!is_active_)
-        {
-            return { false, "No active transaction for savepoint" };
-        }
+		if (!is_active_)
+		{
+			return { false, "No active transaction for savepoint" };
+		}
 
-        if (savepoint_name.empty())
-        {
-            return { false, "Savepoint name cannot be empty" };
-        }
+		if (savepoint_name.empty())
+		{
+			return { false, "Savepoint name cannot be empty" };
+		}
 
-        std::wstring query = L"SAVE TRANSACTION " + savepoint_name;
-        return connection_->execute(query);
-    }
+		std::wstring query = L"SAVE TRANSACTION " + savepoint_name;
+		return connection_->execute(query);
+	}
 
-    auto DBTransaction::rollback_to_savepoint(const std::wstring& savepoint_name) -> std::tuple<bool, std::optional<std::string>>
-    {
-        std::lock_guard<std::mutex> lock(transaction_mutex_);
+	auto DBTransaction::rollback_to_savepoint(const std::wstring& savepoint_name) -> std::tuple<bool, std::optional<std::string>>
+	{
+		std::lock_guard<std::mutex> lock(transaction_mutex_);
 
-        if (!is_active_)
-        {
-            return { false, "No active transaction for savepoint rollback" };
-        }
+		if (!is_active_)
+		{
+			return { false, "No active transaction for savepoint rollback" };
+		}
 
-        if (savepoint_name.empty())
-        {
-            return { false, "Savepoint name cannot be empty" };
-        }
+		if (savepoint_name.empty())
+		{
+			return { false, "Savepoint name cannot be empty" };
+		}
 
-        std::wstring query = L"ROLLBACK TRANSACTION " + savepoint_name;
-        return connection_->execute(query);
-    }
+		std::wstring query = L"ROLLBACK TRANSACTION " + savepoint_name;
+		return connection_->execute(query);
+	}
 
-    auto DBTransaction::release_savepoint(const std::wstring& savepoint_name) -> std::tuple<bool, std::optional<std::string>>
-    {
-        std::lock_guard<std::mutex> lock(transaction_mutex_);
+	auto DBTransaction::release_savepoint(const std::wstring& savepoint_name) -> std::tuple<bool, std::optional<std::string>>
+	{
+		std::lock_guard<std::mutex> lock(transaction_mutex_);
 
-        if (!is_active_)
-        {
-            return { false, "No active transaction for savepoint release" };
-        }
+		if (!is_active_)
+		{
+			return { false, "No active transaction for savepoint release" };
+		}
 
-        // SQL Server는 명시적인 RELEASE SAVEPOINT를 지원하지 않음
-        // 대신 savepoint를 덮어쓸 수 있음
-        return { true, std::nullopt };
-    }
+		// SQL Server는 명시적인 RELEASE SAVEPOINT를 지원하지 않음
+		// 대신 savepoint를 덮어쓸 수 있음
+		return { true, std::nullopt };
+	}
 
-    // TransactionGuard 구현
-    TransactionGuard::TransactionGuard(std::shared_ptr<DBTransaction> transaction)
-        : transaction_(transaction)
-        , should_rollback_(true)
-    {
-        if (transaction_)
-        {
-            transaction_->begin();
-        }
-    }
+	// TransactionGuard 구현
+	TransactionGuard::TransactionGuard(std::shared_ptr<DBTransaction> transaction)
+		: transaction_(transaction)
+		, should_rollback_(true)
+	{
+		if (transaction_)
+		{
+			transaction_->begin();
+		}
+	}
 
-    TransactionGuard::~TransactionGuard()
-    {
-        if (transaction_ && should_rollback_ && transaction_->is_active())
-        {
-            transaction_->rollback();
-        }
-    }
+	TransactionGuard::~TransactionGuard()
+	{
+		if (transaction_ && should_rollback_ && transaction_->is_active())
+		{
+			transaction_->rollback();
+		}
+	}
 
-    auto TransactionGuard::commit() -> std::tuple<bool, std::optional<std::string>>
-    {
-        if (!transaction_)
-        {
-            return { false, "Transaction is null" };
-        }
+	auto TransactionGuard::commit() -> std::tuple<bool, std::optional<std::string>>
+	{
+		if (!transaction_)
+		{
+			return { false, "Transaction is null" };
+		}
 
-        auto result = transaction_->commit();
-        if (std::get<0>(result))
-        {
-            should_rollback_ = false;
-        }
+		auto result = transaction_->commit();
+		if (std::get<0>(result))
+		{
+			should_rollback_ = false;
+		}
 
-        return result;
-    }
+		return result;
+	}
 
-    auto TransactionGuard::release() -> void
-    {
-        should_rollback_ = false;
-    }
+	auto TransactionGuard::release() -> void
+	{
+		should_rollback_ = false;
+	}
 }
