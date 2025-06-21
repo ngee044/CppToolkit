@@ -1,7 +1,7 @@
 #include "DBTransaction.h"
 // // #include <format>
 
-namespace GameDataBase
+namespace GameDatabase
 {
 	DBTransaction::DBTransaction(std::shared_ptr<DBConnection> connection, IsolationLevel isolation_level)
 		: connection_(connection)

@@ -6,7 +6,7 @@
 #include <iostream>
 #include <cstdint>
 
-namespace GameDataBase
+namespace GameDatabase
 {
 	DBConnection::DBConnection()
 		: connection_(SQL_NULL_HANDLE),

@@ -6,7 +6,7 @@
 #include <variant>
 #include <any>
 
-namespace GameDataBase
+namespace GameDatabase
 {
 	// 저장 프로시저 파라미터 타입
 	enum class ParameterDirection

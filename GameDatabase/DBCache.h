@@ -12,7 +12,7 @@
 #include <vector>
 #include <any>
 
-namespace GameDataBase
+namespace GameDatabase
 {
 	// 캐시 항목 구조체
 	struct CacheEntry

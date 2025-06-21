@@ -30,7 +30,7 @@
     typedef unsigned char BYTE;
 #endif
 
-namespace GameDataBase
+namespace GameDatabase
 {
 	enum
 	{

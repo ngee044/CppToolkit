@@ -1,12 +1,18 @@
+
 #include "DBMigration.h"
+#include "Converter.h"
+
 #include <fstream>
 #include <sstream>
 #include <iomanip>
 #include <regex>
 #include <algorithm>
 #include <functional>
+#include <windows.h>
 
-namespace GameDataBase
+using namespace Utilities;
+
+namespace GameDatabase
 {
 	DBMigration::DBMigration(std::shared_ptr<DBConnectionPool> connection_pool)
 		: connection_pool_(connection_pool)
@@ -239,20 +245,23 @@ namespace GameDataBase
 		
 		if (!fetch_success)
 		{
-			return { false, fetch_error };
+			connection_pool_->push(connection);
+			if (fetch_error)
+			{
+				return MigrationStatus::FAILED; // Fetch error indicates failure
+			}
+			return MigrationStatus::NOT_APPLIED; // No entry found means not applied
 		}
-		
-		connection_pool_->push(connection);
-		
-		if (!fetch_success)
+		else
 		{
-			return MigrationStatus::NOT_APPLIED;
+			connection_pool_->push(connection);
 		}
 		
 		return success ? MigrationStatus::APPLIED : MigrationStatus::FAILED;
 	}
 
-	auto DBMigration::get_migration_history() -> std::tuple<bool, std::optional<std::string>, std::vector<MigrationHistory>>
+	auto DBMigration::get_migration_history() -> std::tuple<bool, std::optional<std::string>, std::vector<MigrationHistory
+>>
 	{
 		auto connection = connection_pool_->pop();
 		if (!connection)
@@ -311,13 +320,13 @@ namespace GameDataBase
 				break; // No more rows
 			}
 			
-			entry.name = std::string(name_buffer, name_buffer + wcslen(name_buffer));
+			entry.name = Utilities::Converter::to_string(std::wstring(name_buffer));
 			entry.execution_time = std::chrono::milliseconds(execution_time_ms);
 			entry.success = success;
 			
 			if (indicators[5] != SQL_NULL_DATA)
 			{
-				entry.error_message = std::string(error_buffer, error_buffer + wcslen(error_buffer));
+				entry.error_message = Utilities::Converter::to_string(std::wstring(error_buffer));
 			}
 			
 			history.push_back(entry);
@@ -658,7 +667,3 @@ namespace GameDataBase
 		return template_content.str();
 	}
 }
-
-
-
-

@@ -11,7 +11,7 @@
 #include <filesystem>
 #include <map>
 
-namespace GameDataBase
+namespace GameDatabase
 {
 	// 마이그레이션 정보
 	struct MigrationInfo

@@ -4,7 +4,7 @@
 
 #include <memory>
 
-namespace GameDataBase
+namespace GameDatabase
 {
 	template<std::int32_t C>
 	struct FullBits

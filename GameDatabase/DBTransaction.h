@@ -3,7 +3,7 @@
 #include "DBConnection.h"
 #include <memory>
 
-namespace GameDataBase
+namespace GameDatabase
 {
 	enum class IsolationLevel
 	{

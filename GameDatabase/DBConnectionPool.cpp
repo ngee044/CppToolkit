@@ -3,7 +3,7 @@
 #include <fmt/format.h>
 #include <fmt/xchar.h>
 
-namespace GameDataBase
+namespace GameDatabase
 {
 	DBConnectionPool::DBConnectionPool()
 	: environment_(SQL_NULL_HANDLE)

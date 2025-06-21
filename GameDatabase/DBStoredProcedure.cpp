@@ -1,7 +1,7 @@
 #include "DBStoredProcedure.h"
 #include <sstream>
 
-namespace GameDataBase
+namespace GameDatabase
 {
 	DBStoredProcedure::DBStoredProcedure(std::shared_ptr<DBConnection> connection, const std::wstring& procedure_name)
 		: connection_(connection)

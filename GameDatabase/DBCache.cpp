@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <regex>
 
-namespace GameDataBase
+namespace GameDatabase
 {
 	// MemoryCacheBackend 구현
 	MemoryCacheBackend::MemoryCacheBackend(std::size_t max_size_bytes, CacheEvictionPolicy policy)

@@ -3,7 +3,7 @@
 #include "DBConnection.h"
 
 
-namespace GameDataBase
+namespace GameDatabase
 {
 class DBConnectionPool
 {

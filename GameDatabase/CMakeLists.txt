@@ -49,10 +49,7 @@ else()
 	target_link_libraries(${LIBRARY_NAME} PUBLIC unixODBC::unixODBC)
 endif()
 
-# 의존성 라이브러리
-target_link_libraries(${LIBRARY_NAME} PUBLIC Utilities ThreadPool)
-
-# 포함 디렉토리
+target_link_libraries(${LIBRARY_NAME} PUBLIC Utilities Thread)
 target_include_directories(${LIBRARY_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # C++20 기능 활성화
