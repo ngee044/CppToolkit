@@ -27,3 +27,8 @@ endif()
 if(BUILD_KAFKA_LIB AND BUILD_SAMPLES)
 	add_subdirectory(KafkaSample)
 endif()
+
+if(BUILD_GAME_NETWORK_SESSION)
+	add_subdirectory(GameDatabaseSample)
+endif()
+
