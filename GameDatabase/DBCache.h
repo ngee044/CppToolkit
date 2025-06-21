@@ -145,11 +145,10 @@ namespace GameDatabase
 		
 		// 통계 정보
 		auto get_statistics() -> CacheStatistics;
-		
-		// 쿼리 결과 캐싱을 위한 헬퍼 함수
+				// 쿼리 결과 캐싱을 위한 헬퍼 함수
 		template<typename TResult>
 		auto cache_query(const std::string& query_key,
-						std::function<std::tuple<bool, std::optional<std::string>, TResult()>> query_func,
+						std::function<std::tuple<bool, std::optional<std::string>, TResult>()> query_func,
 						std::chrono::seconds ttl = std::chrono::seconds(300)) 
 						-> std::tuple<bool, std::optional<std::string>, std::optional<TResult>>;
 
@@ -187,10 +186,9 @@ namespace GameDatabase
 		std::lock_guard<std::mutex> lock(backend_mutex_);
 		return backend_->set(key, std::any(value), ttl);
 	}
-
 	template<typename TResult>
 	auto DBCache::cache_query(const std::string& query_key,
-							std::function<std::tuple<bool, std::optional<std::string>, TResult()>> query_func,
+							std::function<std::tuple<bool, std::optional<std::string>, TResult>()> query_func,
 							std::chrono::seconds ttl) 
 							-> std::tuple<bool, std::optional<std::string>, std::optional<TResult>>
 	{

@@ -26,6 +26,7 @@
       "librabbitmq",
       "modern-cpp-kafka",
       "openssl",
-      "nanodbc"
+      "nanodbc",
+      "zlib"
     ]
   }

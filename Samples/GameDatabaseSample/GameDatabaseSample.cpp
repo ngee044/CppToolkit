@@ -9,12 +9,15 @@
 #include "ArgumentParser.h"
 #include "ThreadPool.h"
 #include "ThreadWorker.h"
+#include "Job.h"
+#include "JobPriorities.h"
 
 #include <iostream>
 #include <chrono>
 #include <thread>
 #include <random>
 #include <iomanip>
+#include <numeric>
 #include <fmt/format.h>
 #include <fmt/core.h>
 
@@ -83,8 +86,8 @@ public:
 		: DBBind<0, 6>(connection, L"SELECT player_id, username, nickname, level, experience, gold FROM players ORDER BY player_id")
 	{
 		bind_column(0, &player_id_);
-		bind_column(1, username_);
-		bind_column(2, nickname_);
+		bind_column(1, username_, std::size(username_));
+		bind_column(2, nickname_, std::size(nickname_));
 		bind_column(3, &level_);
 		bind_column(4, &experience_);
 		bind_column(5, &gold_);
@@ -120,8 +123,8 @@ public:
 	{
 		bind_param(0, &search_id_);
 		bind_column(0, &player_id_);
-		bind_column(1, username_);
-		bind_column(2, nickname_);
+		bind_column(1, username_, std::size(username_));
+		bind_column(2, nickname_, std::size(nickname_));
 		bind_column(3, &level_);
 		bind_column(4, &experience_);
 		bind_column(5, &gold_);
@@ -188,8 +191,9 @@ int stress_test_threads_ = 4;
 int stress_test_operations_ = 1000;
 
 #ifdef _DEBUG
-LogTypes write_file_ = LogTypes::All;
-LogTypes write_console_ = LogTypes::All;#else
+LogTypes write_file_ = LogTypes::Information;
+LogTypes write_console_ = LogTypes::Information;
+#else
 LogTypes write_file_ = LogTypes::None;
 LogTypes write_console_ = LogTypes::Information;
 #endif
@@ -512,7 +516,7 @@ auto demo_connection_pool(std::shared_ptr<DBConnectionPool> pool) -> void
 			}
 			else
 			{
-				Logger::handle().write(LogTypes::Warning, fmt::format("  ⚠ Failed to get connection {}", i + 1));
+				Logger::handle().write(LogTypes::Error, fmt::format("  ⚠ Failed to get connection {}", i + 1));
 			}
 		}
 
@@ -820,11 +824,11 @@ auto demo_cache_system(std::shared_ptr<DBConnectionPool> pool, std::shared_ptr<D
 		double speedup = static_cast<double>(avg_db_time.count()) / avg_cache_time.count();
 		
 		Logger::handle().write(LogTypes::Information, 
-			fmt::format("\nPerformance Summary:"));
+			fmt::format("Performance Summary:"));
 		Logger::handle().write(LogTypes::Information, 
-			fmt::format("  Average DB Time: {:.2f}μs", avg_db_time.count()));
+			fmt::format("  Average DB Time: {:.2f}μs", static_cast<double>(avg_db_time.count())));
 		Logger::handle().write(LogTypes::Information, 
-			fmt::format("  Average Cache Time: {:.2f}μs", avg_cache_time.count()));
+			fmt::format("  Average Cache Time: {:.2f}μs", static_cast<double>(avg_cache_time.count())));
 		Logger::handle().write(LogTypes::Information, 
 			fmt::format("  ✓ Cache is {:.1f}x faster", speedup));
 
@@ -921,82 +925,108 @@ auto demo_stress_test(std::shared_ptr<DBConnectionPool> pool) -> void
 		fmt::format("Running stress test with {} threads, {} operations per thread", 
 			stress_test_threads_, stress_test_operations_));
 
-	auto thread_pool = std::make_shared<ThreadPool>();
-	thread_pool->start(stress_test_threads_);
-
 	std::atomic<std::int32_t> success_count(0);
 	std::atomic<std::int32_t> error_count(0);
+	std::atomic<std::int32_t> completed_jobs(0);
 	
 	auto start_time = std::chrono::high_resolution_clock::now();
 	
-	// Launch stress test tasks
-	std::vector<std::future<void>> futures;
+	// Create and start ThreadPool
+	auto thread_pool = std::make_shared<ThreadPool>("StressTestPool");
+	auto [start_success, start_error] = thread_pool->start();
+	if (!start_success)
+	{
+		Logger::handle().write(LogTypes::Error, 
+			fmt::format("Failed to start ThreadPool: {}", start_error.value_or("Unknown error")));
+		return;
+	}
+	
+	std::int32_t total_jobs = stress_test_threads_ * stress_test_operations_;
+	
+	// Create and submit jobs
 	for (int thread_id = 0; thread_id < stress_test_threads_; ++thread_id)
 	{
-		auto future = thread_pool->enqueue([&, thread_id]()
+		for (int op = 0; op < stress_test_operations_; ++op)
 		{
-			try
-			{
-				for (int op = 0; op < stress_test_operations_; ++op)
+			auto job = std::make_shared<Job>(
+				JobPriorities::Normal,
+				[&, thread_id, op]() -> std::tuple<bool, std::optional<std::string>>
 				{
-					auto connection = pool->pop();
-					if (!connection)
+					try
 					{
-						error_count++;
-						continue;
-					}
-
-					// Perform simple player query
-					auto player_query = std::make_unique<SinglePlayerQueryBind>(connection, 1);
-					auto [exec_success, exec_error] = player_query->execute();
-					
-					if (exec_success)
-					{
-						auto [fetch_success, fetch_error] = player_query->fetch();
-						if (fetch_success)
+						auto connection = pool->pop();
+						if (!connection)
 						{
-							success_count++;
+							error_count++;
+							completed_jobs++;
+							return { false, "Failed to get connection from pool" };
+						}
+
+						// Perform simple player query
+						auto player_query = std::make_unique<SinglePlayerQueryBind>(connection, 1);
+						auto [exec_success, exec_error] = player_query->execute();
+						
+						bool operation_success = false;
+						if (exec_success)
+						{
+							auto [fetch_success, fetch_error] = player_query->fetch();
+							if (fetch_success)
+							{
+								success_count++;
+								operation_success = true;
+							}
+							else
+							{
+								error_count++;
+							}
 						}
 						else
 						{
 							error_count++;
 						}
+						
+						pool->push(connection);
+						completed_jobs++;
+						
+						return { operation_success, std::nullopt };
 					}
-					else
+					catch (const std::exception& e)
 					{
 						error_count++;
+						completed_jobs++;
+						return { false, e.what() };
 					}
-					
-					pool->push(connection);
-				}
-			}
-			catch (const std::exception& e)
+				},
+				fmt::format("StressTestJob_{}_{}", thread_id, op)
+			);
+			
+			auto [push_success, push_error] = thread_pool->push(job);
+			if (!push_success)
 			{
 				Logger::handle().write(LogTypes::Error, 
-					fmt::format("Thread {} error: {}", thread_id, e.what()));
+					fmt::format("Failed to push job: {}", push_error.value_or("Unknown error")));
 				error_count++;
+				completed_jobs++;
 			}
-		});
-		
-		futures.push_back(std::move(future));
+		}
 	}
 	
-	// Wait for all tasks to complete
-	for (auto& future : futures)
+	// Wait for all jobs to complete
+	Logger::handle().write(LogTypes::Information, "Waiting for all jobs to complete...");
+	while (completed_jobs.load() < total_jobs)
 	{
-		future.wait();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
 	
 	auto end_time = std::chrono::high_resolution_clock::now();
 	auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
 	
-	std::int32_t total_operations = stress_test_threads_ * stress_test_operations_;
 	double ops_per_second = (static_cast<double>(success_count) / duration.count()) * 1000;
 	
 	Logger::handle().write(LogTypes::Information, 
 		fmt::format("\nStress Test Results:"));
 	Logger::handle().write(LogTypes::Information, 
-		fmt::format("  Total Operations: {}", total_operations));
+		fmt::format("  Total Operations: {}", total_jobs));
 	Logger::handle().write(LogTypes::Information, 
 		fmt::format("  Successful: {}", success_count.load()));
 	Logger::handle().write(LogTypes::Information, 
@@ -1006,7 +1036,13 @@ auto demo_stress_test(std::shared_ptr<DBConnectionPool> pool) -> void
 	Logger::handle().write(LogTypes::Information, 
 		fmt::format("  ✓ Throughput: {:.2f} ops/sec", ops_per_second));
 	
-	thread_pool->stop();
+	// Stop ThreadPool
+	auto [stop_success, stop_error] = thread_pool->stop();
+	if (!stop_success)
+	{
+		Logger::handle().write(LogTypes::Error, 
+			fmt::format("Failed to stop ThreadPool: {}", stop_error.value_or("Unknown error")));
+	}
 }
 auto cleanup_test_data(std::shared_ptr<DBConnectionPool> pool) -> void
 {
@@ -1029,7 +1065,7 @@ auto cleanup_test_data(std::shared_ptr<DBConnectionPool> pool) -> void
 		}
 		else
 		{
-			Logger::handle().write(LogTypes::Warning, 
+			Logger::handle().write(LogTypes::Error, 
 				fmt::format("  ⚠ Failed to clear inventory: {}", inv_error.value_or("Unknown error")));
 		}
 		
@@ -1040,7 +1076,7 @@ auto cleanup_test_data(std::shared_ptr<DBConnectionPool> pool) -> void
 		}
 		else
 		{
-			Logger::handle().write(LogTypes::Warning, 
+			Logger::handle().write(LogTypes::Error, 
 				fmt::format("  ⚠ Failed to clear players: {}", player_error.value_or("Unknown error")));
 		}
 		
