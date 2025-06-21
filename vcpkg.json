@@ -25,6 +25,7 @@
       "curl",
       "librabbitmq",
       "modern-cpp-kafka",
-      "openssl"
+      "openssl",
+      "nanodbc"
     ]
   }

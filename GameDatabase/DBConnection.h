@@ -1,8 +1,19 @@
 #pragma once
-#include <windows.h>
-#include <sql.h>
-#include <sqlext.h>
-#include <sqltypes.h>
+
+#ifdef _WIN32
+    #include <windows.h>
+    #include <sql.h>
+    #include <sqlext.h>
+    #include <sqltypes.h>
+#elif __APPLE__
+    #include <sql.h>
+    #include <sqlext.h>
+    #include <sqltypes.h>
+#else
+    #include <sql.h>
+    #include <sqlext.h>
+    #include <sqltypes.h>
+#endif
 
 #include <string_view>
 #include <string>
@@ -12,6 +23,12 @@
 #include <vector>
 
 #include <mutex>
+
+// 플랫폼별 타입 정의
+#ifndef _WIN32
+    typedef wchar_t WCHAR;
+    typedef unsigned char BYTE;
+#endif
 
 namespace GameDataBase
 {
