@@ -53,6 +53,7 @@ namespace GameNetwork
             -> std::shared_ptr<GameSession>;
         auto get_connection_by_id(const std::string& connection_id) const 
             -> std::shared_ptr<GameConnection>;
+        auto get_all_online_sessions() const -> std::vector<std::shared_ptr<GameSession>>;
         
         // Statistics
         auto active_session_count() const -> size_t;

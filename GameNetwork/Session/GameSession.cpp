@@ -329,4 +329,13 @@ namespace GameNetwork
     template auto GameSession::get_data<float>(const std::string&) const -> std::optional<float>;
     template auto GameSession::get_data<std::string>(const std::string&) const -> std::optional<std::string>;
     template auto GameSession::get_data<bool>(const std::string&) const -> std::optional<bool>;
-}
+    
+    auto GameSession::connection() const -> std::shared_ptr<GameConnection>
+    {
+        return current_connection();
+    }
+    
+    auto GameSession::location() const -> Location
+    {
+        return current_location();
+    }}

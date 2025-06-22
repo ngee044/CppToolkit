@@ -64,4 +64,42 @@ namespace GameNetwork
         uint32_t map_id = 0;
         uint32_t channel_id = 0;
     };
+    
+    struct Vector3
+    {
+        float x = 0.0f;
+        float y = 0.0f;
+        float z = 0.0f;
+    };
+    
+    // Entity types
+    enum class EntityType : uint8_t
+    {
+        Player = 0,
+        NPC = 1,
+        Monster = 2,
+        Item = 3,
+        Object = 4
+    };
+    
+    // Entity states
+    enum class EntityState : uint8_t
+    {
+        Idle = 0,
+        Moving = 1,
+        Attacking = 2,
+        Casting = 3,
+        Dead = 4,
+        Interacting = 5
+    };
+    
+    // Despawn reasons
+    enum class DespawnReason : uint8_t
+    {
+        OutOfRange = 0,
+        Death = 1,
+        Disconnect = 2,
+        Teleport = 3,
+        ChannelChange = 4
+    };
 }

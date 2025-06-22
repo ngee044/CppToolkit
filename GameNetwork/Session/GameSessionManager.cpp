@@ -743,4 +743,20 @@ namespace GameNetwork
             }
         }
     }
+    
+    auto GameSessionManager::get_all_online_sessions() const -> std::vector<std::shared_ptr<GameSession>>
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        std::vector<std::shared_ptr<GameSession>> online_sessions;
+        for (const auto& [id, session] : sessions_by_id_)
+        {
+            if (session->is_online())
+            {
+                online_sessions.push_back(session);
+            }
+        }
+        
+        return online_sessions;
+    }
 }

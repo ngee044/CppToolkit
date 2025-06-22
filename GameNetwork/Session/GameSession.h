@@ -31,6 +31,7 @@ namespace GameNetwork
         auto bind_connection(std::shared_ptr<GameConnection> connection) -> void;
         auto unbind_connection() -> void;
         auto current_connection() const -> std::shared_ptr<GameConnection>;
+        auto connection() const -> std::shared_ptr<GameConnection>;  // Alias for compatibility
         auto is_online() const -> bool;
         
         // State management
@@ -44,6 +45,7 @@ namespace GameNetwork
         
         // Location management
         auto current_location() const -> Location;
+        auto location() const -> Location;  // Alias for compatibility
         auto move_to(const Location& location) -> void;
         auto teleport_to(const Location& location) -> void;
         

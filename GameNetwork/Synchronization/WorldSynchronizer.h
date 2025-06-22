@@ -20,8 +20,14 @@ namespace GameNetwork
     struct Entity
     {
         uint64_t id;
-        uint32_t type;
+        EntityType type;
         Location location;
+        std::string name;
+        uint32_t level;
+        uint32_t health;
+        uint32_t max_health;
+        EntityState state;
+        std::optional<Vector3> velocity;
         std::unordered_map<std::string, std::any> properties;
         std::chrono::steady_clock::time_point last_update;
     };
@@ -123,6 +129,7 @@ namespace GameNetwork
         
         auto sync_session(SessionInfo& info) -> void;
         auto sync_all_sessions() -> void;
+        auto calculate_distance(const Location& loc1, const Location& loc2) -> float;
         
     private:
         mutable std::mutex mutex_;

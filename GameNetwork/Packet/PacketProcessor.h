@@ -71,13 +71,14 @@ namespace GameNetwork
     private:
         struct PacketBatch
         {
-            std::vector<std::unique_ptr<GamePacket>> packets;
+            std::vector<std::vector<uint8_t>> serialized_packets;
             std::chrono::steady_clock::time_point created_time;
             size_t total_size;
         };
         
         auto calculate_checksum(const std::vector<uint8_t>& data) const -> uint32_t;
         auto process_batch() -> std::vector<std::vector<uint8_t>>;
+        auto should_compress(const GamePacket& packet) const -> bool;
         
     private:
         mutable std::mutex mutex_;
@@ -99,6 +100,6 @@ namespace GameNetwork
         std::chrono::milliseconds batch_timeout_;
         
         // Statistics
-        ProcessorStats stats_;
+        mutable ProcessorStats stats_;
     };
 }

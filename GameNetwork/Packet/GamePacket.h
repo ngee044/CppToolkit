@@ -132,4 +132,91 @@ namespace GameNetwork
         std::string session_token_;
         uint32_t client_version_;
     };
+    
+    // Entity spawn packet
+    class EntitySpawnPacket : public GamePacket
+    {
+    public:
+        EntitySpawnPacket();
+        
+        auto entity_id() const -> uint64_t;
+        auto entity_type() const -> EntityType;
+        auto location() const -> Location;
+        auto name() const -> std::string;
+        auto level() const -> uint32_t;
+        auto health() const -> uint32_t;
+        auto max_health() const -> uint32_t;
+        
+        auto set_entity_id(uint64_t id) -> void;
+        auto set_entity_type(EntityType type) -> void;
+        auto set_location(const Location& loc) -> void;
+        auto set_name(const std::string& name) -> void;
+        auto set_level(uint32_t level) -> void;
+        auto set_health(uint32_t health) -> void;
+        auto set_max_health(uint32_t max_health) -> void;
+        
+        auto serialize() const -> std::vector<uint8_t> override;
+        static auto from_data(const std::vector<uint8_t>& data)
+            -> std::tuple<std::unique_ptr<EntitySpawnPacket>, std::optional<std::string>>;
+        
+    private:
+        uint64_t entity_id_;
+        EntityType entity_type_;
+        Location location_;
+        std::string name_;
+        uint32_t level_;
+        uint32_t health_;
+        uint32_t max_health_;
+    };
+    
+    // Entity despawn packet
+    class EntityDespawnPacket : public GamePacket
+    {
+    public:
+        EntityDespawnPacket();
+        
+        auto entity_id() const -> uint64_t;
+        auto reason() const -> DespawnReason;
+        
+        auto set_entity_id(uint64_t id) -> void;
+        auto set_reason(DespawnReason reason) -> void;
+        
+        auto serialize() const -> std::vector<uint8_t> override;
+        static auto from_data(const std::vector<uint8_t>& data)
+            -> std::tuple<std::unique_ptr<EntityDespawnPacket>, std::optional<std::string>>;
+        
+    private:
+        uint64_t entity_id_;
+        DespawnReason reason_;
+    };
+    
+    // Entity update packet
+    class EntityUpdatePacket : public GamePacket
+    {
+    public:
+        EntityUpdatePacket();
+        
+        auto entity_id() const -> uint64_t;
+        auto location() const -> std::optional<Location>;
+        auto health() const -> std::optional<uint32_t>;
+        auto state() const -> std::optional<EntityState>;
+        auto velocity() const -> std::optional<Vector3>;
+        
+        auto set_entity_id(uint64_t id) -> void;
+        auto set_location(const Location& loc) -> void;
+        auto set_health(uint32_t health) -> void;
+        auto set_state(EntityState state) -> void;
+        auto set_velocity(const Vector3& vel) -> void;
+        
+        auto serialize() const -> std::vector<uint8_t> override;
+        static auto from_data(const std::vector<uint8_t>& data)
+            -> std::tuple<std::unique_ptr<EntityUpdatePacket>, std::optional<std::string>>;
+        
+    private:
+        uint64_t entity_id_;
+        std::optional<Location> location_;
+        std::optional<uint32_t> health_;
+        std::optional<EntityState> state_;
+        std::optional<Vector3> velocity_;
+    };
 }

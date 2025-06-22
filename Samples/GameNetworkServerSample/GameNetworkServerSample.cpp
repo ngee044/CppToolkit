@@ -32,7 +32,7 @@ std::shared_ptr<Redis::RedisClient> redis_client_ = nullptr;
 // Configuration
 #ifdef _DEBUG
 LogTypes write_file_ = LogTypes::Packet;
-LogTypes write_console_ = LogTypes::All;
+LogTypes write_console_ = LogTypes::Packet;  // Changed from All to Packet
 #else
 LogTypes write_file_ = LogTypes::Error;
 LogTypes write_console_ = LogTypes::Information;
