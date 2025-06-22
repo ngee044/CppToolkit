@@ -42,8 +42,16 @@ namespace GameNetwork
         Authenticating = 3,
         Authenticated = 4,
         InGame = 5,
-        Disconnecting = 6
+        Disconnecting = 6,
+        Reconnecting = 7,
+        Failed = 8
     };
+    
+    // Reconnection configuration
+    constexpr uint32_t MAX_RECONNECT_ATTEMPTS = 5;
+    constexpr auto INITIAL_RECONNECT_DELAY = std::chrono::seconds(1);
+    constexpr auto MAX_RECONNECT_DELAY = std::chrono::seconds(30);
+    constexpr float RECONNECT_BACKOFF_MULTIPLIER = 2.0f;
     
     // Session states
     enum class SessionState : uint8_t

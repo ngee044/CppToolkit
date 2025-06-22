@@ -1,8 +1,13 @@
 #include "GameConnection.h"
 #include "../Packet/GamePacket.h"
 #include "../Packet/PacketProcessor.h"
+#include "../GameNetworkConstants.h"
+#include "../../Utilities/Logger.h"
 
 #include <chrono>
+#include <cstring>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -10,6 +15,11 @@ namespace GameNetwork
         : connection_id_(connection_id)
         , state_(ConnectionState::Disconnected)
         , last_activity_(std::chrono::steady_clock::now())
+        , auto_reconnect_enabled_(true)
+        , reconnect_attempts_(0)
+        , current_reconnect_delay_(INITIAL_RECONNECT_DELAY)
+        , reconnect_scheduled_(false)
+        , last_server_port_(0)
         , bytes_sent_(0)
         , bytes_received_(0)
         , packets_sent_(0)
@@ -19,6 +29,7 @@ namespace GameNetwork
     
     GameConnection::~GameConnection()
     {
+        cancel_reconnect();
         detach_network_session();
     }
     
@@ -57,6 +68,13 @@ namespace GameNetwork
     auto GameConnection::connection_id() const -> std::string
     {
         return connection_id_;
+    }
+    
+    auto GameConnection::session_id() const -> uint64_t
+    {
+        // Return 0 if not bound to a session
+        // In a real implementation, this would return the bound session's ID
+        return 0;
     }
     
     auto GameConnection::account_id() const -> std::string
@@ -119,20 +137,42 @@ namespace GameNetwork
             return {false, "No network session attached"};
         }
         
-        // TODO: Serialize packet properly
-        auto data = packet.serialize();
-        
-        // Send as binary data through network session
-        auto result = network_session_->send_binary(data, "game_packet");
-        
-        if (std::get<0>(result))
+        if (state_ != ConnectionState::Connected && 
+            state_ != ConnectionState::Authenticated && 
+            state_ != ConnectionState::InGame)
         {
-            packets_sent_++;
-            bytes_sent_ += data.size();
-            update_last_activity();
+            return {false, "Connection not in valid state for sending packets"};
         }
         
-        return result;
+        try
+        {
+            // Serialize packet
+            auto data = packet.serialize();
+            
+            // Send as binary data through network session
+            auto result = network_session_->send_binary(data, "game_packet");
+            
+            if (std::get<0>(result))
+            {
+                packets_sent_++;
+                bytes_sent_ += data.size();
+                update_last_activity();
+            }
+            else
+            {
+                // Handle send failure
+                if (auto_reconnect_enabled_)
+                {
+                    on_connection_lost("Failed to send packet: " + std::get<1>(result).value_or("Unknown error"));
+                }
+            }
+            
+            return result;
+        }
+        catch (const std::exception& e)
+        {
+            return {false, std::string("Exception while sending packet: ") + e.what()};
+        }
     }    
     auto GameConnection::register_packet_handler(std::function<void(const GamePacket&)> handler) -> void
     {
@@ -236,5 +276,153 @@ namespace GameNetwork
         }
         
         return {true, std::nullopt};
+    }
+    
+    auto GameConnection::enable_auto_reconnect(bool enable) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto_reconnect_enabled_ = enable;
+        
+        if (!enable)
+        {
+            cancel_reconnect();
+        }
+    }
+    
+    auto GameConnection::is_auto_reconnect_enabled() const -> bool
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return auto_reconnect_enabled_;
+    }
+    
+    auto GameConnection::attempt_reconnect() -> std::tuple<bool, std::optional<std::string>>
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        if (state_ == ConnectionState::Connected || state_ == ConnectionState::Authenticated || state_ == ConnectionState::InGame)
+        {
+            return {true, std::nullopt};
+        }
+        
+        if (reconnect_attempts_ >= MAX_RECONNECT_ATTEMPTS)
+        {
+            set_state(ConnectionState::Failed);
+            return {false, "Maximum reconnection attempts exceeded"};
+        }        
+        set_state(ConnectionState::Reconnecting);
+        reconnect_attempts_++;
+        
+        // TODO: Implement actual reconnection logic
+        // This would typically involve recreating the network session
+        // and re-authenticating with stored credentials
+        
+        // For now, just return failure
+        return {false, "Reconnection not implemented"};
+    }
+    
+    auto GameConnection::reset_reconnect_attempts() -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        reconnect_attempts_ = 0;
+        current_reconnect_delay_ = INITIAL_RECONNECT_DELAY;
+    }
+    
+    auto GameConnection::get_reconnect_attempts() const -> uint32_t
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return reconnect_attempts_;
+    }
+    
+    auto GameConnection::on_connection_lost(const std::string& reason) -> void
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            
+            if (state_ == ConnectionState::Disconnecting)            {
+                // Expected disconnection
+                set_state(ConnectionState::Disconnected);
+                return;
+            }
+            
+            set_state(ConnectionState::Disconnected);
+            
+            if (connection_lost_handler_)
+            {
+                connection_lost_handler_(reason);
+            }
+        }
+        
+        // Schedule reconnection if enabled
+        if (auto_reconnect_enabled_ && reconnect_attempts_ < MAX_RECONNECT_ATTEMPTS)
+        {
+            schedule_reconnect();
+        }
+    }
+    
+    auto GameConnection::register_connection_lost_handler(std::function<void(const std::string&)> handler) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        connection_lost_handler_ = handler;
+    }
+    
+    auto GameConnection::register_reconnect_success_handler(std::function<void()> handler) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        reconnect_success_handler_ = handler;
+    }    
+    auto GameConnection::schedule_reconnect() -> void
+    {
+        if (reconnect_scheduled_.exchange(true))
+        {
+            return; // Already scheduled
+        }
+        
+        reconnect_timer_ = std::async(std::launch::async, [this]()
+        {
+            std::this_thread::sleep_for(current_reconnect_delay_);
+            
+            if (reconnect_scheduled_)
+            {
+                auto [success, error] = attempt_reconnect();
+                
+                if (success)
+                {
+                    reset_reconnect_attempts();
+                    
+                    std::lock_guard<std::mutex> lock(mutex_);
+                    if (reconnect_success_handler_)
+                    {
+                        reconnect_success_handler_();
+                    }
+                }
+                else
+                {
+                    // Exponential backoff
+                    current_reconnect_delay_ = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        current_reconnect_delay_ * RECONNECT_BACKOFF_MULTIPLIER);
+                    
+                    if (current_reconnect_delay_ > MAX_RECONNECT_DELAY)                    {
+                        current_reconnect_delay_ = MAX_RECONNECT_DELAY;
+                    }
+                    
+                    // Schedule next attempt if still enabled
+                    if (auto_reconnect_enabled_ && reconnect_attempts_ < MAX_RECONNECT_ATTEMPTS)
+                    {
+                        reconnect_scheduled_ = false;
+                        schedule_reconnect();
+                    }
+                }
+            }
+        });
+    }
+    
+    auto GameConnection::cancel_reconnect() -> void
+    {
+        reconnect_scheduled_ = false;
+        
+        if (reconnect_timer_.valid())
+        {
+            reconnect_timer_.wait();
+        }
     }
 }

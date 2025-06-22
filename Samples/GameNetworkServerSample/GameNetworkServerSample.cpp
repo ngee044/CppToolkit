@@ -6,6 +6,7 @@
 #include <thread>
 #include <chrono>
 #include <signal.h>
+#include <cmath>
 
 #include "../../Utilities/ArgumentParser.h"
 #include "../../Utilities/Logger.h"
@@ -14,6 +15,7 @@
 #include "../../GameNetwork/Core/GameNetworkServer.h"
 #include "../../GameNetwork/Session/GameSessionManager.h"
 #include "../../GameNetwork/Packet/MessageDispatcher.h"
+#include "../../GameNetwork/Packet/GamePacket.h"
 #include "../../GameNetwork/Synchronization/WorldSynchronizer.h"
 #include "../../GameNetwork/Metrics/NetworkMetrics.h"
 #include "../../GameNetwork/Security/RateLimiter.h"
@@ -117,6 +119,26 @@ auto main(int32_t argc, char* argv[]) -> int32_t
         Logger::handle().write(LogTypes::Information, 
             fmt::format("Player connected: {} (Session: {})", 
                 session->account_id(), session->session_id()));
+                
+        // Setup connection lost handler
+        if (session->current_connection())
+        {
+            session->current_connection()->register_connection_lost_handler(
+                [session](const std::string& reason)
+                {
+                    Logger::handle().write(LogTypes::Error,
+                        fmt::format("Connection lost for {}: {}", 
+                            session->account_id(), reason));
+                });
+                
+            session->current_connection()->register_reconnect_success_handler(
+                [session]()
+                {
+                    Logger::handle().write(LogTypes::Information,
+                        fmt::format("Reconnection successful for {}", 
+                            session->account_id()));
+                });
+        }
     });
     
     session_manager->on_session_disconnected([](std::shared_ptr<GameSession> session)
@@ -133,7 +155,60 @@ auto main(int32_t argc, char* argv[]) -> int32_t
     // Register custom handlers
     dispatcher->register_handler(PacketType::Authentication, handle_authentication);
     dispatcher->register_handler(PacketType::MoveTo, handle_movement);
+    dispatcher->register_handler(PacketType::MoveStop, 
+        [](std::shared_ptr<GameSession> session, const GamePacket& packet)
+        {
+            const auto& stop_packet = static_cast<const MoveStopPacket&>(packet);
+            session->move_to(stop_packet.stop_location());
+            
+            // Update world synchronizer
+            auto world_sync = game_server_->world_synchronizer();
+            if (world_sync)
+            {
+                Entity player_entity;
+                player_entity.id = session->session_id_hash();
+                player_entity.location = stop_packet.stop_location();
+                player_entity.velocity = std::nullopt; // Stopped
+                world_sync->update_entity_position(player_entity.id, player_entity.location);
+            }
+            
+            return std::make_tuple(true, std::nullopt);
+        });
     dispatcher->register_handler(PacketType::ChatMessage, handle_chat);
+    dispatcher->register_handler(PacketType::Attack,
+        [](std::shared_ptr<GameSession> session, const GamePacket& packet)
+        {
+            const auto& attack_packet = static_cast<const AttackPacket&>(packet);
+            
+            // Validate attack
+            // TODO: Check range, cooldowns, etc.
+            
+            // Apply damage to target
+            auto session_manager = game_server_->session_manager();
+            auto target_session = session_manager->get_session_by_id(std::to_string(attack_packet.target_id()));
+            
+            if (target_session)
+            {
+                // Send damage packet to target
+                DamagePacket damage_packet;
+                damage_packet.set_target_id(attack_packet.target_id());
+                damage_packet.set_damage_amount(attack_packet.damage());
+                damage_packet.set_damage_type(1); // Physical
+                damage_packet.set_source_id(attack_packet.attacker_id());
+                damage_packet.set_remaining_hp(1000); // TODO: Calculate actual HP
+                
+                if (target_session->connection())
+                {
+                    target_session->connection()->send_packet(damage_packet);
+                }
+            }
+            
+            return std::make_tuple(true, std::nullopt);
+        });
+    
+    // Set rate limits for chat
+    dispatcher->set_rate_limit(PacketType::ChatMessage, 5); // 5 messages per second
+    dispatcher->set_rate_limit(PacketType::ChatWhisper, 10); // 10 whispers per second
     
     // Start server
     auto [success, error] = game_server_->start();
@@ -320,13 +395,45 @@ auto handle_authentication(std::shared_ptr<GameSession> session, const GamePacke
 auto handle_movement(std::shared_ptr<GameSession> session, const GamePacket& packet) 
     -> std::tuple<bool, std::optional<std::string>>
 {
-    // TODO: Implement movement handling
-    // 1. Validate movement (speed, collision)
-    // 2. Update session location
-    // 3. Broadcast to nearby players
+    const auto& move_packet = static_cast<const MoveToPacket&>(packet);
     
     Logger::handle().write(LogTypes::Packet, 
-        fmt::format("Movement packet from session: {}", session->session_id()));
+        fmt::format("Movement packet from session: {} to ({}, {}, {})", 
+            session->session_id(),
+            move_packet.destination().x,
+            move_packet.destination().y,
+            move_packet.destination().z));
+    
+    // Validate movement (basic distance check)
+    auto current_loc = session->location();
+    float dx = move_packet.destination().x - current_loc.x;
+    float dy = move_packet.destination().y - current_loc.y;
+    float dz = move_packet.destination().z - current_loc.z;
+    float distance = std::sqrt(dx*dx + dy*dy + dz*dz);
+    
+    // Check for speed hack (max 50 units per second)
+    float max_speed = 50.0f * move_packet.movement_speed();
+    if (distance > max_speed)
+    {
+        return {false, "Movement speed violation detected"};
+    }
+    
+    // Update session location
+    session->move_to(move_packet.destination());
+    
+    // Broadcast movement to nearby players
+    auto world_sync = game_server_->world_synchronizer();
+    if (world_sync)
+    {
+        // Create entity update for this player
+        Entity player_entity;
+        player_entity.id = session->session_id_hash();
+        player_entity.type = EntityType::Player;
+        player_entity.location = move_packet.destination();
+        player_entity.velocity = Vector3{dx, dy, dz}; // Simple velocity calculation
+        
+        world_sync->update_entity_position(player_entity.id, player_entity.location);
+    }
     
     return {true, std::nullopt};
 }
@@ -334,13 +441,58 @@ auto handle_movement(std::shared_ptr<GameSession> session, const GamePacket& pac
 auto handle_chat(std::shared_ptr<GameSession> session, const GamePacket& packet) 
     -> std::tuple<bool, std::optional<std::string>>
 {
-    // TODO: Implement chat handling
-    // 1. Validate message content
-    // 2. Check rate limiting
-    // 3. Broadcast based on chat type
+    const auto& chat_packet = static_cast<const ChatMessagePacket&>(packet);
     
     Logger::handle().write(LogTypes::Packet, 
-        fmt::format("Chat message from session: {}", session->session_id()));
+        fmt::format("Chat message from {}: {}", 
+            chat_packet.sender_name(), chat_packet.message()));
+    
+    // Validate message content
+    if (chat_packet.message().empty() || chat_packet.message().length() > 500)
+    {
+        return {false, "Invalid message length"};
+    }
+    
+    // Check rate limiting
+    auto dispatcher = game_server_->message_dispatcher();
+    if (!dispatcher->check_rate_limit(session->session_id(), PacketType::ChatMessage))
+    {
+        return {false, "Chat rate limit exceeded"};
+    }
+    
+    // Broadcast based on chat type
+    auto session_manager = game_server_->session_manager();
+    
+    switch (chat_packet.chat_type())
+    {
+        case 0: // General chat (current channel)
+        {
+            auto channel_sessions = session_manager->get_sessions_in_channel(session->current_channel_id());
+            for (const auto& target_session : channel_sessions)
+            {
+                if (target_session && target_session->connection())
+                {
+                    target_session->connection()->send_packet(chat_packet);
+                }
+            }
+            break;
+        }
+        
+        case 1: // Party chat
+        {
+            // TODO: Implement party system
+            break;
+        }
+        
+        case 2: // Guild chat
+        {
+            // TODO: Implement guild system
+            break;
+        }
+        
+        default:
+            return {false, "Unknown chat type"};
+    }
     
     return {true, std::nullopt};
 }

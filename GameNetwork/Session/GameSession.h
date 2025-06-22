@@ -1,6 +1,6 @@
 #pragma once
 
-#include "GameNetworkConstants.h"
+#include "../GameNetworkConstants.h"
 #include "GameConnection.h"
 
 #include <memory>
@@ -24,8 +24,11 @@ namespace GameNetwork
         virtual ~GameSession();
         
         // Session identification
+        auto id() const -> uint64_t;  // Returns hashed session ID
         auto session_id() const -> std::string;
+        auto session_id_hash() const -> uint64_t;
         auto account_id() const -> std::string;
+        auto set_account_id(const std::string& id) -> void;
         
         // Connection management
         auto bind_connection(std::shared_ptr<GameConnection> connection) -> void;

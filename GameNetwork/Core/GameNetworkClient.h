@@ -1,29 +1,41 @@
 #pragma once
 
 #include "GameNetworkConstants.h"
-#include <NetworkClient.h>
-#include <ThreadPool.h>
-#include <Logger.h>
+#include "../../Network/NetworkClient.h"
+#include "../../Network/NetworkSession.h"
+#include "../../ThreadPool/ThreadPool.h"
+#include "../../Utilities/Logger.h"
 
 #include <memory>
 #include <string>
 #include <functional>
-#include <future>
+#include <vector>
 #include <optional>
 #include <atomic>
 #include <chrono>
+#include <mutex>
 
 namespace GameNetwork
 {
+    // Forward declarations
+    class DisconnectionHandler;
+    class GameSession;
+    class GamePacket;
+    
     struct ClientConfig
     {
-        std::string server_host;
+        std::string server_ip;
         uint16_t server_port;
         std::string client_id;
-        bool enable_auto_reconnect;
-        uint16_t reconnect_interval_ms;
-        uint16_t connection_timeout_ms;
-        uint16_t heartbeat_interval_ms;
+        bool auto_reconnect = false;
+        uint32_t max_buffer_size = 1024 * 1024;
+        bool enable_heartbeat = true;
+        uint32_t heartbeat_interval = 30000;
+        
+        // Reconnection settings
+        uint32_t max_reconnect_attempts = 5;
+        uint32_t reconnect_timeout_seconds = 300;
+        bool enable_exponential_backoff = true;
     };
 
     class GameNetworkClient
@@ -32,71 +44,36 @@ namespace GameNetwork
         explicit GameNetworkClient(const ClientConfig& config);
         virtual ~GameNetworkClient();
         
-        // Connection management
-        auto connect() -> std::tuple<bool, std::optional<std::string>>;
-        auto disconnect() -> std::tuple<bool, std::optional<std::string>>;
-        auto is_connected() const -> bool;
-        auto reconnect() -> std::tuple<bool, std::optional<std::string>>;
+        // Basic connection methods
+        bool initialize();
+        void shutdown();
+        bool connect();
+        void disconnect();
+        bool isConnected() const;
+        ConnectionState getConnectionState() const;
         
-        // Message handling
-        auto send_message(const std::string& message) -> std::tuple<bool, std::optional<std::string>>;
-        auto send_binary(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>;
-        
-        // Event callbacks
-        using MessageCallback = std::function<void(const std::string&)>;
-        using BinaryCallback = std::function<void(const std::vector<uint8_t>&)>;
-        using ConnectionCallback = std::function<void(bool)>;
-        
-        auto on_message_received(MessageCallback callback) -> void;
-        auto on_binary_received(BinaryCallback callback) -> void;
-        auto on_connection_changed(ConnectionCallback callback) -> void;
-        
-        // Configuration
-        auto get_config() const -> const ClientConfig&;
-        auto update_config(const ClientConfig& new_config) -> std::tuple<bool, std::optional<std::string>>;
-        
-        // Statistics
-        struct ClientStats
-        {
-            std::chrono::steady_clock::time_point connection_time;
-            uint64_t messages_sent;
-            uint64_t messages_received;
-            uint64_t bytes_sent;
-            uint64_t bytes_received;
-            uint32_t reconnect_count;
-        };
-        
-        auto get_stats() const -> ClientStats;
+        // Packet handling
+        bool sendPacket(const GamePacket& packet);
         
     private:
-        auto initialize_components() -> std::tuple<bool, std::optional<std::string>>;
-        auto setup_network_callbacks() -> void;
-        auto start_heartbeat() -> void;
-        auto stop_heartbeat() -> void;
-        auto perform_heartbeat() -> void;
-        auto handle_auto_reconnect() -> void;
+        // Event handlers
+        void onConnected(std::shared_ptr<Network::NetworkSession> session);
+        void onDisconnected(std::shared_ptr<Network::NetworkSession> session);
+        void onDataReceived(std::shared_ptr<Network::NetworkSession> session, 
+                           const std::vector<uint8_t>& data);
         
-        // Network event handlers
-        auto on_network_connected() -> void;
-        auto on_network_disconnected() -> void;
-        auto on_network_message(const std::string& message) -> void;
-        auto on_network_binary(const std::vector<uint8_t>& data) -> void;
+        // Internal processing
+        void processReceivedData(const std::vector<uint8_t>& data);
+        void handlePacket(const GamePacket& packet);
         
     private:
         ClientConfig config_;
-        std::shared_ptr<Network::NetworkClient> network_client_;
+        std::unique_ptr<Network::NetworkClient> network_client_;
         std::shared_ptr<Thread::ThreadPool> thread_pool_;
+        std::shared_ptr<Network::NetworkSession> current_session_;
         
-        std::atomic<bool> is_connected_;
-        std::atomic<bool> is_shutdown_;
-        std::atomic<bool> heartbeat_running_;
-        
-        ClientStats stats_;
-        
-        // Callbacks
-        MessageCallback message_callback_;
-        BinaryCallback binary_callback_;
-        ConnectionCallback connection_callback_;
+        bool is_running_;
+        ConnectionState connection_state_;
         
         mutable std::mutex mutex_;
     };

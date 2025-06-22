@@ -88,12 +88,11 @@ auto main(int32_t argc, char* argv[]) -> int32_t
     
     // Create game client with configuration
     GameNetwork::ClientConfig client_config{};
-    client_config.server_host = "localhost";
+    client_config.server_ip = "localhost";
     client_config.server_port = 8080;
-    client_config.heartbeat_interval_ms = 30000;
-    client_config.reconnect_interval_ms = 5000;
-    client_config.enable_auto_reconnect = true;
-    client_config.connection_timeout_ms = 10000;
+    client_config.heartbeat_interval = 30000;
+    client_config.auto_reconnect = true;
+    client_config.max_reconnect_attempts = 5;
     
     game_client_ = std::make_shared<GameNetworkClient>(client_config);
     

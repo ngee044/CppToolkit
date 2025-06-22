@@ -56,6 +56,8 @@ namespace GameNetwork
             -> std::tuple<bool, std::optional<std::string>>;
         auto update_entity(uint64_t entity_id, const Entity& updated_entity) 
             -> std::tuple<bool, std::optional<std::string>>;
+        auto update_entity_position(uint64_t entity_id, const Location& new_location)
+            -> std::tuple<bool, std::optional<std::string>>;
         
         // Interest management
         auto get_interested_sessions(const Location& location, float radius = 0.0f) const 

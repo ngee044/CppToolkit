@@ -1,4 +1,12 @@
 #include "GameSessionManager.h"
+#include "GameSession.h"
+#include "../GameNetworkConstants.h"
+#include "../../Utilities/Logger.h"
+
+#include <algorithm>
+#include <chrono>
+
+using namespace Utilities;
 #include "GameConnection.h"
 #include <Job.h>
 
@@ -10,6 +18,7 @@
 #include <iomanip>
 
 using namespace Utilities;
+using namespace fmt;
 
 namespace GameNetwork
 {
@@ -77,10 +86,9 @@ namespace GameNetwork
         sessions_by_account_.clear();
         connections_.clear();
         connection_to_session_.clear();
-        
-        Logger::handle().write(LogTypes::Information,
-            fmt::format("GameSessionManager shutdown complete. {} sessions terminated", 
-                session_count));
+          Logger::handle().write(LogTypes::Information,
+            std::string(format("GameSessionManager shutdown complete. {} sessions terminated", 
+                session_count)));
     }
     
     auto GameSessionManager::create_session(const std::string& account_id) 
@@ -754,9 +762,25 @@ namespace GameNetwork
             if (session->is_online())
             {
                 online_sessions.push_back(session);
-            }
-        }
+            }        }
         
         return online_sessions;
     }
-}
+    
+    auto GameSessionManager::get_sessions_in_channel(uint32_t channel_id) const -> std::vector<std::shared_ptr<GameSession>>
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        std::vector<std::shared_ptr<GameSession>> channel_sessions;
+        for (const auto& [id, session] : sessions_by_id_)
+        {
+            if (session->is_online() && session->current_channel_id() == channel_id)
+            {
+                channel_sessions.push_back(session);
+            }
+        }
+        
+        return channel_sessions;
+    }
+    
+} // namespace GameNetwork

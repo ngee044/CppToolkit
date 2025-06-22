@@ -1,7 +1,7 @@
 #pragma once
 
-#include "GameNetworkConstants.h"
-#include "NetworkSession.h"
+#include "../GameNetworkConstants.h"
+#include "../../Network/NetworkSession.h"
 
 #include <memory>
 #include <string>
@@ -10,6 +10,8 @@
 #include <chrono>
 #include <optional>
 #include <tuple>
+#include <future>
+#include <atomic>
 
 namespace GameNetwork
 {
@@ -28,6 +30,7 @@ namespace GameNetwork
         
         // Connection info
         auto connection_id() const -> std::string;
+        auto session_id() const -> uint64_t;  // Returns session ID if bound to a session
         auto account_id() const -> std::string;
         auto set_account_id(const std::string& account_id) -> void;
         
@@ -50,6 +53,18 @@ namespace GameNetwork
         auto last_activity_time() const -> std::chrono::steady_clock::time_point;
         auto is_timeout() const -> bool;
         
+        // Reconnection
+        auto enable_auto_reconnect(bool enable) -> void;
+        auto is_auto_reconnect_enabled() const -> bool;
+        auto attempt_reconnect() -> std::tuple<bool, std::optional<std::string>>;
+        auto reset_reconnect_attempts() -> void;
+        auto get_reconnect_attempts() const -> uint32_t;
+        
+        // Error handling
+        auto on_connection_lost(const std::string& reason) -> void;
+        auto register_connection_lost_handler(std::function<void(const std::string&)> handler) -> void;
+        auto register_reconnect_success_handler(std::function<void()> handler) -> void;
+        
         // Statistics
         auto bytes_sent() const -> uint64_t;
         auto bytes_received() const -> uint64_t;
@@ -60,6 +75,8 @@ namespace GameNetwork
         auto setup_network_callbacks() -> void;
         auto on_network_message(const std::string& message) -> std::tuple<bool, std::optional<std::string>>;
         auto on_network_binary(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>;
+        auto schedule_reconnect() -> void;
+        auto cancel_reconnect() -> void;
         
     private:
         mutable std::mutex mutex_;
@@ -73,6 +90,21 @@ namespace GameNetwork
         std::function<void(const GamePacket&)> packet_handler_;
         
         std::chrono::steady_clock::time_point last_activity_;
+        
+        // Reconnection
+        bool auto_reconnect_enabled_;
+        uint32_t reconnect_attempts_;
+        std::chrono::milliseconds current_reconnect_delay_;
+        std::future<void> reconnect_timer_;
+        std::atomic<bool> reconnect_scheduled_;
+        
+        // Error handlers
+        std::function<void(const std::string&)> connection_lost_handler_;
+        std::function<void()> reconnect_success_handler_;
+        
+        // Network info for reconnection
+        std::string last_server_address_;
+        uint16_t last_server_port_;
         
         // Statistics
         uint64_t bytes_sent_;

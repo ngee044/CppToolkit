@@ -20,6 +20,8 @@ namespace GameNetwork
     class PacketProcessor;
     class MessageDispatcher;
     class WorldSynchronizer;
+    class LoadBalancer;
+    class ServerMonitor;
     
     struct ServerConfig
     {
@@ -74,6 +76,10 @@ namespace GameNetwork
         
         // World synchronization
         auto world_synchronizer() -> std::shared_ptr<WorldSynchronizer>;
+        
+        // Load balancing
+        auto load_balancer() -> std::shared_ptr<LoadBalancer>;
+        auto server_monitor() -> std::shared_ptr<ServerMonitor>;
         
         // Broadcasting
         auto broadcast_to_all(const GamePacket& packet) 
@@ -151,6 +157,8 @@ namespace GameNetwork
         std::shared_ptr<PacketProcessor> packet_processor_;
         std::shared_ptr<MessageDispatcher> message_dispatcher_;
         std::shared_ptr<WorldSynchronizer> world_synchronizer_;
+        std::shared_ptr<LoadBalancer> load_balancer_;
+        std::shared_ptr<ServerMonitor> server_monitor_;
         
         // Server state
         std::atomic<bool> is_running_;

@@ -1,7 +1,12 @@
 #include "GameSession.h"
 #include "Character.h"
+#include "../GameNetworkConstants.h"
+#include "../../Utilities/Logger.h"
 
 #include <future>
+#include <algorithm>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -338,4 +343,23 @@ namespace GameNetwork
     auto GameSession::location() const -> Location
     {
         return current_location();
-    }}
+    }
+    
+    auto GameSession::id() const -> uint64_t
+    {
+        return session_id_hash();
+    }
+    
+    auto GameSession::session_id_hash() const -> uint64_t
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::hash<std::string> hasher;
+        return hasher(session_id_);
+    }
+    
+    auto GameSession::set_account_id(const std::string& id) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        account_id_ = id;
+    }
+}

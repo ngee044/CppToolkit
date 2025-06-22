@@ -1,10 +1,10 @@
 #pragma once
 
 #include "GameSession.h"
-
-#include <NetworkSession.h>
-#include <ThreadPool.h>
-#include "Logger.h"
+#include "../GameNetworkConstants.h"
+#include "../../Network/NetworkSession.h"
+#include "../../ThreadPool/ThreadPool.h"
+#include "../../Utilities/Logger.h"
 
 #include <memory>
 #include <string>
@@ -54,10 +54,12 @@ namespace GameNetwork
         auto get_connection_by_id(const std::string& connection_id) const 
             -> std::shared_ptr<GameConnection>;
         auto get_all_online_sessions() const -> std::vector<std::shared_ptr<GameSession>>;
+        auto get_sessions_in_channel(uint32_t channel_id) const -> std::vector<std::shared_ptr<GameSession>>;
         
         // Statistics
         auto active_session_count() const -> size_t;
         auto online_session_count() const -> size_t;
+        auto get_online_count() const -> size_t { return online_session_count(); }
         auto suspended_session_count() const -> size_t;
         
         // Session migration

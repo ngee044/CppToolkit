@@ -1,423 +1,249 @@
-// GameNetworkClient implementation with internal ThreadPool and Logger integration
-
 #include "GameNetworkClient.h"
-#include <Job.h>
-
-#include <fmt/format.h>
+#include "../Packet/GamePacket.h"
+#include "../Session/GameConnection.h"
+#include "../Session/GameSession.h"
+#include "../../Utilities/Logger.h"
+#include "../../ThreadPool/ThreadPool.h"
+#include "../../ThreadPool/Job.h"
 #include <thread>
 
 using namespace Utilities;
 
-namespace GameNetwork
+namespace GameNetwork {
+
+GameNetworkClient::GameNetworkClient(const ClientConfig& config)
+    : config_(config)
+    , network_client_(nullptr)
+    , thread_pool_(nullptr)
+    , current_session_(nullptr)
+    , is_running_(false)
+    , connection_state_(ConnectionState::Disconnected)
 {
-    GameNetworkClient::GameNetworkClient(const ClientConfig& config)
-        : config_(config)
-        , is_connected_(false)
-        , is_shutdown_(false)
-        , heartbeat_running_(false)
-        , stats_{}
-    {
-        Logger::handle().write(LogTypes::Information, 
-            fmt::format("Initializing GameNetworkClient for server {}:{}", 
-                config_.server_host, config_.server_port));
-        
-        auto [success, error] = initialize_components();
-        if (!success)
-        {
-            Logger::handle().write(LogTypes::Error,
-                fmt::format("Failed to initialize GameNetworkClient: {}", 
-                    error.value_or("Unknown error")));
-            throw std::runtime_error("Failed to initialize GameNetworkClient");
-        }
-        
-        Logger::handle().write(LogTypes::Information, 
-            "GameNetworkClient initialized successfully");
+}
+
+GameNetworkClient::~GameNetworkClient() {
+    disconnect();
+}
+
+bool GameNetworkClient::initialize() {
+    Logger::handle().write(LogTypes::Information, "Initializing GameNetworkClient...");
+    
+    // ThreadPool 생성
+    thread_pool_ = std::make_shared<Thread::ThreadPool>("GameNetworkClient");
+    
+    if (!thread_pool_) {
+        Logger::handle().write(LogTypes::Error, "Failed to create ThreadPool");
+        return false;
     }
     
-    GameNetworkClient::~GameNetworkClient()
-    {
-        Logger::handle().write(LogTypes::Information, 
-            "Shutting down GameNetworkClient");
-        
-        is_shutdown_ = true;
-        stop_heartbeat();
-        disconnect();
-        
-        if (thread_pool_)
-        {
-            thread_pool_->stop(true);
-        }
-        
-        Logger::handle().write(LogTypes::Information, 
-            "GameNetworkClient shutdown complete");
+    auto start_result = thread_pool_->start();
+    if (!std::get<0>(start_result)) {
+        std::string error = std::get<1>(start_result).value_or("Unknown error");
+        Logger::handle().write(LogTypes::Error, "Failed to start ThreadPool: " + error);
+        return false;
     }
     
-    auto GameNetworkClient::initialize_components() -> std::tuple<bool, std::optional<std::string>>
-    {
-        try
-        {
-            // Initialize ThreadPool
-            thread_pool_ = std::make_shared<Thread::ThreadPool>("GameNetworkClient");
-            auto [start_success, start_error] = thread_pool_->start();
-            if (!start_success)
-            {
-                return {false, fmt::format("Failed to start ThreadPool: {}", 
-                    start_error.value_or("Unknown error"))};
-            }
-            
-            // Initialize NetworkClient
-            network_client_ = std::make_shared<Network::NetworkClient>(
-                config_.server_host, config_.server_port);
-            
-            setup_network_callbacks();
-            
-            return {true, std::nullopt};
-        }
-        catch (const std::exception& e)
-        {
-            return {false, fmt::format("Exception during initialization: {}", e.what())};
-        }
+    // NetworkClient 생성 (실제 API에 맞게 수정)
+    network_client_ = std::make_unique<Network::NetworkClient>(
+        config_.client_id,
+        3, // high_priority_count
+        3, // normal_priority_count
+        3  // low_priority_count
+    );
+    
+    if (!network_client_) {
+        Logger::handle().write(LogTypes::Error, "Failed to create NetworkClient");
+        return false;
     }
     
-    auto GameNetworkClient::setup_network_callbacks() -> void
-    {
-        // Note: NetworkClient callback setup would go here
-        // This depends on the actual NetworkClient interface
-        Logger::handle().write(LogTypes::Debug, 
-            "Setting up network callbacks for GameNetworkClient");
+    // 콜백 설정
+    network_client_->received_connection_callback([this](const bool& connected, const bool& by_server) {
+        if (connected) {
+            onConnected(nullptr); // NetworkSession은 내부에서 관리됨
+        } else {
+            onDisconnected(nullptr);
+        }
+        return std::make_tuple(true, std::nullopt);
+    });
+    
+    network_client_->received_binary_callback([this](const std::string& sender_id, const std::vector<uint8_t>& data) {
+        onDataReceived(nullptr, data); // NetworkSession은 내부에서 관리됨
+        return std::make_tuple(true, std::nullopt);
+    });
+    
+    is_running_ = true;
+    Logger::handle().write(LogTypes::Information, "GameNetworkClient initialized successfully");
+    return true;
+}
+
+void GameNetworkClient::shutdown() {
+    Logger::handle().write(LogTypes::Information, "Shutting down GameNetworkClient...");
+    
+    disconnect();
+    
+    if (network_client_) {
+        network_client_->stop();
+        network_client_.reset();
     }
     
-    auto GameNetworkClient::connect() -> std::tuple<bool, std::optional<std::string>>
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        if (is_connected_)
-        {
-            return {true, std::nullopt};
-        }
-        
-        Logger::handle().write(LogTypes::Information, 
-            fmt::format("Connecting to server {}:{}", config_.server_host, config_.server_port));
-        
-        try
-        {
-            // Actual connection logic would use NetworkClient here
-            stats_.connection_time = std::chrono::steady_clock::now();
-            is_connected_ = true;
-            
-            start_heartbeat();
-            on_network_connected();
-            
-            Logger::handle().write(LogTypes::Information, 
-                "Successfully connected to server");
-            
-            return {true, std::nullopt};
-        }
-        catch (const std::exception& e)
-        {
-            Logger::handle().write(LogTypes::Error,
-                fmt::format("Connection failed: {}", e.what()));
-            return {false, e.what()};
-        }
+    if (thread_pool_) {
+        thread_pool_->stop();
+        thread_pool_.reset();
     }
     
-    auto GameNetworkClient::disconnect() -> std::tuple<bool, std::optional<std::string>>
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        if (!is_connected_)
-        {
-            return {true, std::nullopt};
-        }
-        
-        Logger::handle().write(LogTypes::Information, 
-            "Disconnecting from server");
-        
-        try
-        {
-            stop_heartbeat();
-            is_connected_ = false;
-            on_network_disconnected();
-            
-            Logger::handle().write(LogTypes::Information, 
-                "Successfully disconnected from server");
-            
-            return {true, std::nullopt};
-        }
-        catch (const std::exception& e)
-        {
-            Logger::handle().write(LogTypes::Error,
-                fmt::format("Disconnection failed: {}", e.what()));
-            return {false, e.what()};
-        }
+    is_running_ = false;
+    Logger::handle().write(LogTypes::Information, "GameNetworkClient shutdown complete");
+}
+
+bool GameNetworkClient::connect() {
+    if (!network_client_) {
+        Logger::handle().write(LogTypes::Error, "NetworkClient is not initialized");
+        return false;
     }
     
-    auto GameNetworkClient::is_connected() const -> bool
-    {
-        return is_connected_;
+    if (connection_state_ == ConnectionState::Connected || 
+        connection_state_ == ConnectionState::Connecting) {
+        Logger::handle().write(LogTypes::Error, "Already connected or connecting");
+        return true;
     }
     
-    auto GameNetworkClient::reconnect() -> std::tuple<bool, std::optional<std::string>>
-    {
-        Logger::handle().write(LogTypes::Information, 
-            "Attempting reconnection");
-        
-        auto [disconnect_success, disconnect_error] = disconnect();
-        if (!disconnect_success)
-        {
-            return {false, fmt::format("Failed to disconnect before reconnect: {}", 
-                disconnect_error.value_or("Unknown error"))};
-        }
-        
-        std::this_thread::sleep_for(std::chrono::milliseconds(config_.reconnect_interval_ms));
-        
-        stats_.reconnect_count++;
-        return connect();
+    connection_state_ = ConnectionState::Connecting;
+    Logger::handle().write(LogTypes::Information, "Connecting to server " + config_.server_ip + ":" + std::to_string(config_.server_port));
+    
+    bool result = network_client_->start(config_.server_ip, config_.server_port, config_.max_buffer_size);
+    if (!result) {
+        connection_state_ = ConnectionState::Disconnected;
+        Logger::handle().write(LogTypes::Error, "Failed to connect to server");
     }
     
-    auto GameNetworkClient::send_message(const std::string& message) -> std::tuple<bool, std::optional<std::string>>
-    {
-        if (!is_connected_)
-        {
-            return {false, "Client not connected"};
-        }
-        
-        if (!thread_pool_)
-        {
-            return {false, "ThreadPool not initialized"};
-        }
-        
-        if (message.empty())
-        {
-            return {false, "Message cannot be empty"};
-        }
-        
-        Logger::handle().write(LogTypes::Debug,
-            fmt::format("Sending message: {} bytes", message.size()));
-        
-        // Use ThreadPool for async sending
-        auto job = std::make_shared<Thread::Job>(Thread::JobPriorities::Normal, [this, message]() -> std::tuple<bool, std::optional<std::string>>
-        {
-            try
-            {
-                // Actual network sending would go here
-                stats_.messages_sent++;
-                stats_.bytes_sent += message.size();
-                
-                Logger::handle().write(LogTypes::Debug,
-                    "Message sent successfully");
-                return {true, std::nullopt};
-            }
-            catch (const std::exception& e)
-            {
-                Logger::handle().write(LogTypes::Error,
-                    fmt::format("Failed to send message: {}", e.what()));
-                return {false, e.what()};
-            }
-        }, "SendMessage");
-        
-        auto [push_success, push_error] = thread_pool_->push(job);
-        if (!push_success)
-        {
-            return {false, fmt::format("Failed to queue message: {}", 
-                push_error.value_or("Unknown error"))};
-        }
-        
-        return {true, std::nullopt};
+    return result;
+}
+
+void GameNetworkClient::disconnect() {
+    if (connection_state_ == ConnectionState::Disconnected) {
+        return;
     }
     
-    auto GameNetworkClient::send_binary(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
-    {
-        if (!is_connected_)
-        {
-            return {false, "Client not connected"};
-        }
-        
-        if (!thread_pool_)
-        {
-            return {false, "ThreadPool not initialized"};
-        }
-        
-        if (data.empty())
-        {
-            return {false, "Binary data cannot be empty"};
-        }
-        
-        Logger::handle().write(LogTypes::Debug,
-            fmt::format("Sending binary data: {} bytes", data.size()));
-        
-        // Use ThreadPool for async sending
-        auto job = std::make_shared<Thread::Job>(Thread::JobPriorities::Normal, [this, data]() -> std::tuple<bool, std::optional<std::string>>
-        {
-            try
-            {
-                // Actual network sending would go here
-                stats_.messages_sent++;
-                stats_.bytes_sent += data.size();
-                
-                Logger::handle().write(LogTypes::Debug,
-                    "Binary data sent successfully");
-                return {true, std::nullopt};
-            }
-            catch (const std::exception& e)
-            {
-                Logger::handle().write(LogTypes::Error,
-                    fmt::format("Failed to send binary data: {}", e.what()));
-                return {false, e.what()};
-            }
-        }, "SendBinary");
-        
-        auto [push_success, push_error] = thread_pool_->push(job);
-        if (!push_success)
-        {
-            return {false, fmt::format("Failed to queue binary data: {}", 
-                push_error.value_or("Unknown error"))};
-        }
-        
-        return {true, std::nullopt};
+    Logger::handle().write(LogTypes::Information, "Disconnecting from server...");
+    connection_state_ = ConnectionState::Disconnecting;
+    
+    if (network_client_) {
+        network_client_->stop();
     }
     
-    auto GameNetworkClient::start_heartbeat() -> void
-    {
-        if (heartbeat_running_ || config_.heartbeat_interval_ms == 0)
-        {
-            return;
-        }
-        
-        if (!thread_pool_)
-        {
-            Logger::handle().write(LogTypes::Error,
-                "Cannot start heartbeat: ThreadPool not initialized");
-            return;
-        }
-        
-        heartbeat_running_ = true;
-        
-        Logger::handle().write(LogTypes::Debug,
-            fmt::format("Starting heartbeat with interval {}ms", config_.heartbeat_interval_ms));
-        
-        auto heartbeat_job = std::make_shared<Thread::Job>(Thread::JobPriorities::Low, [this]() -> std::tuple<bool, std::optional<std::string>>
-        {
-            while (heartbeat_running_ && !is_shutdown_)
-            {
-                perform_heartbeat();
-                std::this_thread::sleep_for(std::chrono::milliseconds(config_.heartbeat_interval_ms));
-            }
-            return {true, std::nullopt};
-        }, "Heartbeat");
-        
-        thread_pool_->push(heartbeat_job);
+    connection_state_ = ConnectionState::Disconnected;
+    Logger::handle().write(LogTypes::Information, "Disconnected from server");
+}
+
+bool GameNetworkClient::sendPacket(const GamePacket& packet) {
+    if (!network_client_ || connection_state_ != ConnectionState::Connected) {
+        Logger::handle().write(LogTypes::Error, "Cannot send packet: not connected");
+        return false;
     }
     
-    auto GameNetworkClient::stop_heartbeat() -> void
-    {
-        if (!heartbeat_running_)
-        {
-            return;
-        }
-        
-        Logger::handle().write(LogTypes::Debug,
-            "Stopping heartbeat");
-        
-        heartbeat_running_ = false;
-    }
-    
-    auto GameNetworkClient::perform_heartbeat() -> void
-    {
-        if (!is_connected_)
-        {
-            return;
-        }
-        
-        // Send heartbeat message
-        // This would typically send a small ping message
-        Logger::handle().write(LogTypes::Debug,
-            "Sending heartbeat");
-    }
-    
-    auto GameNetworkClient::on_network_connected() -> void
-    {
-        Logger::handle().write(LogTypes::Information,
-            "Network connection established");
-        
-        if (connection_callback_)
-        {
-            connection_callback_(true);
-        }
-    }
-    
-    auto GameNetworkClient::on_network_disconnected() -> void
-    {
-        Logger::handle().write(LogTypes::Information,
-            "Network connection lost");
-        
-        if (connection_callback_)
-        {
-            connection_callback_(false);
-        }
-        
-        if (config_.enable_auto_reconnect && !is_shutdown_)
-        {
-            handle_auto_reconnect();
-        }
-    }
-    
-    auto GameNetworkClient::handle_auto_reconnect() -> void
-    {
-        if (!thread_pool_)
-        {
-            Logger::handle().write(LogTypes::Error,
-                "Cannot handle auto-reconnect: ThreadPool not initialized");
-            return;
-        }
-        
-        Logger::handle().write(LogTypes::Information,
-            "Auto-reconnect enabled, scheduling reconnection attempt");
-        
-        auto reconnect_job = std::make_shared<Thread::Job>(Thread::JobPriorities::Normal, [this]() -> std::tuple<bool, std::optional<std::string>>
-        {
-            std::this_thread::sleep_for(std::chrono::milliseconds(config_.reconnect_interval_ms));
-            
-            if (!is_shutdown_)
-            {
-                auto [success, error] = reconnect();
-                if (!success)
-                {
-                    Logger::handle().write(LogTypes::Error,
-                        fmt::format("Auto-reconnect failed: {}", error.value_or("Unknown error")));
-                    return {false, error};
-                }
-                return {true, std::nullopt};
-            }
-            return {true, std::nullopt};
-        }, "AutoReconnect");
-        
-        thread_pool_->push(reconnect_job);
-    }
-    
-    auto GameNetworkClient::on_message_received(MessageCallback callback) -> void
-    {
-        message_callback_ = callback;
-    }
-    
-    auto GameNetworkClient::on_binary_received(BinaryCallback callback) -> void
-    {
-        binary_callback_ = callback;
-    }
-    
-    auto GameNetworkClient::on_connection_changed(ConnectionCallback callback) -> void
-    {
-        connection_callback_ = callback;
-    }
-    
-    auto GameNetworkClient::get_config() const -> const ClientConfig&
-    {
-        return config_;
-    }
-    
-    auto GameNetworkClient::get_stats() const -> ClientStats
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return stats_;
+    try {
+        auto serialized_data = packet.serialize();
+        auto result = network_client_->send_binary(serialized_data, "game_packet");
+        return std::get<0>(result);
+    } catch (const std::exception& e) {
+        Logger::handle().write(LogTypes::Error, "Failed to send packet: " + std::string(e.what()));
+        return false;
     }
 }
+
+void GameNetworkClient::onConnected(std::shared_ptr<Network::NetworkSession> session) {
+    if (!session) {
+        Logger::handle().write(LogTypes::Error, "Connected callback received null session, but connection is established");
+    }
+    
+    connection_state_ = ConnectionState::Connected;
+    current_session_ = session;
+    
+    Logger::handle().write(LogTypes::Information, "Connected to server successfully");
+    
+    // 연결 완료 이벤트 처리를 스레드풀에서 비동기로 실행
+    if (thread_pool_) {
+        auto job = std::make_shared<Thread::Job>(
+            Thread::JobPriorities::Normal,
+            [this]() -> std::tuple<bool, std::optional<std::string>> {
+                // 연결 완료 후 초기화 작업
+                Logger::handle().write(LogTypes::Information, "Connection established, performing post-connection setup");
+                return {true, std::nullopt};
+            },
+            "PostConnectionSetup"
+        );
+        thread_pool_->push(job);
+    }
+}
+
+void GameNetworkClient::onDisconnected(std::shared_ptr<Network::NetworkSession> session) {
+    Logger::handle().write(LogTypes::Information, "Disconnected from server");
+    
+    connection_state_ = ConnectionState::Disconnected;
+    current_session_.reset();
+    
+    // 재연결 로직 등을 스레드풀에서 비동기로 처리
+    if (thread_pool_ && config_.auto_reconnect) {
+        auto job = std::make_shared<Thread::Job>(
+            Thread::JobPriorities::Normal,
+            [this]() -> std::tuple<bool, std::optional<std::string>> {
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+                if (is_running_ && connection_state_ == ConnectionState::Disconnected) {
+                    Logger::handle().write(LogTypes::Information, "Attempting auto-reconnect...");
+                    connect();
+                }
+                return {true, std::nullopt};
+            },
+            "AutoReconnect"
+        );
+        thread_pool_->push(job);
+    }
+}
+
+void GameNetworkClient::onDataReceived(std::shared_ptr<Network::NetworkSession> session, 
+                                     const std::vector<uint8_t>& data) {
+    if (!thread_pool_) {
+        Logger::handle().write(LogTypes::Error, "ThreadPool is null, cannot process received data");
+        return;
+    }
+    
+    // 패킷 처리를 스레드풀에서 비동기로 실행
+    auto job = std::make_shared<Thread::Job>(
+        Thread::JobPriorities::High,
+        [this, data]() -> std::tuple<bool, std::optional<std::string>> {
+            processReceivedData(data);
+            return {true, std::nullopt};
+        },
+        "PacketProcessing"
+    );
+    thread_pool_->push(job);
+}
+
+void GameNetworkClient::processReceivedData(const std::vector<uint8_t>& data) {
+    try {
+        // TODO: 구체적인 패킷 구현이 필요하면 여기서 처리
+        // 현재는 GamePacket이 추상 클래스이므로 기본 로깅만 수행
+        Logger::handle().write(LogTypes::Debug, "Received data packet of size: " + std::to_string(data.size()));
+        
+    } catch (const std::exception& e) {
+        Logger::handle().write(LogTypes::Error, "Failed to process received data: " + std::string(e.what()));
+    }
+}
+
+void GameNetworkClient::handlePacket(const GamePacket& packet) {
+    // 기본 패킷 처리 로직
+    Logger::handle().write(LogTypes::Debug, "Received packet");
+    
+    // 상속받은 클래스에서 구체적인 패킷 처리를 구현할 수 있도록
+    // 가상 함수로 만들거나 콜백을 사용할 수 있음
+}
+
+bool GameNetworkClient::isConnected() const {
+    return connection_state_ == ConnectionState::Connected;
+}
+
+ConnectionState GameNetworkClient::getConnectionState() const {
+    return connection_state_;
+}
+
+} // namespace GameNetwork

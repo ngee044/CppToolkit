@@ -4,6 +4,12 @@ set(LIBRARY_NAME GameNetwork)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 
+# Windows definitions
+if(WIN32)
+    add_definitions(-D_WIN32_WINNT=0x0A00)  # Windows 10
+    add_definitions(-DWIN32_LEAN_AND_MEAN)
+endif()
+
 # Source files
 set(SOURCE_FILES
     # Core
@@ -47,6 +53,10 @@ set(SOURCE_FILES
     
     # Reliability
     Reliability/ReliableMessageQueue.cpp
+    
+    # LoadBalancing
+    LoadBalancing/LoadBalancer.cpp
+    LoadBalancing/ServerMonitor.cpp
 )
 
 # Header files
@@ -95,13 +105,17 @@ set(HEADER_FILES
     
     # Reliability
     Reliability/ReliableMessageQueue.h
+    
+    # LoadBalancing
+    LoadBalancing/LoadBalancer.h
+    LoadBalancing/ServerMonitor.h
 )
 
 project(${LIBRARY_NAME} VERSION 1.0.0.0)
 
 add_library(${LIBRARY_NAME} ${SOURCE_FILES} ${HEADER_FILES})
 
-target_include_directories(${LIBRARY_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} Core Session Packet Synchronization Optimization Security Metrics Replication Reliability)
+target_include_directories(${LIBRARY_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} Core Session Packet Synchronization Optimization Security Metrics Replication Reliability LoadBalancing)
 
 # Find packages
 find_package(Boost REQUIRED COMPONENTS system)
@@ -110,7 +124,7 @@ find_package(Boost REQUIRED COMPONENTS system)
 target_link_libraries(${LIBRARY_NAME} 
     PUBLIC 
         Network          # Base network module
-        Thread       # Thread pool
+        Thread           # Thread pool
         Utilities        # Utilities
         Redis            # For session persistence
         Boost::system

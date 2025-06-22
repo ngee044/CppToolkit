@@ -2,6 +2,12 @@
 #include "../Packet/PacketProcessor.h"
 #include "../Packet/MessageDispatcher.h"
 #include "../Synchronization/WorldSynchronizer.h"
+#include "../LoadBalancing/LoadBalancer.h"
+#include "../LoadBalancing/ServerMonitor.h"
+#include <fmt/format.h>
+
+using namespace Utilities;
+using namespace fmt;
 
 namespace GameNetwork
 {
@@ -23,6 +29,8 @@ namespace GameNetwork
         packet_processor_ = std::make_shared<PacketProcessor>();
         message_dispatcher_ = std::make_shared<MessageDispatcher>();
         world_synchronizer_ = std::make_shared<WorldSynchronizer>();
+        load_balancer_ = std::make_shared<LoadBalancer>(LoadBalancingStrategy::LeastLoad);
+        server_monitor_ = std::make_shared<ServerMonitor>(load_balancer_);
         
         // Create base network server
         network_server_ = std::make_shared<Network::NetworkServer>(
@@ -94,6 +102,12 @@ namespace GameNetwork
             return {false, stop_error};
         }
         
+        // Stop server monitor
+        if (server_monitor_)
+        {
+            server_monitor_->stop();
+        }
+        
         // Stop world synchronizer
         world_synchronizer_->stop_sync_timer();
         
@@ -142,6 +156,16 @@ namespace GameNetwork
     auto GameNetworkServer::world_synchronizer() -> std::shared_ptr<WorldSynchronizer>
     {
         return world_synchronizer_;
+    }
+    
+    auto GameNetworkServer::load_balancer() -> std::shared_ptr<LoadBalancer>
+    {
+        return load_balancer_;
+    }
+    
+    auto GameNetworkServer::server_monitor() -> std::shared_ptr<ServerMonitor>
+    {
+        return server_monitor_;
     }
     
     auto GameNetworkServer::broadcast_to_all(const GamePacket& packet) 
@@ -216,6 +240,70 @@ namespace GameNetwork
         
         // Start world synchronizer
         world_synchronizer_->start_sync_timer();
+        
+        // Register this server with load balancer
+        ServerMetrics local_metrics;
+        local_metrics.server_id = config_.server_id;
+        local_metrics.server_address = "localhost"; // TODO: Get actual address
+        local_metrics.port = config_.port;
+        local_metrics.current_players = 0;
+        local_metrics.max_players = config_.max_players;
+        local_metrics.cpu_usage = 0.0f;
+        local_metrics.memory_usage = 0.0f;
+        local_metrics.network_usage = 0.0f;
+        local_metrics.latency_ms = 0;
+        local_metrics.is_healthy = true;
+        local_metrics.is_accepting_players = true;
+        
+        auto [register_success, register_error] = load_balancer_->register_server(local_metrics);
+        if (!register_success)
+        {
+            return {false, format("Failed to register server with load balancer: {}",
+                register_error.value_or("Unknown error"))};
+        }
+        
+        // Register channels
+        for (uint32_t i = 1; i <= config_.max_channels; ++i)
+        {
+            ChannelMetrics channel;
+            channel.channel_id = i;
+            channel.channel_name = format("Channel {}", i);
+            channel.current_players = 0;
+            channel.max_players = config_.max_players / config_.max_channels;
+            channel.map_id = 0;
+            channel.load_factor = 0.0f;
+            channel.is_available = true;
+            channel.is_recommended = (i == 1); // First channel is recommended
+            
+            load_balancer_->register_channel(config_.server_id, channel);
+        }
+        
+        // Configure server monitor
+        server_monitor_->set_metrics_provider([this]() {
+            ServerMetrics metrics;
+            metrics.server_id = config_.server_id;
+            metrics.server_address = "localhost";
+            metrics.port = config_.port;
+            metrics.current_players = session_manager_->get_online_count();
+            metrics.max_players = config_.max_players;
+            // TODO: Implement actual resource monitoring
+            metrics.cpu_usage = 50.0f;
+            metrics.memory_usage = 60.0f;
+            metrics.network_usage = 30.0f;
+            metrics.latency_ms = 10;
+            metrics.is_healthy = true;
+            metrics.is_accepting_players = metrics.current_players < metrics.max_players;
+            return metrics;
+        });
+        
+        // Start server monitoring
+        auto [monitor_success, monitor_error] = server_monitor_->start();
+        if (!monitor_success)
+        {
+            Logger::handle().write(Utilities::LogTypes::Error,
+                std::string(format("Failed to start server monitor: {}",
+                    monitor_error.value_or("Unknown error"))));
+        }
         
         return {true, std::nullopt};
     }

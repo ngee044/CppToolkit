@@ -1,8 +1,13 @@
 #include "WorldSynchronizer.h"
 #include "../Packet/GamePacket.h"
+#include "../GameNetworkConstants.h"
+#include "../../Utilities/Logger.h"
 
 #include <cmath>
 #include <algorithm>
+#include <unordered_set>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -590,4 +595,49 @@ namespace GameNetwork
         float dz = loc1.z - loc2.z;
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
-}
+    
+    auto WorldSynchronizer::update_entity_position(uint64_t entity_id, const Location& new_location)
+        -> std::tuple<bool, std::optional<std::string>>
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        auto it = entities_.find(entity_id);
+        if (it == entities_.end())
+        {
+            return {false, "Entity not found"};
+        }
+        
+        // Get old location for grid update
+        auto old_location = it->second.location;
+        it->second.location = new_location;
+        it->second.last_update = std::chrono::steady_clock::now();
+        
+        // Update grid if entity moved to different cell
+        auto old_grid_key = get_grid_key(old_location);
+        auto new_grid_key = get_grid_key(new_location);
+        
+        if (old_grid_key != new_grid_key)
+        {
+            grid_[old_grid_key].entity_ids.erase(entity_id);
+            grid_[new_grid_key].entity_ids.insert(entity_id);
+        }
+        
+        // Create update packet
+        EntityUpdatePacket update_packet;
+        update_packet.set_entity_id(entity_id);
+        update_packet.set_location(new_location);
+        
+        // Broadcast to interested sessions
+        auto interested = get_interested_sessions(new_location, view_distance_);
+        for (const auto& session : interested)
+        {
+            if (session->connection())
+            {
+                session->connection()->send_packet(update_packet);
+            }
+        }
+        
+        return {true, std::nullopt};
+    }
+    
+} // namespace GameNetwork
