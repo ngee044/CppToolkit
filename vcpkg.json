@@ -27,6 +27,7 @@
       "modern-cpp-kafka",
       "openssl",
       "nanodbc",
-      "zlib"
+      "zlib",
+      "glm"
     ]
   }

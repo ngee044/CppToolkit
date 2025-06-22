@@ -57,6 +57,26 @@ set(SOURCE_FILES
     # LoadBalancing
     LoadBalancing/LoadBalancer.cpp
     LoadBalancing/ServerMonitor.cpp
+    LoadBalancing/PredictiveLoadBalancer.cpp
+    LoadBalancing/GeographicLoadBalancer.cpp
+    LoadBalancing/AutoScaler.cpp
+    LoadBalancing/SeamlessMigration.cpp
+    LoadBalancing/HighAvailability.cpp
+    
+    # Protocol
+    Protocol/ReliableUDP.cpp
+    Protocol/HybridProtocol.cpp
+    
+    # Prediction
+    Prediction/NetworkPrediction.cpp
+    Prediction/LagCompensation.cpp
+    
+    # Compression
+    Compression/DeltaCompression.cpp
+    Compression/BitPacker.cpp
+    
+    # Monitoring
+    Monitoring/SystemMonitor.cpp
 )
 
 # Header files
@@ -109,16 +129,53 @@ set(HEADER_FILES
     # LoadBalancing
     LoadBalancing/LoadBalancer.h
     LoadBalancing/ServerMonitor.h
+    LoadBalancing/PredictiveLoadBalancer.h
+    LoadBalancing/GeographicLoadBalancer.h
+    LoadBalancing/AutoScaler.h
+    LoadBalancing/SeamlessMigration.h
+    LoadBalancing/HighAvailability.h
+    
+    # Protocol
+    Protocol/ReliableUDP.h
+    Protocol/HybridProtocol.h
+    
+    # Prediction
+    Prediction/NetworkPrediction.h
+    Prediction/LagCompensation.h
+    
+    # Compression
+    Compression/DeltaCompression.h
+    Compression/BitPacker.h
+    
+    # Monitoring
+    Monitoring/SystemMonitor.h
 )
 
 project(${LIBRARY_NAME} VERSION 1.0.0.0)
 
 add_library(${LIBRARY_NAME} ${SOURCE_FILES} ${HEADER_FILES})
 
-target_include_directories(${LIBRARY_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} Core Session Packet Synchronization Optimization Security Metrics Replication Reliability LoadBalancing)
+target_include_directories(${LIBRARY_NAME} PUBLIC 
+    ${CMAKE_CURRENT_SOURCE_DIR} 
+    Core 
+    Session 
+    Packet 
+    Synchronization 
+    Optimization 
+    Security 
+    Metrics 
+    Replication 
+    Reliability 
+    LoadBalancing
+    Protocol
+    Prediction
+    Compression
+    Monitoring
+)
 
 # Find packages
 find_package(Boost REQUIRED COMPONENTS system)
+find_package(glm CONFIG REQUIRED)
 
 # Link libraries
 target_link_libraries(${LIBRARY_NAME} 
@@ -128,6 +185,7 @@ target_link_libraries(${LIBRARY_NAME}
         Utilities        # Utilities
         Redis            # For session persistence
         Boost::system
+        glm::glm
 )
 
 # Optional compression support
