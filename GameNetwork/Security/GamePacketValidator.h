@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Packet/GamePacket.h"
+#include "GamePacket.h"
 
 #include <memory>
 #include <unordered_map>

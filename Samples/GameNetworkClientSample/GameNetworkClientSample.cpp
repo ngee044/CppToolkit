@@ -86,8 +86,16 @@ auto main(int32_t argc, char* argv[]) -> int32_t
     // Create latency compensator
     latency_compensator_ = std::make_shared<LatencyCompensator>();
     
-    // Create game client
-    game_client_ = std::make_shared<GameNetworkClient>();
+    // Create game client with configuration
+    GameNetwork::ClientConfig client_config{};
+    client_config.server_host = "localhost";
+    client_config.server_port = 8080;
+    client_config.heartbeat_interval_ms = 30000;
+    client_config.reconnect_interval_ms = 5000;
+    client_config.enable_auto_reconnect = true;
+    client_config.connection_timeout_ms = 10000;
+    
+    game_client_ = std::make_shared<GameNetworkClient>(client_config);
     
     // Register signal handler
     register_signal();

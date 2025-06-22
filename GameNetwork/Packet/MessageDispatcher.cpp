@@ -1,5 +1,5 @@
 #include "MessageDispatcher.h"
-#include "../Session/GameSession.h"
+#include "GameSession.h"
 
 namespace GameNetwork { 
     MessageDispatcher::MessageDispatcher() 

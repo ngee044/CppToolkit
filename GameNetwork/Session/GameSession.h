@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../GameNetworkConstants.h"
+#include "GameNetworkConstants.h"
 #include "GameConnection.h"
 
 #include <memory>

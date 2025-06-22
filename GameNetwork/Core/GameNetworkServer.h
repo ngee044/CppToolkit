@@ -1,8 +1,10 @@
 #pragma once
 
-#include "../GameNetworkConstants.h"
-#include "../Session/GameSessionManager.h"
-#include "../../Network/NetworkServer.h"
+#include "GameNetworkConstants.h"
+#include <GameSessionManager.h>
+#include <NetworkServer.h>
+#include <ThreadPool.h>
+#include <Logger.h>
 
 #include <memory>
 #include <string>
@@ -10,6 +12,8 @@
 #include <functional>
 #include <optional>
 #include <tuple>
+#include <atomic>
+#include <chrono>
 
 namespace GameNetwork
 {
@@ -35,12 +39,19 @@ namespace GameNetwork
         bool enable_encryption;
         bool enable_compression;
         bool enable_rate_limiting;
+        bool enable_heartbeat;
+        uint16_t heartbeat_interval_ms;
+        
+        // Logging configuration
+        bool enable_detailed_logging;
+        bool log_packets;
+        bool log_connections;
     };
     
     class GameNetworkServer : public std::enable_shared_from_this<GameNetworkServer>
     {
     public:
-        GameNetworkServer(const ServerConfig& config);
+        explicit GameNetworkServer(const ServerConfig& config);
         virtual ~GameNetworkServer();
         
         // Server lifecycle
@@ -72,6 +83,9 @@ namespace GameNetwork
         auto broadcast_to_area(const Location& center, float radius, const GamePacket& packet) 
             -> std::tuple<bool, std::optional<std::string>>;
         
+        // ThreadPool access
+        auto get_thread_pool() -> std::shared_ptr<Thread::ThreadPool>;
+        
         // Server statistics
         struct ServerStats
         {
@@ -82,18 +96,32 @@ namespace GameNetwork
             uint64_t bytes_sent;
             uint64_t bytes_received;
             std::chrono::steady_clock::time_point start_time;
+            uint64_t jobs_processed;
+            uint64_t jobs_failed;
         };
         
         auto get_stats() const -> ServerStats;
+        auto reset_stats() -> void;
         
         // Event callbacks
         using ServerCallback = std::function<void()>;
+        using ClientCallback = std::function<void(const std::string&)>;
         auto on_server_started(ServerCallback callback) -> void;
         auto on_server_stopped(ServerCallback callback) -> void;
+        auto on_client_connected(ClientCallback callback) -> void;
+        auto on_client_disconnected(ClientCallback callback) -> void;
+        
+        // Monitoring and diagnostics
+        auto log_server_status() -> void;
+        auto get_active_connections() const -> std::vector<std::string>;
+        auto kick_client(const std::string& client_id) -> std::tuple<bool, std::optional<std::string>>;
         
     private:
         auto initialize_components() -> std::tuple<bool, std::optional<std::string>>;
         auto setup_network_callbacks() -> void;
+        auto start_monitoring() -> void;
+        auto stop_monitoring() -> void;
+        auto perform_server_maintenance() -> void;
         
         auto on_client_connected(const std::string& client_id, 
                                  const std::string& sub_id, 
@@ -108,6 +136,7 @@ namespace GameNetwork
                                 const std::string& message, 
                                 const std::vector<uint8_t>& data) 
             -> std::tuple<bool, std::optional<std::string>>;
+        auto on_client_disconnected_internal(const std::string& client_id) -> void;
         
     private:
         mutable std::mutex mutex_;
@@ -117,6 +146,7 @@ namespace GameNetwork
         
         // Core components
         std::shared_ptr<Network::NetworkServer> network_server_;
+        std::shared_ptr<Thread::ThreadPool> thread_pool_;
         std::shared_ptr<GameSessionManager> session_manager_;
         std::shared_ptr<PacketProcessor> packet_processor_;
         std::shared_ptr<MessageDispatcher> message_dispatcher_;
@@ -124,10 +154,13 @@ namespace GameNetwork
         
         // Server state
         std::atomic<bool> is_running_;
+        std::atomic<bool> is_monitoring_;
         ServerStats stats_;
         
         // Callbacks
         std::vector<ServerCallback> server_started_callbacks_;
         std::vector<ServerCallback> server_stopped_callbacks_;
+        std::vector<ClientCallback> client_connected_callbacks_;
+        std::vector<ClientCallback> client_disconnected_callbacks_;
     };
 }

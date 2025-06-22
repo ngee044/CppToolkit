@@ -1,7 +1,10 @@
 #pragma once
 
 #include "GameSession.h"
-#include "../Network/NetworkSession.h"
+
+#include <NetworkSession.h>
+#include <ThreadPool.h>
+#include "Logger.h"
 
 #include <memory>
 #include <string>
@@ -11,6 +14,8 @@
 #include <vector>
 #include <optional>
 #include <tuple>
+#include <atomic>
+#include <chrono>
 
 namespace GameNetwork
 {
@@ -19,6 +24,11 @@ namespace GameNetwork
     public:
         GameSessionManager();
         virtual ~GameSessionManager();
+        
+        // Initialization
+        auto initialize(std::shared_ptr<Thread::ThreadPool> thread_pool) 
+            -> std::tuple<bool, std::optional<std::string>>;
+        auto shutdown() -> void;
         
         // Session lifecycle
         auto create_session(const std::string& account_id) 
@@ -31,8 +41,7 @@ namespace GameNetwork
             -> std::tuple<bool, std::optional<std::string>>;
         
         // Connection management
-        auto on_network_connected(std::shared_ptr<Network::NetworkSession> network_session, 
-                                  const std::string& account_id) 
+        auto on_network_connected(std::shared_ptr<Network::NetworkSession> network_session, const std::string& account_id) 
             -> std::tuple<bool, std::optional<std::string>>;
         auto on_network_disconnected(const std::string& connection_id) 
             -> std::tuple<bool, std::optional<std::string>>;
@@ -51,13 +60,28 @@ namespace GameNetwork
         auto suspended_session_count() const -> size_t;
         
         // Session migration
-        auto migrate_session(const std::string& session_id, 
-                             const std::string& target_server) 
-            -> std::tuple<bool, std::optional<std::string>>;
+        auto migrate_session(const std::string& session_id, const std::string& target_server) -> std::tuple<bool, std::optional<std::string>>;
         
-        // Cleanup
+        // Cleanup and maintenance
         auto cleanup_inactive_sessions() -> size_t;
         auto cleanup_timeout_connections() -> size_t;
+        auto cleanup_stale_sessions() -> size_t;
+        auto perform_maintenance() -> void;
+        
+        // Monitoring
+        struct SessionStatistics
+        {
+            size_t total_sessions_created;
+            size_t total_sessions_terminated;
+            size_t peak_concurrent_sessions;
+            std::chrono::steady_clock::time_point start_time;
+            uint64_t cleanup_runs;
+            uint64_t sessions_cleaned;
+        };
+        
+        auto get_statistics() const -> SessionStatistics;
+        auto reset_statistics() -> void;
+        auto log_status() -> void;
         
         // Callbacks
         using SessionCallback = std::function<void(std::shared_ptr<GameSession>)>;
@@ -70,9 +94,20 @@ namespace GameNetwork
         auto generate_session_id() const -> std::string;
         auto start_cleanup_timer() -> void;
         auto stop_cleanup_timer() -> void;
+        auto schedule_cleanup() -> void;
+        auto execute_cleanup() -> void;
+        
+        auto update_peak_sessions() -> void;
+        auto notify_session_created(std::shared_ptr<GameSession> session) -> void;
+        auto notify_session_terminated(std::shared_ptr<GameSession> session) -> void;
+        auto notify_session_connected(std::shared_ptr<GameSession> session) -> void;
+        auto notify_session_disconnected(std::shared_ptr<GameSession> session) -> void;
         
     private:
         mutable std::mutex mutex_;
+        
+        // Core components
+        std::shared_ptr<Thread::ThreadPool> thread_pool_;
         
         // Session storage
         std::unordered_map<std::string, std::shared_ptr<GameSession>> sessions_by_id_;
@@ -82,14 +117,18 @@ namespace GameNetwork
         std::unordered_map<std::string, std::shared_ptr<GameConnection>> connections_;
         std::unordered_map<std::string, std::string> connection_to_session_;
         
+        // Statistics
+        SessionStatistics statistics_;
+        
+        // State management
+        std::atomic<bool> is_initialized_;
+        std::atomic<bool> is_shutdown_;
+        std::atomic<bool> cleanup_running_;
+        
         // Callbacks
         std::vector<SessionCallback> session_created_callbacks_;
         std::vector<SessionCallback> session_terminated_callbacks_;
         std::vector<SessionCallback> session_connected_callbacks_;
         std::vector<SessionCallback> session_disconnected_callbacks_;
-        
-        // Cleanup timer
-        std::future<void> cleanup_timer_;
-        std::atomic<bool> cleanup_running_;
     };
 }

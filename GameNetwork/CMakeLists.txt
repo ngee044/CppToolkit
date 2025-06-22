@@ -101,7 +101,7 @@ project(${LIBRARY_NAME} VERSION 1.0.0.0)
 
 add_library(${LIBRARY_NAME} ${SOURCE_FILES} ${HEADER_FILES})
 
-target_include_directories(${LIBRARY_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(${LIBRARY_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} Core Session Packet Synchronization Optimization Security Metrics Replication Reliability)
 
 # Find packages
 find_package(Boost REQUIRED COMPONENTS system)

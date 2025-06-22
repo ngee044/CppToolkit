@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../Session/GameSession.h"
-#include "../../Redis/RedisClient.h"
+#include "GameSession.h"
+#include <RedisClient.h>
 
 #include <memory>
 #include <string>

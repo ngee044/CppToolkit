@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../GameNetworkConstants.h"
-#include "../Packet/GamePacket.h"
+#include "GameNetworkConstants.h"
+#include "GamePacket.h"
 
 #include <memory>
 #include <mutex>

@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../GameNetworkConstants.h"
-#include "../Network/NetworkSession.h"
+#include "GameNetworkConstants.h"
+#include "NetworkSession.h"
 
 #include <memory>
 #include <string>

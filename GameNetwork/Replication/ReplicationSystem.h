@@ -1,8 +1,8 @@
 #pragma once
 
-#include "../GameNetworkConstants.h"
-#include "../Synchronization/EntityReplicator.h"
-#include "../Metrics/NetworkMetrics.h"
+#include "GameNetworkConstants.h"
+#include "EntityReplicator.h"
+#include "NetworkMetrics.h"
 
 #include <memory>
 #include <vector>
