@@ -7,12 +7,17 @@
 namespace Redis
 {
 	class TLSOptions
-	{
-	public:
+	{	public:
 		TLSOptions();
 
 		auto use_tls(bool value) -> TLSOptions&;
 		auto use_tls() const -> bool;
+		
+		// Additional getters for the needed properties
+		auto enabled() const -> bool { return use_tls_; }
+		auto cert_path() const -> const std::string& { return client_cert_; }
+		auto key_path() const -> const std::string& { return client_key_; }
+		auto ca_cert_path() const -> const std::string& { return ca_cert_; }
 
 		auto ca_cert(const std::string& value) -> TLSOptions&;
 		auto ca_cert() const -> const std::string&;

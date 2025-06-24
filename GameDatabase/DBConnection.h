@@ -21,6 +21,7 @@
 #include <tuple>
 #include <optional>
 #include <vector>
+#include <type_traits>
 
 #include <mutex>
 
@@ -43,14 +44,28 @@ namespace GameDatabase
 	public:
 		DBConnection();
 		~DBConnection();
-
 		auto connect(SQLHENV henv, const std::wstring& connection_string) -> std::tuple<bool, std::optional<std::string>>;
 		auto clear() -> void;
-
+		auto prepare(const std::wstring& query) -> std::tuple<bool, std::optional<std::string>>;
 		auto execute(const std::wstring& query) -> std::tuple<bool, std::optional<std::string>>;
 		auto fetch() -> std::tuple<bool, std::optional<std::string>>;
 		auto row_count() -> std::int32_t;
 		auto unbind() -> void;
+				// Additional methods for compatibility
+		auto is_valid() const -> bool { return connection_ != SQL_NULL_HDBC && statement_ != SQL_NULL_HSTMT; }
+		auto is_null() const -> bool { return !is_valid(); }
+		auto get_data() -> void* { return static_cast<void*>(statement_); }
+		auto get_affected_rows() -> std::int32_t { return row_count(); }
+		
+		// Template method for getting typed data
+		template<typename T>
+		auto get_data(int column_index) -> T
+		{
+			// This is a placeholder implementation
+			// In a real implementation, you would extract data from the result set
+			static_assert(std::is_default_constructible_v<T>, "Type must be default constructible");
+			return T{};
+		}
 
 		auto bind_param(std::int32_t param_index, bool* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>;
 		auto bind_param(std::int32_t param_index, std::int8_t* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>;

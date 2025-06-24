@@ -1,100 +1,57 @@
 #pragma once
 
-#include "GameNetworkConstants.h"
-
+#include "../GameNetworkConstants.h"
 #include <string>
-#include <cstdint>
-#include <unordered_map>
-#include <chrono>
-#include <any>
-#include <memory>
 #include <optional>
-#include <vector>
+#include <tuple>
+#include <chrono>
 
 namespace GameNetwork
 {
     class Character
     {
     public:
-        Character(uint64_t character_id, const std::string& name);
-        virtual ~Character() = default;
+        Character();
+        ~Character();
         
-        // Basic info
-        auto character_id() const -> uint64_t;
-        auto name() const -> const std::string&;
-        auto level() const -> uint32_t;
-        auto set_level(uint32_t level) -> void;
+        // Character data
+        auto id() const -> uint64_t { return character_id_; }
+        auto name() const -> const std::string& { return name_; }
+        auto level() const -> uint32_t { return level_; }
+        auto experience() const -> uint64_t { return experience_; }
         
         // Location
-        auto location() const -> const Location&;
-        auto set_location(const Location& location) -> void;
+        auto get_location() const -> Location { return location_; }
+        auto set_location(const Location& loc) -> void { location_ = loc; }
+        
+        // Load/Save
+        auto load(uint64_t character_id, const std::string& account_id) 
+            -> std::tuple<bool, std::optional<std::string>>;
+        auto save() -> std::tuple<bool, std::optional<std::string>>;
         
         // Stats
-        auto health() const -> int32_t;
-        auto max_health() const -> int32_t;
-        auto mana() const -> int32_t;
-        auto max_mana() const -> int32_t;
+        auto get_health() const -> uint32_t { return health_; }
+        auto get_max_health() const -> uint32_t { return max_health_; }
+        auto get_mana() const -> uint32_t { return mana_; }
+        auto get_max_mana() const -> uint32_t { return max_mana_; }
         
-        auto set_health(int32_t health) -> void;
-        auto set_max_health(int32_t max_health) -> void;
-        auto set_mana(int32_t mana) -> void;
-        auto set_max_mana(int32_t max_mana) -> void;
-        
-        // Experience
-        auto experience() const -> uint64_t;
-        auto set_experience(uint64_t exp) -> void;
-        auto add_experience(uint64_t exp) -> void;
-        
-        // Custom properties
-        template<typename T>
-        auto set_property(const std::string& key, const T& value) -> void
-        {
-            properties_[key] = value;
-        }
-        
-        template<typename T>
-        auto get_property(const std::string& key) const -> std::optional<T>
-        {
-            auto it = properties_.find(key);
-            if (it != properties_.end())
-            {
-                try
-                {
-                    return std::any_cast<T>(it->second);
-                }
-                catch (const std::bad_any_cast&)
-                {
-                    return std::nullopt;
-                }
-            }
-            return std::nullopt;
-        }
-        
-        // Serialization
-        auto serialize() const -> std::vector<uint8_t>;
-        static auto deserialize(const std::vector<uint8_t>& data) 
-            -> std::unique_ptr<Character>;
+        auto set_health(uint32_t value) -> void { health_ = std::min(value, max_health_); }
+        auto set_mana(uint32_t value) -> void { mana_ = std::min(value, max_mana_); }
         
     private:
         uint64_t character_id_;
+        std::string account_id_;
         std::string name_;
         uint32_t level_;
+        uint64_t experience_;
         
         Location location_;
         
-        // Stats
-        int32_t health_;
-        int32_t max_health_;
-        int32_t mana_;
-        int32_t max_mana_;
+        uint32_t health_;
+        uint32_t max_health_;
+        uint32_t mana_;
+        uint32_t max_mana_;
         
-        uint64_t experience_;
-        
-        // Custom properties
-        std::unordered_map<std::string, std::any> properties_;
-        
-        // Timestamps
-        std::chrono::system_clock::time_point created_time_;
         std::chrono::system_clock::time_point last_save_time_;
     };
 }

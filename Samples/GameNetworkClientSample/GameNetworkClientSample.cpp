@@ -223,7 +223,7 @@ auto handle_server_message(const GamePacket& packet) -> void
 {
     Logger::handle().write(LogTypes::Information, 
         fmt::format("Received server message (type: {})", 
-            static_cast<uint16_t>(packet.type())));
+            static_cast<uint16_t>(packet.get_type())));
 }
 
 auto handle_entity_update(const GamePacket& packet) -> void

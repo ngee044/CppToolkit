@@ -1,669 +1,755 @@
-
 #include "DBMigration.h"
-#include "Converter.h"
-
-#include <fstream>
-#include <sstream>
-#include <iomanip>
-#include <regex>
-#include <algorithm>
-#include <functional>
+#include <DBTransaction.h>
+#include <Logger.h>
+#include <File.h>
+#include <Converter.h>
+#ifdef _WIN32
 #include <windows.h>
-
-using namespace Utilities;
+#include <bcrypt.h>
+#pragma comment(lib, "bcrypt.lib")
+#else
+#include <openssl/sha.h>
+#endif
+#include <sstream>
+#include <algorithm>
+#include <regex>
+#include <thread>
+#include <iomanip>
 
 namespace GameDatabase
 {
-	DBMigration::DBMigration(std::shared_ptr<DBConnectionPool> connection_pool)
-		: connection_pool_(connection_pool)
-	{
-	}
+    DBMigration::DBMigration(std::shared_ptr<DBConnectionPool> connection_pool)
+        : connection_pool_(connection_pool)
+        , is_initialized_(false)
+    {
+    }
 
-	DBMigration::~DBMigration() = default;
+    DBMigration::~DBMigration() = default;
 
-	auto DBMigration::initialize() -> std::tuple<bool, std::optional<std::string>>
-	{
-		return create_migration_table();
-	}
+    auto DBMigration::initialize() -> std::tuple<bool, std::optional<std::string>>
+    {
+        if (is_initialized_)
+        {
+            return { true, std::nullopt };
+        }
 
-	auto DBMigration::register_migration(const MigrationInfo& migration) -> std::tuple<bool, std::optional<std::string>>
-	{
-		std::lock_guard<std::mutex> lock(migration_mutex_);
-		
-		if (migrations_.find(migration.version) != migrations_.end())
-		{
-			return { false, "Migration version already exists: " + std::to_string(migration.version) };
-		}
-		
-		migrations_[migration.version] = migration;
-		return { true, std::nullopt };
-	}
+        auto connection = connection_pool_->pop();
+        if (!connection)
+        {
+            return { false, "Failed to get database connection" };
+        }
 
-	auto DBMigration::load_migrations_from_directory(const std::filesystem::path& directory_path) 
-		-> std::tuple<bool, std::optional<std::string>>
-	{
-		if (!std::filesystem::exists(directory_path))
-		{
-			return { false, "Migration directory does not exist: " + directory_path.string() };
-		}
-		
-		std::int32_t loaded_count = 0;
-		
-		for (const auto& entry : std::filesystem::directory_iterator(directory_path))
-		{
-			if (entry.is_regular_file() && entry.path().extension() == ".sql")
-			{
-				auto [success, error, migration] = parse_migration_file(entry.path());
-				if (success)
-				{
-					auto [reg_success, reg_error] = register_migration(migration);
-					if (reg_success)
-					{
-						loaded_count++;
-					}
-				}
-			}
-		}
-		
-		return { true, std::nullopt };
-	}
+        DBTransaction transaction(connection);
+        auto [begin_success, begin_error] = transaction.begin();
+        if (!begin_success)
+        {
+            connection_pool_->push(connection);
+            return { false, begin_error };
+        }
 
-	auto DBMigration::get_current_version() -> std::tuple<bool, std::optional<std::string>, std::uint32_t>
-	{
-		auto connection = connection_pool_->pop();
-		if (!connection)
-		{
-			return { false, "Failed to get database connection", 0 };
-		}
-		
-		std::wstring query = L"SELECT MAX(version) FROM db_migration_history WHERE success = 1";
-		auto [exec_success, exec_error] = connection->execute(query);
-		if (!exec_success)
-		{
-			connection_pool_->push(connection);
-			return { false, exec_error, 0 };
-		}
-		
-		std::int32_t current_version = 0;
-		SQLLEN indicator = 0;
-		connection->bind_column(1, reinterpret_cast<std::int32_t*>(&current_version), &indicator);
-		
-		auto [fetch_success, fetch_error] = connection->fetch();
+        try
+        {
+            // Create migration history table
+            std::wstring create_table_sql = L""
+                L"IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='migration_history' AND xtype='U')\n"
+                L"CREATE TABLE migration_history (\n"
+                L"    version INT PRIMARY KEY,\n"
+                L"    name NVARCHAR(255) NOT NULL,\n"
+                L"    checksum VARCHAR(64) NOT NULL,\n"
+                L"    applied_at DATETIME NOT NULL DEFAULT GETDATE(),\n"
+                L"    execution_time_ms INT NOT NULL,\n"
+                L"    success BIT NOT NULL,\n"
+                L"    error_message NVARCHAR(MAX)\n"
+                L")";
 
-		if (!fetch_success)
-		{
-			return { false, fetch_error, current_version };
-		}
+            auto [create_success, create_error] = connection->execute(create_table_sql);
+            if (!create_success)
+            {
+                transaction.rollback();
+                connection_pool_->push(connection);
+                return { false, "Failed to create migration history table: " + 
+                         (create_error ? *create_error : "Unknown error") };
+            }
 
-		connection_pool_->push(connection);
+            // Create migration lock table
+            std::wstring create_lock_sql = L""
+                L"IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='migration_lock' AND xtype='U')\n"
+                L"CREATE TABLE migration_lock (\n"
+                L"    id INT PRIMARY KEY CHECK (id = 1),\n"
+                L"    locked BIT NOT NULL DEFAULT 0,\n"
+                L"    locked_by NVARCHAR(255),\n"
+                L"    locked_at DATETIME\n"
+                L")";
 
-		if (fetch_success && indicator != SQL_NULL_DATA)
-		{
-			return { true, std::nullopt, current_version };
-		}
-		
-		return { true, std::nullopt, 0 };
-	}
+            auto [create_lock_success, create_lock_error] = connection->execute(create_lock_sql);
+            if (!create_lock_success)
+            {
+                transaction.rollback();
+                connection_pool_->push(connection);
+                return { false, "Failed to create migration lock table: " + 
+                         (create_lock_error ? *create_lock_error : "Unknown error") };
+            }
 
-	auto DBMigration::migrate_to_version(std::uint32_t target_version) -> std::tuple<bool, std::optional<std::string>>
-	{
-		auto [current_success, current_error, current_version] = get_current_version();
-		if (!current_success)
-		{
-			return { false, current_error };
-		}
-		
-		if (current_version == target_version)
-		{
-			return { true, std::nullopt };
-		}
-		
-		std::vector<std::uint32_t> versions_to_apply;
-		
-		// 업그레이드
-		if (current_version < target_version)
-		{
-			for (const auto& [version, migration] : migrations_)
-			{
-				if (version > current_version && version <= target_version)
-				{
-					versions_to_apply.push_back(version);
-				}
-			}
-			std::sort(versions_to_apply.begin(), versions_to_apply.end());
-		}
-		// 다운그레이드
-		else
-		{
-			for (const auto& [version, migration] : migrations_)
-			{
-				if (version <= current_version && version > target_version)
-				{
-					versions_to_apply.push_back(version);
-				}
-			}
-			std::sort(versions_to_apply.rbegin(), versions_to_apply.rend());
-		}
-		
-		// 마이그레이션 실행
-		for (std::uint32_t version : versions_to_apply)
-		{
-			if (before_migration_hook_)
-			{
-				before_migration_hook_(version);
-			}
-			
-			auto& migration = migrations_[version];
-			std::tuple<bool, std::optional<std::string>> result;
-			
-			if (current_version < target_version)
-			{
-				result = apply_migration(migration);
-			}
-			else
-			{
-				result = revert_migration(migration);
-			}
-			
-			bool success = std::get<0>(result);
-			
-			if (after_migration_hook_)
-			{
-				after_migration_hook_(version, success);
-			}
-			
-			if (!success)
-			{
-				return result;
-			}
-		}
-		
-		return { true, std::nullopt };
-	}
+            // Insert initial lock record if not exists
+            std::wstring insert_lock_sql = L""
+                L"IF NOT EXISTS (SELECT * FROM migration_lock WHERE id = 1)\n"
+                L"INSERT INTO migration_lock (id, locked) VALUES (1, 0)";
 
-	auto DBMigration::migrate_to_latest() -> std::tuple<bool, std::optional<std::string>>
-	{
-		if (migrations_.empty())
-		{
-			return { true, std::nullopt };
-		}
-		
-		std::uint32_t latest_version = migrations_.rbegin()->first;
-		return migrate_to_version(latest_version);
-	}
+            auto [insert_lock_success, insert_lock_error] = connection->execute(insert_lock_sql);
+            if (!insert_lock_success)
+            {
+                transaction.rollback();
+                connection_pool_->push(connection);
+                return { false, "Failed to initialize migration lock: " + 
+                         (insert_lock_error ? *insert_lock_error : "Unknown error") };
+            }
 
-	auto DBMigration::rollback_one() -> std::tuple<bool, std::optional<std::string>>
-	{
-		auto [success, error, current_version] = get_current_version();
-		if (!success)
-		{
-			return { false, error };
-		}
-		
-		if (current_version == 0)
-		{
-			return { false, "No migrations to rollback" };
-		}
-		
-		// 이전 버전 찾기
-		std::uint32_t previous_version = 0;
-		for (const auto& [version, migration] : migrations_)
-		{
-			if (version < current_version && version > previous_version)
-			{
-				previous_version = version;
-			}
-		}
-		
-		return migrate_to_version(previous_version);
-	}
+            auto [commit_success, commit_error] = transaction.commit();
+            if (!commit_success)
+            {
+                connection_pool_->push(connection);
+                return { false, commit_error };
+            }
 
-	auto DBMigration::rollback_to_version(std::uint32_t target_version) -> std::tuple<bool, std::optional<std::string>>
-	{
-		return migrate_to_version(target_version);
-	}
+            connection_pool_->push(connection);
+            is_initialized_ = true;
 
-	auto DBMigration::get_migration_status(std::uint32_t version) -> MigrationStatus
-	{
-		auto connection = connection_pool_->pop();
-		if (!connection)
-		{
-			return MigrationStatus::FAILED;
-		}
-		
-		std::wstring query = L"SELECT success FROM db_migration_history WHERE version = ? ORDER BY applied_at DESC";
-		connection->execute(query);
-		
-		std::int32_t version_param = static_cast<std::int32_t>(version);
-		SQLLEN indicator = 0;
-		connection->bind_param(1, &version_param, &indicator);
-		
-		bool success = false;
-		connection->bind_column(1, &success, &indicator);
-		
-		auto [fetch_success, fetch_error] = connection->fetch();
-		
-		if (!fetch_success)
-		{
-			connection_pool_->push(connection);
-			if (fetch_error)
-			{
-				return MigrationStatus::FAILED; // Fetch error indicates failure
-			}
-			return MigrationStatus::NOT_APPLIED; // No entry found means not applied
-		}
-		else
-		{
-			connection_pool_->push(connection);
-		}
-		
-		return success ? MigrationStatus::APPLIED : MigrationStatus::FAILED;
-	}
+            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+                "DBMigration initialized successfully");
 
-	auto DBMigration::get_migration_history() -> std::tuple<bool, std::optional<std::string>, std::vector<MigrationHistory
->>
-	{
-		auto connection = connection_pool_->pop();
-		if (!connection)
-		{
-			return { false, "Failed to get database connection", {} };
-		}
-		
-		std::wstring query = L"SELECT version, name, applied_at, execution_time_ms, success, error_message "
-							L"FROM db_migration_history ORDER BY applied_at DESC";
-		
-		auto [exec_success, exec_error] = connection->execute(query);
-		if (!exec_success)
-		{
-			connection_pool_->push(connection);
-			return { false, exec_error, {} };
-		}
-		
-		std::vector<MigrationHistory> history;
-		
-		while (true)
-		{
-			MigrationHistory entry;
-			WCHAR name_buffer[256];
-			WCHAR error_buffer[1024];
-			TIMESTAMP_STRUCT timestamp;
-			std::int32_t execution_time_ms;
-			bool success;
-			SQLLEN indicators[6];
-			
-			std::int32_t version_temp = 0;            
-			connection->bind_column(1, &version_temp, &indicators[0]);            
-			auto [fetch_success, fetch_error] = connection->fetch();            
-			if (!fetch_success)            
-			{
-				if (fetch_error)
-				{
-					connection_pool_->push(connection);
-					return { false, fetch_error, history };
-				}
-				break; // No more rows
-			}            
-			entry.version = static_cast<std::uint32_t>(version_temp);
-			connection->bind_column(2, name_buffer, 256, &indicators[1]);
-			connection->bind_column(3, &timestamp, &indicators[2]);
-			connection->bind_column(4, &execution_time_ms, &indicators[3]);
-			connection->bind_column(5, &success, &indicators[4]);
-			connection->bind_column(6, error_buffer, 1024, &indicators[5]);
-			
-			std::tie(fetch_success, fetch_error) = connection->fetch();
-			if (!fetch_success)
-			{
-				if (fetch_error)
-				{
-					return { false, fetch_error, history };
-				}
-				break; // No more rows
-			}
-			
-			entry.name = Utilities::Converter::to_string(std::wstring(name_buffer));
-			entry.execution_time = std::chrono::milliseconds(execution_time_ms);
-			entry.success = success;
-			
-			if (indicators[5] != SQL_NULL_DATA)
-			{
-				entry.error_message = Utilities::Converter::to_string(std::wstring(error_buffer));
-			}
-			
-			history.push_back(entry);
-		}
-		
-		connection_pool_->push(connection);
-		return { true, std::nullopt, history };
-	}
+            return { true, std::nullopt };
+        }
+        catch (const std::exception& e)
+        {
+            transaction.rollback();
+            connection_pool_->push(connection);
+            return { false, std::string("Exception during initialization: ") + e.what() };
+        }
+    }
 
-	auto DBMigration::get_pending_migrations() -> std::vector<MigrationInfo>
-	{
-		auto [success, error, current_version] = get_current_version();
-		if (!success)
-		{
-			return {};
-		}
-		
-		std::vector<MigrationInfo> pending;
-		
-		for (const auto& [version, migration] : migrations_)
-		{
-			if (version > current_version)
-			{
-				pending.push_back(migration);
-			}
-		}
-		
-		std::sort(pending.begin(), pending.end(), 
-			[](const MigrationInfo& a, const MigrationInfo& b) {
-				return a.version < b.version;
-			});
-			
-		return pending;
-	}
+    auto DBMigration::register_migration(const MigrationInfo& migration) 
+        -> std::tuple<bool, std::optional<std::string>>
+    {
+        // Validate migration
+        if (migration.version == 0)
+        {
+            return { false, "Migration version cannot be 0" };
+        }
 
-	auto DBMigration::validate_migration(std::uint32_t version) -> std::tuple<bool, std::optional<std::string>>
-	{
-		auto it = migrations_.find(version);
-		if (it == migrations_.end())
-		{
-			return { false, "Migration not found: " + std::to_string(version) };
-		}
-		
-		// 스크립트 구문 검증 (간단한 검사)
-		const auto& migration = it->second;
-		
-		if (migration.up_script.empty())
-		{
-			return { false, "Up script is empty" };
-		}
-		
-		if (migration.down_script.empty())
-		{
-			return { false, "Down script is empty" };
-		}
-		
-		// 체크섬 검증
-		std::string calculated_checksum = calculate_checksum(migration.up_script + migration.down_script);
-		if (calculated_checksum != migration.checksum)
-		{
-			return { false, "Checksum mismatch" };
-		}
-		
-		return { true, std::nullopt };
-	}
+        if (migration.name.empty())
+        {
+            return { false, "Migration name cannot be empty" };
+        }
 
-	auto DBMigration::set_before_migration_hook(std::function<void(std::uint32_t)> hook) -> void
-	{
-		before_migration_hook_ = hook;
-	}
+        if (migration.up_script.empty())
+        {
+            return { false, "Migration up script cannot be empty" };
+        }
 
-	auto DBMigration::set_after_migration_hook(std::function<void(std::uint32_t, bool)> hook) -> void
-	{
-		after_migration_hook_ = hook;
-	}
+        // Calculate checksum
+        std::string checksum = calculate_checksum(migration.up_script);
 
-	auto DBMigration::create_migration_table() -> std::tuple<bool, std::optional<std::string>>
-	{
-		auto connection = connection_pool_->pop();
-		if (!connection)
-		{
-			return { false, "Failed to get database connection" };
-		}
-		
-		std::wstring create_table_sql = 
-			L"IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='db_migration_history' AND xtype='U') "
-			L"CREATE TABLE db_migration_history ("
-			L"    id INT IDENTITY(1,1) PRIMARY KEY,"
-			L"    version INT NOT NULL,"
-			L"    name NVARCHAR(255) NOT NULL,"
-			L"    applied_at DATETIME NOT NULL DEFAULT GETDATE(),"
-			L"    execution_time_ms INT NOT NULL,"
-			L"    success BIT NOT NULL,"
-			L"    error_message NVARCHAR(MAX) NULL,"
-			L"    checksum NVARCHAR(64) NOT NULL"
-			L")";
-		
-		auto result = connection->execute(create_table_sql);
-		connection_pool_->push(connection);
-		
-		return result;
-	}
+        // Check for duplicate version
+        auto existing_it = migrations_.find(migration.version);
+        if (existing_it != migrations_.end())
+        {
+            // Verify checksum matches
+            if (existing_it->second.checksum != checksum)
+            {
+                return { false, "Migration version " + std::to_string(migration.version) + 
+                        " already exists with different checksum" };
+            }
+        }
 
-	auto DBMigration::apply_migration(const MigrationInfo& migration) -> std::tuple<bool, std::optional<std::string>>
-	{
-		auto connection = connection_pool_->pop();
-		if (!connection)
-		{
-			return { false, "Failed to get database connection" };
-		}
-		
-		auto transaction = std::make_shared<DBTransaction>(connection);
-		TransactionGuard guard(transaction);
-		
-		auto start_time = std::chrono::steady_clock::now();
-		
-		auto [exec_success, exec_error] = execute_sql_script(connection, migration.up_script);
-		
-		auto end_time = std::chrono::steady_clock::now();
-		auto execution_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-		
-		MigrationHistory history;
-		history.version = migration.version;
-		history.name = migration.name;
-		history.applied_at = std::chrono::system_clock::now();
-		history.execution_time = execution_time;
-		history.success = exec_success;
-		history.error_message = exec_error.value_or("");
-		
-		auto [record_success, record_error] = record_migration_history(history);
-		if (!record_success)
-		{
-			connection_pool_->push(connection);
-			return { false, record_error };
-		}
-		
-		if (exec_success)
-		{
-			guard.commit();
-		}
-		
-		connection_pool_->push(connection);
-		return { exec_success, exec_error };
-	}
+        // Store migration
+        MigrationInfo stored_migration = migration;
+        stored_migration.checksum = checksum;
+        migrations_[migration.version] = stored_migration;
 
-	auto DBMigration::revert_migration(const MigrationInfo& migration) -> std::tuple<bool, std::optional<std::string>>
-	{
-		auto connection = connection_pool_->pop();
-		if (!connection)
-		{
-			return { false, "Failed to get database connection" };
-		}
-		
-		auto transaction = std::make_shared<DBTransaction>(connection);
-		TransactionGuard guard(transaction);
-		
-		auto [exec_success, exec_error] = execute_sql_script(connection, migration.down_script);
-		
-		if (exec_success)
-		{
-			// 히스토리에서 제거
-			std::wstring delete_sql = L"DELETE FROM db_migration_history WHERE version = ? AND success = 1";
-			connection->execute(delete_sql);
-			
-			std::int32_t version_param = static_cast<std::int32_t>(migration.version);
-			SQLLEN indicator = 0;
-			connection->bind_param(1, &version_param, &indicator);
-			
-			guard.commit();
-		}
-		
-		connection_pool_->push(connection);
-		return { exec_success, exec_error };
-	}
+        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            "Registered migration: v" + std::to_string(migration.version) + " - " + migration.name);
 
-	auto DBMigration::record_migration_history(const MigrationHistory& history) -> std::tuple<bool, std::optional<std::string>>
-	{
-		// 이 메서드는 apply_migration 내에서 호출되므로 connection은 이미 있음
-		// 실제 구현에서는 connection을 파라미터로 받아야 함
-		return { true, std::nullopt };
-	}
+        return { true, std::nullopt };
+    }
 
-	auto DBMigration::parse_migration_file(const std::filesystem::path& file_path) 
-		-> std::tuple<bool, std::optional<std::string>, MigrationInfo>
-	{
-		std::ifstream file(file_path);
-		if (!file.is_open())
-		{
-			return { false, "Failed to open migration file", {} };
-		}
-		
-		MigrationInfo migration;
-		
-		// 파일명에서 버전과 이름 추출 (예: V001__create_users_table.sql)
-		std::string filename = file_path.stem().string();
-		std::regex pattern(R"(V(\d+)__(.+))");
-		std::smatch matches;
-		
-		if (!std::regex_match(filename, matches, pattern))
-		{
-			return { false, "Invalid migration filename format", {} };
-		}
-		
-		migration.version = std::stoul(matches[1]);
-		migration.name = matches[2];
-		
-		// 파일 내용 읽기
-		std::stringstream buffer;
-		buffer << file.rdbuf();
-		std::string content = buffer.str();
-		
-		// UP/DOWN 섹션 분리
-		std::regex up_pattern(R"(--\s*UP\s*\n([\s\S]*?)(?=--\s*DOWN|$))");
-		std::regex down_pattern(R"(--\s*DOWN\s*\n([\s\S]*))");
-		
-		std::smatch up_match, down_match;
-		if (std::regex_search(content, up_match, up_pattern))
-		{
-			migration.up_script = std::wstring(up_match[1].str().begin(), up_match[1].str().end());
-		}
-		
-		if (std::regex_search(content, down_match, down_pattern))
-		{
-			migration.down_script = std::wstring(down_match[1].str().begin(), down_match[1].str().end());
-		}
-		
-		migration.created_at = std::chrono::system_clock::now();
-		migration.checksum = calculate_checksum(migration.up_script + migration.down_script);
-		
-		return { true, std::nullopt, migration };
-	}
+    auto DBMigration::load_migrations_from_directory(const std::filesystem::path& directory_path) 
+        -> std::tuple<bool, std::optional<std::string>>
+    {
+        if (!std::filesystem::exists(directory_path))
+        {
+            return { false, "Directory does not exist: " + directory_path.string() };
+        }
 
-	auto DBMigration::calculate_checksum(const std::wstring& script) -> std::string
-	{
-		// 간단한 해시 함수 사용 (std::hash)
-		std::hash<std::wstring> hasher;
-		std::size_t hash_value = hasher(script);
-		
-		std::stringstream ss;
-		ss << std::hex << hash_value;
-		
-		return ss.str();
-	}
+        if (!std::filesystem::is_directory(directory_path))
+        {
+            return { false, "Path is not a directory: " + directory_path.string() };
+        }
 
-	auto DBMigration::execute_sql_script(std::shared_ptr<DBConnection> connection, const std::wstring& script) 
-		-> std::tuple<bool, std::optional<std::string>>
-	{
-		// SQL 문장 분리 (세미콜론 기준)
-		std::wistringstream stream(script);
-		std::wstring statement;
-		
-		while (std::getline(stream, statement, L';'))
-		{
-			// 빈 문장 건너뛰기
-			statement.erase(0, statement.find_first_not_of(L" \t\n\r"));
-			statement.erase(statement.find_last_not_of(L" \t\n\r") + 1);
-			
-			if (statement.empty())
-			{
-				continue;
-			}
-			
-			auto [success, error] = connection->execute(statement);
-			if (!success)
-			{
-				return { false, error };
-			}
-		}
-		
-		return { true, std::nullopt };
-	}
+        // Pattern for migration files: V{version}__{name}.sql
+        std::regex migration_pattern(R"(V(\d+)__(.+)\.sql)");
 
-	// MigrationGenerator 구현
-	auto MigrationGenerator::create_migration_file(
-		const std::filesystem::path& directory,
-		const std::string& name,
-		const std::string& description) 
-		-> std::tuple<bool, std::optional<std::string>, std::filesystem::path>
-	{
-		if (!std::filesystem::exists(directory))
-		{
-			std::filesystem::create_directories(directory);
-		}
-		
-		// 타임스탬프 기반 버전 생성
-		auto now = std::chrono::system_clock::now();
-		auto time_t = std::chrono::system_clock::to_time_t(now);
-		std::tm tm = *std::localtime(&time_t);
-		
-		std::stringstream version_stream;
-		version_stream << std::put_time(&tm, "%Y%m%d%H%M%S");
-		
-		// 파일명 생성
-		std::stringstream filename;
-		filename << "V" << version_stream.str() << "__" << name << ".sql";
-		
-		std::filesystem::path file_path = directory / filename.str();
-		
-		// 템플릿 내용 생성
-		std::uint32_t version = std::stoul(version_stream.str());
-		std::string content = get_migration_template(version, name, description);
-		
-		// 파일 쓰기
-		std::ofstream file(file_path);
-		if (!file.is_open())
-		{
-			return { false, "Failed to create migration file", {} };
-		}
-		
-		file << content;
-		file.close();
-		
-		return { true, std::nullopt, file_path };
-	}
+        for (const auto& entry : std::filesystem::directory_iterator(directory_path))
+        {
+            if (!entry.is_regular_file())
+            {
+                continue;
+            }
 
-	auto MigrationGenerator::get_migration_template(
-		std::uint32_t version,
-		const std::string& name,
-		const std::string& description) -> std::string
-	{
-		auto now = std::chrono::system_clock::now();
-		auto time_t = std::chrono::system_clock::to_time_t(now);
-		std::tm tm = *std::localtime(&time_t);
-		
-		std::stringstream template_content;
-		
-		template_content << "-- Migration: " << name << "\n";
-		template_content << "-- Version: " << version << "\n";
-		template_content << "-- Description: " << description << "\n";
-		template_content << "-- Created: " << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << "\n\n";
-		
-		template_content << "-- UP\n";
-		template_content << "-- Add your upgrade SQL here\n\n";
-		
-		template_content << "-- DOWN\n";
-		template_content << "-- Add your rollback SQL here\n";
-		
-		return template_content.str();
-	}
+            std::string filename = entry.path().filename().string();
+            std::smatch matches;
+
+            if (!std::regex_match(filename, matches, migration_pattern))
+            {
+                continue;
+            }
+
+            // Parse version and name
+            uint32_t version = std::stoul(matches[1].str());
+            std::string name = matches[2].str();
+
+            // Read file content
+            Utilities::File file;
+            auto open_result = file.open(entry.path().string(), std::ios::in);
+            if (!std::get<0>(open_result))
+            {
+                return { false, "Failed to open migration file: " + filename };
+            }
+            
+            auto [read_lines_result, read_error] = file.read_lines();
+            if (!read_lines_result)
+            {
+                return { false, "Failed to read migration file: " + filename };
+            }
+            
+            std::string content;
+            for (const auto& line : *read_lines_result)
+            {
+                content += line + "\n";
+            }
+            file.close();
+
+            // Convert to wide string
+            std::wstring wide_content = Utilities::Converter::to_wstring(content);
+
+            // Check for down script (separated by -- DOWN marker)
+            std::wstring up_script = wide_content;
+            std::wstring down_script;
+
+            size_t down_marker_pos = wide_content.find(L"-- DOWN");
+            if (down_marker_pos != std::wstring::npos)
+            {
+                up_script = wide_content.substr(0, down_marker_pos);
+                down_script = wide_content.substr(down_marker_pos + 7); // Skip "-- DOWN"
+            }
+
+            // Create migration info
+            MigrationInfo migration;
+            migration.version = version;
+            migration.name = name;
+            migration.description = "Loaded from " + filename;
+            migration.up_script = up_script;
+            migration.down_script = down_script;
+            migration.created_at = std::chrono::system_clock::now();
+
+            // Register migration
+            auto [reg_success, reg_error] = register_migration(migration);
+            if (!reg_success)
+            {
+                return { false, reg_error };
+            }
+        }
+
+        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            "Loaded " + std::to_string(migrations_.size()) + " migrations from " + directory_path.string());
+
+        return { true, std::nullopt };
+    }
+
+    auto DBMigration::get_current_version() -> std::tuple<bool, std::optional<std::string>, std::uint32_t>
+    {
+        auto connection = connection_pool_->pop();
+        if (!connection)
+        {
+            return { false, "Failed to get database connection", 0 };
+        }
+
+        try
+        {
+            std::wstring query = L"SELECT MAX(version) FROM migration_history WHERE success = 1";
+            
+            auto [execute_success, execute_error] = connection->execute(query);
+            if (!execute_success)
+            {
+                connection_pool_->push(connection);
+                return { false, "Failed to query current version: " + 
+                         (execute_error ? *execute_error : "Unknown error"), 0 };
+            }
+
+            uint32_t current_version = 0;
+            auto [fetch_success, fetch_error] = connection->fetch();
+            if (fetch_success)
+            {
+                if (!connection->is_null())
+                {
+                    current_version = connection->get_data<uint32_t>(0);
+                }
+            }
+
+            connection_pool_->push(connection);
+            return { true, std::nullopt, current_version };
+        }
+        catch (const std::exception& e)
+        {
+            connection_pool_->push(connection);
+            return { false, std::string("Exception getting current version: ") + e.what(), 0 };
+        }
+    }
+
+    auto DBMigration::migrate_to_latest() -> std::tuple<bool, std::optional<std::string>>
+    {
+        if (migrations_.empty())
+        {
+            return { true, "No migrations to apply" };
+        }
+
+        // Get highest version
+        uint32_t latest_version = 0;
+        for (const auto& [version, migration] : migrations_)
+        {
+            if (version > latest_version)
+            {
+                latest_version = version;
+            }
+        }
+
+        return migrate_to_version(latest_version);
+    }
+
+    auto DBMigration::migrate_to_version(std::uint32_t target_version) 
+        -> std::tuple<bool, std::optional<std::string>>
+    {
+        // Get current version
+        auto [get_success, get_error, current_version] = get_current_version();
+        if (!get_success)
+        {
+            return { false, get_error };
+        }
+
+        if (current_version == target_version)
+        {
+            return { true, "Already at version " + std::to_string(target_version) };
+        }
+
+        // Acquire migration lock
+        auto [lock_success, lock_error] = acquire_lock();
+        if (!lock_success)
+        {
+            return { false, lock_error };
+        }
+
+        // Ensure we release lock on exit
+        struct LockGuard
+        {
+            DBMigration* migration;
+            ~LockGuard() { migration->release_lock(); }
+        } lock_guard{this};
+
+        // Determine migration direction
+        bool is_upgrade = target_version > current_version;
+        
+        // Get migrations to apply
+        std::vector<MigrationInfo> migrations_to_apply;
+        
+        if (is_upgrade)
+        {
+            for (const auto& [version, migration] : migrations_)
+            {
+                if (version > current_version && version <= target_version)
+                {
+                    migrations_to_apply.push_back(migration);
+                }
+            }
+            
+            // Sort by version ascending for upgrades
+            std::sort(migrations_to_apply.begin(), migrations_to_apply.end(),
+                [](const MigrationInfo& a, const MigrationInfo& b) {
+                    return a.version < b.version;
+                });
+        }
+        else
+        {
+            // Downgrade
+            for (const auto& [version, migration] : migrations_)
+            {
+                if (version <= current_version && version > target_version)
+                {
+                    migrations_to_apply.push_back(migration);
+                }
+            }
+            
+            // Sort by version descending for downgrades
+            std::sort(migrations_to_apply.begin(), migrations_to_apply.end(),
+                [](const MigrationInfo& a, const MigrationInfo& b) {
+                    return a.version > b.version;
+                });
+        }
+
+        // Apply migrations
+        for (const auto& migration : migrations_to_apply)
+        {
+            auto [apply_success, apply_error] = apply_migration(migration, is_upgrade);
+            if (!apply_success)
+            {
+                return { false, apply_error };
+            }
+        }
+
+        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            "Successfully migrated from version " + std::to_string(current_version) + 
+            " to " + std::to_string(target_version));
+
+        return { true, std::nullopt };
+    }
+
+    auto DBMigration::apply_migration(const MigrationInfo& migration, bool is_upgrade) 
+        -> std::tuple<bool, std::optional<std::string>>
+    {
+        auto connection = connection_pool_->pop();
+        if (!connection)
+        {
+            return { false, "Failed to get database connection" };
+        }
+
+        auto start_time = std::chrono::steady_clock::now();
+
+        DBTransaction transaction(connection);
+        auto [begin_success, begin_error] = transaction.begin();
+        if (!begin_success)
+        {
+            connection_pool_->push(connection);
+            return { false, begin_error };
+        }
+
+        try
+        {
+            // Execute migration script
+            const std::wstring& script = is_upgrade ? migration.up_script : migration.down_script;
+            
+            if (script.empty() && !is_upgrade)
+            {
+                connection_pool_->push(connection);
+                return { false, "No down script available for migration " + migration.name };
+            }
+
+            // Split script by GO statements
+            std::vector<std::wstring> statements = split_sql_script(script);
+            
+            for (const auto& statement : statements)
+            {
+                if (!statement.empty())
+                {
+                    auto [stmt_success, stmt_error] = connection->execute(statement);
+                    if (!stmt_success)
+                    {
+                        transaction.rollback();
+                        connection_pool_->push(connection);
+                        return { false, "Failed to execute migration script for " + migration.name + ": " +
+                                 (stmt_error ? *stmt_error : "Unknown error") };
+                    }
+                }
+            }
+
+            // Record migration in history
+            auto end_time = std::chrono::steady_clock::now();
+            auto execution_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+
+            std::wstring record_sql;
+            if (is_upgrade)
+            {
+                record_sql = L"INSERT INTO migration_history (version, name, checksum, execution_time_ms, success) "
+                           L"VALUES (?, ?, ?, ?, 1)";
+            }
+            else
+            {
+                record_sql = L"DELETE FROM migration_history WHERE version = ?";
+            }
+
+            // Use direct parameter binding instead of DBBind template
+            connection->prepare(record_sql);
+            
+            if (is_upgrade)
+            {
+                SQLLEN ind1 = 0, ind2 = SQL_NTS, ind3 = SQL_NTS, ind4 = 0;
+                
+                int32_t version_int32 = static_cast<int32_t>(migration.version);
+                connection->bind_param(1, &version_int32, &ind1);
+                
+                std::wstring name_w = Utilities::Converter::to_wstring(migration.name);
+                connection->bind_param(2, const_cast<WCHAR*>(name_w.c_str()), &ind2);
+                
+                std::wstring checksum_w = Utilities::Converter::to_wstring(migration.checksum);
+                connection->bind_param(3, const_cast<WCHAR*>(checksum_w.c_str()), &ind3);
+                
+                int exec_time = static_cast<int>(execution_time.count());
+                connection->bind_param(4, &exec_time, &ind4);
+            }
+            else
+            {
+                SQLLEN ind1 = 0;
+                int32_t version_int32 = static_cast<int32_t>(migration.version);
+                connection->bind_param(1, &version_int32, &ind1);
+            }
+
+            auto [record_success, record_error] = connection->execute(record_sql);
+            if (!record_success)
+            {
+                transaction.rollback();
+                connection_pool_->push(connection);
+                return { false, "Failed to record migration history: " + 
+                         (record_error ? *record_error : "Unknown error") };
+            }
+
+            auto [commit_success, commit_error] = transaction.commit();
+            if (!commit_success)
+            {
+                connection_pool_->push(connection);
+                return { false, commit_error };
+            }
+
+            connection_pool_->push(connection);
+
+            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+                (is_upgrade ? "Applied" : "Rolled back") + std::string(" migration: v") + 
+                std::to_string(migration.version) + " - " + migration.name + 
+                " (" + std::to_string(execution_time.count()) + "ms)");
+
+            return { true, std::nullopt };
+        }
+        catch (const std::exception& e)
+        {
+            transaction.rollback();
+            connection_pool_->push(connection);
+            return { false, std::string("Exception during migration: ") + e.what() };
+        }
+    }
+
+    auto DBMigration::split_sql_script(const std::wstring& script) -> std::vector<std::wstring>
+    {
+        std::vector<std::wstring> statements;
+        std::wstringstream stream(script);
+        std::wstring line;
+        std::wstring current_statement;
+
+        while (std::getline(stream, line))
+        {
+            // Trim whitespace
+            line.erase(0, line.find_first_not_of(L" \t\r\n"));
+            line.erase(line.find_last_not_of(L" \t\r\n") + 1);
+
+            // Check for GO statement
+            if (line == L"GO" || line == L"go")
+            {
+                if (!current_statement.empty())
+                {
+                    statements.push_back(current_statement);
+                    current_statement.clear();
+                }
+            }
+            else
+            {
+                if (!current_statement.empty())
+                {
+                    current_statement += L"\n";
+                }
+                current_statement += line;
+            }
+        }
+
+        // Add last statement
+        if (!current_statement.empty())
+        {
+            statements.push_back(current_statement);
+        }
+
+        return statements;
+    }
+
+    auto DBMigration::calculate_checksum(const std::wstring& content) -> std::string
+    {
+        std::string utf8_content = Utilities::Converter::to_string(content);
+        
+#ifdef _WIN32
+        BCRYPT_ALG_HANDLE hAlg = nullptr;
+        BCRYPT_HASH_HANDLE hHash = nullptr;
+        NTSTATUS status = 0;
+        DWORD cbData = 0, cbHash = 0, cbHashObject = 0;
+        PBYTE pbHashObject = nullptr;
+        PBYTE pbHash = nullptr;
+
+        // Open an algorithm handle
+        if (!BCRYPT_SUCCESS(status = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_SHA256_ALGORITHM, nullptr, 0)))
+        {
+            return "";
+        }
+
+        // Calculate the size of the buffer to hold the hash object
+        if (!BCRYPT_SUCCESS(status = BCryptGetProperty(hAlg, BCRYPT_OBJECT_LENGTH, (PBYTE)&cbHashObject, sizeof(DWORD), &cbData, 0)))
+        {
+            BCryptCloseAlgorithmProvider(hAlg, 0);
+            return "";
+        }
+
+        // Allocate the hash object on the heap
+        pbHashObject = (PBYTE)HeapAlloc(GetProcessHeap(), 0, cbHashObject);
+        if (nullptr == pbHashObject)
+        {
+            BCryptCloseAlgorithmProvider(hAlg, 0);
+            return "";
+        }
+
+        // Calculate the length of the hash
+        if (!BCRYPT_SUCCESS(status = BCryptGetProperty(hAlg, BCRYPT_HASH_LENGTH, (PBYTE)&cbHash, sizeof(DWORD), &cbData, 0)))
+        {
+            HeapFree(GetProcessHeap(), 0, pbHashObject);
+            BCryptCloseAlgorithmProvider(hAlg, 0);
+            return "";
+        }
+
+        // Allocate the hash buffer on the heap
+        pbHash = (PBYTE)HeapAlloc(GetProcessHeap(), 0, cbHash);
+        if (nullptr == pbHash)
+        {
+            HeapFree(GetProcessHeap(), 0, pbHashObject);
+            BCryptCloseAlgorithmProvider(hAlg, 0);
+            return "";
+        }
+
+        // Create a hash
+        if (!BCRYPT_SUCCESS(status = BCryptCreateHash(hAlg, &hHash, pbHashObject, cbHashObject, nullptr, 0, 0)))
+        {
+            HeapFree(GetProcessHeap(), 0, pbHash);
+            HeapFree(GetProcessHeap(), 0, pbHashObject);
+            BCryptCloseAlgorithmProvider(hAlg, 0);
+            return "";
+        }
+
+        // Hash some data
+        if (!BCRYPT_SUCCESS(status = BCryptHashData(hHash, (PBYTE)utf8_content.c_str(), utf8_content.length(), 0)))
+        {
+            BCryptDestroyHash(hHash);
+            HeapFree(GetProcessHeap(), 0, pbHash);
+            HeapFree(GetProcessHeap(), 0, pbHashObject);
+            BCryptCloseAlgorithmProvider(hAlg, 0);
+            return "";
+        }
+
+        // Close the hash
+        if (!BCRYPT_SUCCESS(status = BCryptFinishHash(hHash, pbHash, cbHash, 0)))
+        {
+            BCryptDestroyHash(hHash);
+            HeapFree(GetProcessHeap(), 0, pbHash);
+            HeapFree(GetProcessHeap(), 0, pbHashObject);
+            BCryptCloseAlgorithmProvider(hAlg, 0);
+            return "";
+        }
+
+        std::stringstream ss;
+        for (DWORD i = 0; i < cbHash; i++)
+        {
+            ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(pbHash[i]);
+        }
+
+        BCryptDestroyHash(hHash);
+        HeapFree(GetProcessHeap(), 0, pbHash);
+        HeapFree(GetProcessHeap(), 0, pbHashObject);
+        BCryptCloseAlgorithmProvider(hAlg, 0);
+
+        return ss.str();
+#else
+        // For non-Windows platforms, use a simple hash or return a fixed string
+        std::hash<std::string> hasher;
+        auto hash_value = hasher(utf8_content);
+        
+        std::stringstream ss;
+        ss << std::hex << hash_value;
+        return ss.str();
+#endif
+    }
+
+    auto DBMigration::acquire_lock() -> std::tuple<bool, std::optional<std::string>>
+    {
+        auto connection = connection_pool_->pop();
+        if (!connection)
+        {
+            return { false, "Failed to get database connection" };
+        }
+
+        try
+        {
+            // Try to acquire lock
+            std::wstring lock_sql = L"UPDATE migration_lock SET locked = 1, locked_by = ?, locked_at = GETDATE() "
+                                  L"WHERE id = 1 AND locked = 0";
+
+            // Use direct parameter binding
+            connection->prepare(lock_sql);
+            
+            // Create thread ID hash as string
+            std::ostringstream thread_id_stream;
+            thread_id_stream << std::this_thread::get_id();
+            std::string thread_id_str = "DBMigration_" + thread_id_stream.str();
+            std::wstring thread_id_w = Utilities::Converter::to_wstring(thread_id_str);
+            
+            SQLLEN ind1 = SQL_NTS;
+            connection->bind_param(1, const_cast<WCHAR*>(thread_id_w.c_str()), &ind1);
+
+            auto [lock_exec_success, lock_exec_error] = connection->execute(lock_sql);
+            if (!lock_exec_success)
+            {
+                connection_pool_->push(connection);
+                return { false, "Failed to acquire migration lock - another migration may be in progress: " +
+                         (lock_exec_error ? *lock_exec_error : "Unknown error") };
+            }
+
+            // Check if we got the lock
+            if (connection->get_affected_rows() == 0)
+            {
+                connection_pool_->push(connection);
+                return { false, "Migration lock is already held by another process" };
+            }
+
+            connection_pool_->push(connection);
+            return { true, std::nullopt };
+        }
+        catch (const std::exception& e)
+        {
+            connection_pool_->push(connection);
+            return { false, std::string("Exception acquiring lock: ") + e.what() };
+        }
+    }
+
+    auto DBMigration::release_lock() -> void
+    {
+        auto connection = connection_pool_->pop();
+        if (!connection)
+        {
+            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                "Failed to get connection to release migration lock");
+            return;
+        }
+
+        try
+        {
+            std::wstring unlock_sql = L"UPDATE migration_lock SET locked = 0, locked_by = NULL, locked_at = NULL "
+                                    L"WHERE id = 1";
+
+            connection->execute(unlock_sql);
+        }
+        catch (const std::exception& e)
+        {
+            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                "Failed to release migration lock: " + std::string(e.what()));
+        }
+
+        connection_pool_->push(connection);
+    }
 }

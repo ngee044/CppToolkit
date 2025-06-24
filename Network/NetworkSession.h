@@ -27,6 +27,12 @@ namespace Network
 
 		auto register_key(const std::string& key) -> void;
 
+		// Missing methods for GameConnection compatibility
+		auto get_id() const -> std::string;
+		auto get_remote_address() const -> std::string;
+		auto is_connected() const -> bool;
+		auto disconnect() -> void;
+
 		auto received_connection_callback(const std::function<std::tuple<bool, std::optional<std::string>>(const std::vector<uint8_t>&)>& callback) -> void;
 		auto received_binary_callback(
 			const std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&, const std::vector<uint8_t>&)>&

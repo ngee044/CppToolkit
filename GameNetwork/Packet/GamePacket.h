@@ -8,6 +8,8 @@
 #include <memory>
 #include <variant>
 #include <optional>
+#include <chrono>
+#include <unordered_map>
 
 namespace GameNetwork
 {
@@ -61,6 +63,7 @@ namespace GameNetwork
     enum class PacketType : uint16_t
     {
         // System packets (0-999)
+        Unknown = 0,
         Heartbeat = 1,
         Authentication = 2,
         Disconnect = 3,
@@ -133,25 +136,67 @@ namespace GameNetwork
     class GamePacket
     {
     public:
+        GamePacket();
         GamePacket(PacketType type);
-        virtual ~GamePacket() = default;
+        virtual ~GamePacket();
         
         // Type and metadata
-        auto type() const -> PacketType;
-        auto sequence() const -> uint32_t;
-        auto set_sequence(uint32_t seq) -> void;
+        auto get_type() const -> PacketType;
+        auto set_type(PacketType type) -> void;
+        
+        auto get_sequence_number() const -> uint64_t;
+        auto set_sequence_number(uint64_t seq) -> void;
+        
+        auto get_sender_id() const -> uint64_t;
+        auto set_sender_id(uint64_t id) -> void;
+        
+        auto get_target_id() const -> uint64_t;
+        auto set_target_id(uint64_t id) -> void;
+        
+        auto get_channel_id() const -> uint32_t { return channel_id_; }
+        auto set_channel_id(uint32_t id) -> void { channel_id_ = id; }
+        
+        auto get_priority() const -> PacketPriority { return priority_; }
+        auto set_priority(PacketPriority priority) -> void { priority_ = priority; }
+        
+        // Payload
+        auto get_payload() const -> const std::vector<uint8_t>&;
+        auto set_payload(const std::vector<uint8_t>& data) -> void;
+        auto set_payload(std::vector<uint8_t>&& data) -> void;
         
         // Serialization
         virtual auto serialize() const -> std::vector<uint8_t> = 0;
-        static auto deserialize(const std::vector<uint8_t>& data) 
-            -> std::tuple<std::unique_ptr<GamePacket>, std::optional<std::string>>;
+        virtual auto deserialize(const std::vector<uint8_t>& data) -> bool = 0;
+        auto to_json() const -> std::string;
+        auto from_json(const std::string& json_str) -> bool;
         
-        // Validation
-        virtual auto validate() const -> std::tuple<bool, std::optional<std::string>>;
+        // Custom data
+        template<typename T>
+        auto set_custom_data(const std::string& key, const T& value) -> void
+        {
+            custom_data_[key] = std::to_string(value);
+        }
+        
+        auto get_custom_data(const std::string& key) const -> std::optional<std::string>
+        {
+            auto it = custom_data_.find(key);
+            if (it != custom_data_.end())
+            {
+                return it->second;
+            }
+            return std::nullopt;
+        }
         
     protected:
         PacketType type_;
-        uint32_t sequence_;
+        uint64_t sequence_number_;
+        uint64_t sender_id_;
+        uint64_t target_id_;
+        uint32_t channel_id_;
+        PacketPriority priority_;
+        std::chrono::steady_clock::time_point timestamp_;
+        std::vector<uint8_t> payload_;
+        std::unordered_map<std::string, std::string> custom_data_;
     };
     
     // Heartbeat packet
@@ -164,6 +209,7 @@ namespace GameNetwork
         auto set_timestamp(uint64_t ts) -> void;
         
         auto serialize() const -> std::vector<uint8_t> override;
+        auto deserialize(const std::vector<uint8_t>& data) -> bool override;
         static auto from_data(const std::vector<uint8_t>& data) 
             -> std::tuple<std::unique_ptr<HeartbeatPacket>, std::optional<std::string>>;
         
@@ -186,8 +232,7 @@ namespace GameNetwork
         auto set_client_version(uint32_t version) -> void;
         
         auto serialize() const -> std::vector<uint8_t> override;
-        auto deserialize(const std::vector<uint8_t>& data) 
-            -> std::tuple<std::unique_ptr<GamePacket>, std::optional<std::string>>;
+        auto deserialize(const std::vector<uint8_t>& data) -> bool override;
         static auto from_data(const std::vector<uint8_t>& data)
             -> std::tuple<std::unique_ptr<AuthenticationPacket>, std::optional<std::string>>;
         
@@ -220,6 +265,7 @@ namespace GameNetwork
         auto set_max_health(uint32_t max_health) -> void;
         
         auto serialize() const -> std::vector<uint8_t> override;
+        auto deserialize(const std::vector<uint8_t>& data) -> bool override;
         static auto from_data(const std::vector<uint8_t>& data)
             -> std::tuple<std::unique_ptr<EntitySpawnPacket>, std::optional<std::string>>;
         
@@ -246,6 +292,7 @@ namespace GameNetwork
         auto set_reason(DespawnReason reason) -> void;
         
         auto serialize() const -> std::vector<uint8_t> override;
+        auto deserialize(const std::vector<uint8_t>& data) -> bool override;
         static auto from_data(const std::vector<uint8_t>& data)
             -> std::tuple<std::unique_ptr<EntityDespawnPacket>, std::optional<std::string>>;
         
@@ -268,11 +315,15 @@ namespace GameNetwork
         
         auto set_entity_id(uint64_t id) -> void;
         auto set_location(const Location& loc) -> void;
+        auto set_position(const Location& pos) -> void;  // Alias for compatibility
+        auto set_rotation(float rotation) -> void;
+        auto set_is_moving(bool moving) -> void;
         auto set_health(uint32_t health) -> void;
         auto set_state(EntityState state) -> void;
         auto set_velocity(const Vector3& vel) -> void;
         
         auto serialize() const -> std::vector<uint8_t> override;
+        auto deserialize(const std::vector<uint8_t>& data) -> bool override;
         static auto from_data(const std::vector<uint8_t>& data)
             -> std::tuple<std::unique_ptr<EntityUpdatePacket>, std::optional<std::string>>;
         
@@ -282,6 +333,8 @@ namespace GameNetwork
         std::optional<uint32_t> health_;
         std::optional<EntityState> state_;
         std::optional<Vector3> velocity_;
+        std::optional<float> rotation_;
+        std::optional<bool> is_moving_;
     };
     
     // Movement packet - MoveTo
@@ -301,6 +354,7 @@ namespace GameNetwork
         auto set_movement_type(uint8_t type) -> void;
         
         auto serialize() const -> std::vector<uint8_t> override;
+        auto deserialize(const std::vector<uint8_t>& data) -> bool override;
         static auto from_data(const std::vector<uint8_t>& data)
             -> std::tuple<std::unique_ptr<MoveToPacket>, std::optional<std::string>>;
         
@@ -324,6 +378,7 @@ namespace GameNetwork
         auto set_stop_location(const Location& loc) -> void;
         
         auto serialize() const -> std::vector<uint8_t> override;
+        auto deserialize(const std::vector<uint8_t>& data) -> bool override;
         static auto from_data(const std::vector<uint8_t>& data)
             -> std::tuple<std::unique_ptr<MoveStopPacket>, std::optional<std::string>>;
         
@@ -375,6 +430,7 @@ namespace GameNetwork
         auto set_critical(bool crit) -> void;
         
         auto serialize() const -> std::vector<uint8_t> override;
+        auto deserialize(const std::vector<uint8_t>& data) -> bool override;
         static auto from_data(const std::vector<uint8_t>& data)
             -> std::tuple<std::unique_ptr<AttackPacket>, std::optional<std::string>>;
         
@@ -405,6 +461,7 @@ namespace GameNetwork
         auto set_cast_time(uint32_t time) -> void;
         
         auto serialize() const -> std::vector<uint8_t> override;
+        auto deserialize(const std::vector<uint8_t>& data) -> bool override;
         static auto from_data(const std::vector<uint8_t>& data)
             -> std::tuple<std::unique_ptr<SkillUsePacket>, std::optional<std::string>>;
         
@@ -435,6 +492,7 @@ namespace GameNetwork
         auto set_remaining_hp(uint32_t hp) -> void;
         
         auto serialize() const -> std::vector<uint8_t> override;
+        auto deserialize(const std::vector<uint8_t>& data) -> bool override;
         static auto from_data(const std::vector<uint8_t>& data)
             -> std::tuple<std::unique_ptr<DamagePacket>, std::optional<std::string>>;
         
@@ -465,6 +523,7 @@ namespace GameNetwork
         auto set_channel_id(uint32_t id) -> void;
         
         auto serialize() const -> std::vector<uint8_t> override;
+        auto deserialize(const std::vector<uint8_t>& data) -> bool override;
         static auto from_data(const std::vector<uint8_t>& data)
             -> std::tuple<std::unique_ptr<ChatMessagePacket>, std::optional<std::string>>;
         

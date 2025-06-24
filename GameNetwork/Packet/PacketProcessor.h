@@ -16,31 +16,22 @@ namespace GameNetwork
     class PacketProcessor : public std::enable_shared_from_this<PacketProcessor>
     {
     public:
-        PacketProcessor(std::shared_ptr<Thread::ThreadPool> thread_pool = nullptr);
+        PacketProcessor();
         virtual ~PacketProcessor();
         
-        // Packet serialization
-        auto serialize_packet(const GamePacket& packet) 
-            -> std::tuple<std::vector<uint8_t>, std::optional<std::string>>;
-        auto deserialize_packet(const std::vector<uint8_t>& data) 
-            -> std::tuple<std::unique_ptr<GamePacket>, std::optional<std::string>>;
+        // Simplified interface for GameNetworkServer
+        auto serialize(const GamePacket& packet) -> std::optional<std::string>;
+        auto deserialize(const std::string& data) -> std::unique_ptr<GamePacket>;
+        auto deserialize_binary(const std::vector<uint8_t>& data) -> std::unique_ptr<GamePacket>;
         
-        // Packet compression
-        auto enable_compression(bool enable) -> void;
+        // Compression settings
+        auto set_compression_enabled(bool enabled) -> void;
         auto is_compression_enabled() const -> bool;
-        auto compress_packet(const std::vector<uint8_t>& data) 
-            -> std::tuple<std::vector<uint8_t>, std::optional<std::string>>;
-        auto decompress_packet(const std::vector<uint8_t>& data) 
-            -> std::tuple<std::vector<uint8_t>, std::optional<std::string>>;
         
-        // Packet encryption
-        auto enable_encryption(bool enable) -> void;
+        // Encryption settings
+        auto set_encryption_enabled(bool enabled) -> void;
         auto is_encryption_enabled() const -> bool;
-        auto set_encryption_key(const std::vector<uint8_t>& key) -> void;
-        auto encrypt_packet(const std::vector<uint8_t>& data) 
-            -> std::tuple<std::vector<uint8_t>, std::optional<std::string>>;
-        auto decrypt_packet(const std::vector<uint8_t>& data) 
-            -> std::tuple<std::vector<uint8_t>, std::optional<std::string>>;
+        auto set_encryption_key(const std::string& key) -> void;
         
         // Packet batching
         auto enable_batching(bool enable) -> void;
@@ -83,21 +74,13 @@ namespace GameNetwork
     private:
         mutable std::mutex mutex_;
         
-        // Thread pool for async processing
-        std::shared_ptr<Thread::ThreadPool> thread_pool_;
-        
         // Feature flags
         bool compression_enabled_;
         bool encryption_enabled_;
         bool batching_enabled_;
         
         // Encryption
-        std::vector<uint8_t> encryption_key_;
-        
-        // Batching
-        PacketBatch current_batch_;
-        size_t max_batch_size_;
-        std::chrono::milliseconds batch_timeout_;
+        std::string encryption_key_;
         
         // Statistics
         mutable ProcessorStats stats_;

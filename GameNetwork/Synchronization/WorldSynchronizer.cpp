@@ -1,308 +1,382 @@
 #include "WorldSynchronizer.h"
-#include "../Packet/GamePacket.h"
-#include "../GameNetworkConstants.h"
-#include "../../Utilities/Logger.h"
-
-#include <cmath>
+#include "../Session/GameSessionManager.h"
+#include "../Packet/PacketProcessor.h"
+#include <Generator.h>
+#include <Logger.h>
 #include <algorithm>
-#include <unordered_set>
-
-using namespace Utilities;
+#include <cmath>
 
 namespace GameNetwork
 {
     WorldSynchronizer::WorldSynchronizer()
-        : view_distance_(100.0f)
-        , grid_cell_size_(50.0f)
-        , lod_high_distance_(30.0f)
-        , lod_medium_distance_(60.0f)
-        , lod_low_distance_(90.0f)
-        , sync_running_(false)
-        , sync_interval_(std::chrono::milliseconds(100))
+        : lag_compensation_enabled_(true)
+        , snapshot_history_duration_(std::chrono::milliseconds(1000))
+        , sync_frequency_hz_(30)
+        , max_entities_per_update_(50)
+        , aoi_radius_(100.0f)
+        , prediction_enabled_(true)
+        , is_running_(false)
     {
+        // Set default world bounds
+        world_min_ = { -1000.0f, -1000.0f, -1000.0f };
+        world_max_ = { 1000.0f, 1000.0f, 1000.0f };
+        
+        // Initialize stats
         stats_ = {};
+        last_sync_time_ = std::chrono::steady_clock::now();
     }
-    
+
     WorldSynchronizer::~WorldSynchronizer()
     {
-        stop_sync_timer();
+        shutdown();
     }
-    
-    auto WorldSynchronizer::set_view_distance(float distance) -> void
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        view_distance_ = distance;
-    }
-    
-    auto WorldSynchronizer::get_view_distance() const -> float
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return view_distance_;
-    }
-    
-    auto WorldSynchronizer::enter_area(std::shared_ptr<GameSession> session, const Location& location) 
-        -> std::tuple<bool, std::optional<std::string>>
-    {
-        if (!session)
-        {
-            return {false, "Invalid session"};
-        }
-        
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        auto session_id = session->session_id();
-        
-        // Remove from old grid cell if exists
-        auto it = sessions_.find(session_id);
-        if (it != sessions_.end())
-        {
-            auto old_key = get_grid_key(it->second.location);
-            grid_[old_key].session_ids.erase(session_id);
-        }
-        
-        // Add to new grid cell
-        auto grid_key = get_grid_key(location);
-        grid_[grid_key].session_ids.insert(session_id);
-        
-        // Update session info
-        SessionInfo info;
-        info.session = session;
-        info.location = location;
-        info.last_sync = std::chrono::steady_clock::now();
-        sessions_[session_id] = info;
-        
-        // Get visible entities
-        auto visible_entities = get_visible_entities(session);
-        for (const auto& entity : visible_entities)
-        {
-            sessions_[session_id].visible_entities.insert(entity.id);
-        }
-        
-        stats_.sessions_tracked++;
-        
-        return {true, std::nullopt};
-    }
-    
-    auto WorldSynchronizer::leave_area(std::shared_ptr<GameSession> session) 
-        -> std::tuple<bool, std::optional<std::string>>
-    {
-        if (!session)
-        {
-            return {false, "Invalid session"};
-        }
-        
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        auto session_id = session->session_id();
-        auto it = sessions_.find(session_id);
-        if (it == sessions_.end())
-        {
-            return {false, "Session not in area"};
-        }
-        
-        // Remove from grid
-        auto grid_key = get_grid_key(it->second.location);
-        grid_[grid_key].session_ids.erase(session_id);
-        
-        // Remove session info
-        sessions_.erase(it);
-        stats_.sessions_tracked--;
-        
-        return {true, std::nullopt};
-    }
-    
-    auto WorldSynchronizer::update_position(std::shared_ptr<GameSession> session, const Location& location) 
-        -> std::tuple<bool, std::optional<std::string>>
-    {
-        if (!session)
-        {
-            return {false, "Invalid session"};
-        }
-        
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        auto session_id = session->session_id();
-        auto it = sessions_.find(session_id);
-        if (it == sessions_.end())
-        {
-            return {false, "Session not in area"};
-        }
-        
-        // Check if grid cell changed
-        auto old_key = get_grid_key(it->second.location);
-        auto new_key = get_grid_key(location);
-        
-        if (old_key != new_key)
-        {
-            // Move to new grid cell
-            grid_[old_key].session_ids.erase(session_id);
-            grid_[new_key].session_ids.insert(session_id);
-        }
-        
-        // Update location
-        it->second.location = location;
-        
-        // Mark for sync
-        sync_session(it->second);
-        
-        return {true, std::nullopt};
-    }
-    
-    auto WorldSynchronizer::spawn_entity(const Entity& entity) 
-        -> std::tuple<bool, std::optional<std::string>>
+
+    auto WorldSynchronizer::initialize(std::shared_ptr<GameSessionManager> session_manager) -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
-        // Add entity
-        entities_[entity.id] = entity;
-        
-        // Add to grid
-        auto grid_key = get_grid_key(entity.location);
-        grid_[grid_key].entity_ids.insert(entity.id);
-        
-        stats_.entities_tracked++;
-        
-        // Notify nearby sessions
-        auto interested = get_interested_sessions(entity.location, view_distance_);
-        for (const auto& session : interested)
+        if (is_running_)
         {
-            // Send spawn packet
-            auto spawn_packet = std::make_unique<EntitySpawnPacket>();
-            spawn_packet->set_entity_id(entity.id);
-            spawn_packet->set_entity_type(entity.type);
-            spawn_packet->set_location(entity.location);
-            spawn_packet->set_name(entity.name);
-            spawn_packet->set_level(entity.level);
-            spawn_packet->set_health(entity.health);
-            spawn_packet->set_max_health(entity.max_health);
+            return false;
+        }
+        
+        session_manager_ = session_manager;
+        
+        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            "WorldSynchronizer initialized successfully");
+        
+        return true;
+    }
+
+    auto WorldSynchronizer::shutdown() -> void
+    {
+        stop_sync_loop();
+        
+        std::lock_guard<std::mutex> lock(mutex_);
+        entity_states_.clear();
+        
+        std::lock_guard<std::mutex> snapshot_lock(snapshot_mutex_);
+        snapshots_.clear();
+        
+        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            "WorldSynchronizer shutdown completed");
+    }
+
+    auto WorldSynchronizer::set_thread_pool(std::shared_ptr<Thread::ThreadPool> thread_pool) -> void
+    {
+        thread_pool_ = thread_pool;
+    }
+
+    // Entity synchronization
+    auto WorldSynchronizer::register_entity(uint64_t entity_id, const WorldEntityState& initial_state) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        entity_states_[entity_id] = initial_state;
+        entity_states_[entity_id].last_update_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        
+        stats_.active_entities = static_cast<uint32_t>(entity_states_.size());
+        
+        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            "Registered entity " + std::to_string(entity_id) + " for synchronization");
+    }
+
+    auto WorldSynchronizer::unregister_entity(uint64_t entity_id) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        entity_states_.erase(entity_id);
+        
+        stats_.active_entities = static_cast<uint32_t>(entity_states_.size());
+        
+        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            "Unregistered entity " + std::to_string(entity_id) + " from synchronization");
+    }
+
+    auto WorldSynchronizer::update_entity_state(uint64_t entity_id, const WorldEntityState& state) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        auto it = entity_states_.find(entity_id);
+        if (it != entity_states_.end())
+        {
+            // Validate the position
+            Location validated_position = state.position;
+            clamp_to_world_bounds(validated_position);
             
-            // Send packet to session
-            if (session->connection())
-            {
-                session->connection()->send_packet(*spawn_packet);
-            }
-        }
-        
-        return {true, std::nullopt};
-    }
-    
-    auto WorldSynchronizer::despawn_entity(uint64_t entity_id) 
-        -> std::tuple<bool, std::optional<std::string>>
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        auto it = entities_.find(entity_id);
-        if (it == entities_.end())
-        {
-            return {false, "Entity not found"};
-        }
-        
-        // Remove from grid
-        auto grid_key = get_grid_key(it->second.location);
-        grid_[grid_key].entity_ids.erase(entity_id);
-        
-        // Notify nearby sessions
-        auto interested = get_interested_sessions(it->second.location, view_distance_);
-        for (const auto& session : interested)
-        {
-            // Send despawn packet
-            auto despawn_packet = std::make_unique<EntityDespawnPacket>();
-            despawn_packet->set_entity_id(entity_id);
-            despawn_packet->set_reason(DespawnReason::OutOfRange);
+            // Update the state
+            WorldEntityState updated_state = state;
+            updated_state.position = validated_position;
+            updated_state.last_update_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            updated_state.is_dirty = true;
             
-            // Send packet to session
-            if (session->connection())
-            {
-                session->connection()->send_packet(*despawn_packet);
-            }
+            it->second = updated_state;
+            
+            // Add to sync queue
+            SyncUpdate update;
+            update.entity_id = entity_id;
+            update.state = updated_state;
+            update.created_time = std::chrono::steady_clock::now();
+            update.priority = calculate_sync_priority(updated_state);
+            
+            sync_queue_.push(update);
+            stats_.total_updates_processed++;
         }
-        
-        // Remove entity
-        entities_.erase(it);
-        stats_.entities_tracked--;
-        
-        return {true, std::nullopt};
     }
-    
-    auto WorldSynchronizer::get_interested_sessions(const Location& location, float radius) const 
-        -> std::vector<std::shared_ptr<GameSession>>
+
+    auto WorldSynchronizer::get_entity_state(uint64_t entity_id) const -> std::optional<WorldEntityState>
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
-        std::vector<std::shared_ptr<GameSession>> result;
-        
-        float search_radius = (radius == 0.0f) ? view_distance_ : radius;
-        auto nearby_cells = get_nearby_cells(location, search_radius);
-        
-        for (const auto& cell_key : nearby_cells)
+        auto it = entity_states_.find(entity_id);
+        if (it != entity_states_.end())
         {
-            auto grid_it = grid_.find(cell_key);
-            if (grid_it != grid_.end())
+            return it->second;
+        }
+        
+        return std::nullopt;
+    }
+
+    // Real-time synchronization
+    auto WorldSynchronizer::start_sync_loop() -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        if (is_running_)
+        {
+            return;
+        }
+        
+        is_running_ = true;
+        sync_thread_ = std::thread(&WorldSynchronizer::sync_loop, this);
+        
+        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            "WorldSynchronizer sync loop started at " + std::to_string(sync_frequency_hz_) + " Hz");
+    }
+
+    auto WorldSynchronizer::stop_sync_loop() -> void
+    {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            is_running_ = false;
+        }
+        
+        sync_cv_.notify_all();
+        
+        if (sync_thread_.joinable())
+        {
+            sync_thread_.join();
+        }
+        
+        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            "WorldSynchronizer sync loop stopped");
+    }
+
+    auto WorldSynchronizer::force_sync() -> void
+    {
+        sync_cv_.notify_all();
+    }
+
+    auto WorldSynchronizer::sync_entity_to_clients(uint64_t entity_id, const std::vector<std::shared_ptr<GameSession>>& clients) -> void
+    {
+        auto entity_state = get_entity_state(entity_id);
+        if (!entity_state.has_value())
+        {
+            return;
+        }
+        
+        // Create entity update packet
+        auto update_packet = std::make_unique<EntityUpdatePacket>();
+        update_packet->set_entity_id(entity_id);
+        update_packet->set_position(entity_state->position);
+        update_packet->set_health(entity_state->health);
+        update_packet->set_rotation(entity_state->rotation);
+        update_packet->set_is_moving(entity_state->is_moving);
+        
+        // Send to all specified clients
+        for (auto& client : clients)
+        {
+            if (client && client->is_connected())
             {
-                for (const auto& session_id : grid_it->second.session_ids)
+                // Check if client should receive this update (AOI check)
+                if (should_sync_to_client(entity_id, client))
                 {
-                    auto session_it = sessions_.find(session_id);
-                    if (session_it != sessions_.end())
-                    {
-                        // Check actual distance
-                        float dx = session_it->second.location.x - location.x;
-                        float dy = session_it->second.location.y - location.y;
-                        float dz = session_it->second.location.z - location.z;
-                        float dist_sq = dx*dx + dy*dy + dz*dz;
-                        
-                        if (dist_sq <= search_radius * search_radius)
-                        {
-                            result.push_back(session_it->second.session);
-                        }
-                    }
+                    auto serialized_data = update_packet->serialize();
+                    client->send_packet(serialized_data);
                 }
+            }
+        }
+        
+        stats_.total_entities_synced++;
+    }
+
+    auto WorldSynchronizer::sync_area_to_client(const Location& center, float radius, std::shared_ptr<GameSession> client) -> void
+    {
+        if (!client || !client->is_connected())
+        {
+            return;
+        }
+        
+        auto entities_in_range = get_entities_in_range(center, radius);
+        
+        for (uint64_t entity_id : entities_in_range)
+        {
+            sync_entity_to_clients(entity_id, { client });
+        }
+    }
+
+    // Lag compensation
+    auto WorldSynchronizer::enable_lag_compensation(bool enable) -> void
+    {
+        lag_compensation_enabled_ = enable;
+        
+        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            "Lag compensation " + std::string(enable ? "enabled" : "disabled"));
+    }
+
+    auto WorldSynchronizer::set_snapshot_history_duration(std::chrono::milliseconds duration) -> void
+    {
+        snapshot_history_duration_ = duration;
+    }
+
+    auto WorldSynchronizer::get_entity_position_at_time(uint64_t entity_id, uint64_t timestamp) const -> std::optional<Location>
+    {
+        if (!lag_compensation_enabled_)
+        {
+            return std::nullopt;
+        }
+        
+        auto snapshot = find_snapshot_at_time(timestamp);
+        if (!snapshot.has_value())
+        {
+            return std::nullopt;
+        }
+        
+        auto it = snapshot->entity_positions.find(entity_id);
+        if (it != snapshot->entity_positions.end())
+        {
+            return it->second;
+        }
+        
+        return std::nullopt;
+    }
+
+    auto WorldSynchronizer::validate_movement(uint64_t entity_id, const Location& from, const Location& to, uint64_t client_timestamp) const -> bool
+    {
+        // Basic validation
+        if (!is_position_valid(to))
+        {
+            return false;
+        }
+        
+        // Distance validation - prevent teleporting
+        float distance = calculate_distance(from, to);
+        const float max_distance_per_second = 50.0f; // Configurable max speed
+        
+        auto current_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        
+        auto entity_state = get_entity_state(entity_id);
+        if (entity_state.has_value())
+        {
+            uint64_t time_delta = current_time - entity_state->last_update_time;
+            float max_allowed_distance = max_distance_per_second * (time_delta / 1000.0f);
+            
+            if (distance > max_allowed_distance)
+            {
+                Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                    "Movement validation failed for entity " + std::to_string(entity_id) + 
+                    ": distance " + std::to_string(distance) + " exceeds max " + std::to_string(max_allowed_distance));
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    auto WorldSynchronizer::compensate_for_lag(uint64_t entity_id, const Location& client_position, uint64_t client_timestamp) -> Location
+    {
+        if (!lag_compensation_enabled_)
+        {
+            return client_position;
+        }
+        
+        // Get the server's authoritative position at the time the client made this action
+        auto server_position_at_time = get_entity_position_at_time(entity_id, client_timestamp);
+        if (!server_position_at_time.has_value())
+        {
+            // Fallback to current position
+            auto current_state = get_entity_state(entity_id);
+            return current_state.has_value() ? current_state->position : client_position;
+        }
+        
+        // Calculate the difference and apply lag compensation
+        Location compensated_position = client_position;
+        
+        // Apply some interpolation between client and server positions
+        const float lag_compensation_factor = 0.7f; // How much to trust client vs server
+        compensated_position.x = client_position.x * lag_compensation_factor + 
+                                server_position_at_time->x * (1.0f - lag_compensation_factor);
+        compensated_position.y = client_position.y * lag_compensation_factor + 
+                                server_position_at_time->y * (1.0f - lag_compensation_factor);
+        compensated_position.z = client_position.z * lag_compensation_factor + 
+                                server_position_at_time->z * (1.0f - lag_compensation_factor);
+        
+        stats_.lag_compensation_queries++;
+        
+        return compensated_position;
+    }
+
+    // Area of Interest (AOI)
+    auto WorldSynchronizer::set_aoi_radius(float radius) -> void
+    {
+        aoi_radius_ = radius;
+    }
+
+    auto WorldSynchronizer::get_entities_in_range(const Location& center, float radius) const -> std::vector<uint64_t>
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::vector<uint64_t> result;
+        
+        for (const auto& [entity_id, state] : entity_states_)
+        {
+            float distance = calculate_distance(center, state.position);
+            if (distance <= radius)
+            {
+                result.push_back(entity_id);
             }
         }
         
         return result;
     }
-    
-    auto WorldSynchronizer::get_visible_entities(std::shared_ptr<GameSession> session) const 
-        -> std::vector<Entity>
+
+    auto WorldSynchronizer::get_clients_in_range(const Location& center, float radius) const -> std::vector<std::shared_ptr<GameSession>>
     {
-        if (!session)
-        {
-            return {};
-        }
+        std::vector<std::shared_ptr<GameSession>> result;
         
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        std::vector<Entity> result;
-        
-        auto session_it = sessions_.find(session->session_id());
-        if (session_it == sessions_.end())
+        if (!session_manager_)
         {
             return result;
         }
         
-        const auto& session_location = session_it->second.location;
-        auto nearby_cells = get_nearby_cells(session_location, view_distance_);
+        auto all_sessions = session_manager_->get_all_sessions();
         
-        for (const auto& cell_key : nearby_cells)
+        for (auto& session : all_sessions)
         {
-            auto grid_it = grid_.find(cell_key);
-            if (grid_it != grid_.end())
+            if (session && session->is_connected())
             {
-                for (const auto& entity_id : grid_it->second.entity_ids)
+                // Get client's entity position (assuming client has an entity)
+                auto client_entity_id = session->get_entity_id();
+                if (client_entity_id == 0) continue; // Skip if no entity
+                
+                auto client_state = get_entity_state(client_entity_id);
+                
+                if (client_state.has_value())
                 {
-                    auto entity_it = entities_.find(entity_id);
-                    if (entity_it != entities_.end())
+                    float distance = calculate_distance(center, client_state->position);
+                    if (distance <= radius)
                     {
-                        // Check actual distance
-                        float dx = entity_it->second.location.x - session_location.x;
-                        float dy = entity_it->second.location.y - session_location.y;
-                        float dz = entity_it->second.location.z - session_location.z;
-                        float dist_sq = dx*dx + dy*dy + dz*dz;
-                        
-                        if (dist_sq <= view_distance_ * view_distance_)
-                        {
-                            result.push_back(entity_it->second);
-                        }
+                        result.push_back(session);
                     }
                 }
             }
@@ -310,334 +384,357 @@ namespace GameNetwork
         
         return result;
     }
-    
-    auto WorldSynchronizer::broadcast_to_area(const Location& center, 
-                                               float radius, 
-                                               const GamePacket& packet, 
-                                               std::shared_ptr<GameSession> exclude) 
-        -> std::tuple<bool, std::optional<std::string>>
+
+    // Conflict resolution
+    auto WorldSynchronizer::resolve_movement_conflict(uint64_t entity_id, const std::vector<WorldEntityState>& conflicting_states) -> WorldEntityState
     {
-        auto interested = get_interested_sessions(center, radius);
-        
-        for (const auto& session : interested)
+        if (conflicting_states.empty())
         {
-            if (session != exclude)
+            // Return current state if available
+            auto current_state = get_entity_state(entity_id);
+            return current_state.value_or(WorldEntityState{});
+        }
+        
+        if (conflicting_states.size() == 1)
+        {
+            return conflicting_states[0];
+        }
+        
+        // Use the most recent state based on timestamp
+        WorldEntityState resolved_state = conflicting_states[0];
+        
+        for (const auto& state : conflicting_states)
+        {
+            if (state.last_update_time > resolved_state.last_update_time)
             {
-                auto connection = session->current_connection();
-                if (connection)
-                {
-                    connection->send_packet(packet);
-                    stats_.packets_broadcasted++;
-                }
+                resolved_state = state;
             }
         }
         
-        return {true, std::nullopt};
-    }
-    
-    auto WorldSynchronizer::get_channel_sessions(uint32_t channel_id) const 
-        -> std::vector<std::shared_ptr<GameSession>>
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
+        stats_.conflict_resolutions++;
         
-        std::vector<std::shared_ptr<GameSession>> result;
+        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            "Resolved movement conflict for entity " + std::to_string(entity_id));
         
-        for (const auto& [id, info] : sessions_)
-        {
-            if (info.location.channel_id == channel_id)
-            {
-                result.push_back(info.session);
-            }
-        }
-        
-        return result;
+        return resolved_state;
     }
-    
-    auto WorldSynchronizer::broadcast_to_channel(uint32_t channel_id, 
-                                                  const GamePacket& packet, 
-                                                  std::shared_ptr<GameSession> exclude) 
-        -> std::tuple<bool, std::optional<std::string>>
+
+    auto WorldSynchronizer::is_position_valid(const Location& position) const -> bool
     {
-        auto channel_sessions = get_channel_sessions(channel_id);
-        
-        for (const auto& session : channel_sessions)
-        {
-            if (session != exclude)
-            {
-                auto connection = session->current_connection();
-                if (connection)
-                {
-                    connection->send_packet(packet);
-                    stats_.packets_broadcasted++;
-                }
-            }
-        }
-        
-        return {true, std::nullopt};
+        return position.x >= world_min_.x && position.x <= world_max_.x &&
+               position.y >= world_min_.y && position.y <= world_max_.y &&
+               position.z >= world_min_.z && position.z <= world_max_.z;
     }
-    
-    auto WorldSynchronizer::start_sync_timer() -> void
+
+    auto WorldSynchronizer::clamp_to_world_bounds(Location& position) const -> void
     {
-        sync_running_ = true;
-        
-        sync_timer_ = std::async(std::launch::async, [this]()
-        {
-            while (sync_running_)
-            {
-                std::this_thread::sleep_for(sync_interval_);
-                
-                auto start_time = std::chrono::steady_clock::now();
-                sync_all_sessions();
-                auto end_time = std::chrono::steady_clock::now();
-                
-                auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
-                    end_time - start_time);
-                
-                // Update average sync time
-                if (stats_.total_syncs > 0)
-                {
-                    stats_.average_sync_time = std::chrono::microseconds(
-                        (stats_.average_sync_time.count() * (stats_.total_syncs - 1) + 
-                         duration.count()) / stats_.total_syncs);
-                }
-                else
-                {
-                    stats_.average_sync_time = duration;
-                }
-            }
-        });
+        position.x = std::clamp(position.x, world_min_.x, world_max_.x);
+        position.y = std::clamp(position.y, world_min_.y, world_max_.y);
+        position.z = std::clamp(position.z, world_min_.z, world_max_.z);
     }
-    
-    auto WorldSynchronizer::stop_sync_timer() -> void
-    {
-        sync_running_ = false;
-        
-        if (sync_timer_.valid())
-        {
-            sync_timer_.wait();
-        }
-    }
-    
-    auto WorldSynchronizer::force_sync() -> void
-    {
-        sync_all_sessions();
-    }
-    
-    auto WorldSynchronizer::calculate_detail_level(float distance) const -> DetailLevel
-    {
-        if (distance <= lod_high_distance_)
-        {
-            return DetailLevel::Full;
-        }
-        else if (distance <= lod_medium_distance_)
-        {
-            return DetailLevel::High;
-        }
-        else if (distance <= lod_low_distance_)
-        {
-            return DetailLevel::Medium;
-        }
-        else
-        {
-            return DetailLevel::Low;
-        }
-    }
-    
-    auto WorldSynchronizer::set_lod_distances(float high, float medium, float low) -> void
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        lod_high_distance_ = high;
-        lod_medium_distance_ = medium;
-        lod_low_distance_ = low;
-    }
-    
+
+    // Performance monitoring
     auto WorldSynchronizer::get_stats() const -> SyncStats
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return stats_;
     }
-    
+
     auto WorldSynchronizer::reset_stats() -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
         stats_ = {};
-    }
-    
-    auto WorldSynchronizer::get_grid_key(const Location& location) const -> std::pair<int32_t, int32_t>
-    {
-        int32_t grid_x = static_cast<int32_t>(std::floor(location.x / grid_cell_size_));
-        int32_t grid_z = static_cast<int32_t>(std::floor(location.z / grid_cell_size_));
-        return {grid_x, grid_z};
-    }
-    
-    auto WorldSynchronizer::get_nearby_cells(const Location& location, float radius) const 
-        -> std::vector<std::pair<int32_t, int32_t>>
-    {
-        std::vector<std::pair<int32_t, int32_t>> result;
+        stats_.active_entities = static_cast<uint32_t>(entity_states_.size());
         
-        int32_t cell_radius = static_cast<int32_t>(std::ceil(radius / grid_cell_size_));
-        auto center_key = get_grid_key(location);
+        std::lock_guard<std::mutex> snapshot_lock(snapshot_mutex_);
+        stats_.snapshots_stored = static_cast<uint32_t>(snapshots_.size());
+    }
+
+    // Configuration
+    auto WorldSynchronizer::set_sync_frequency(uint32_t frequency_hz) -> void
+    {
+        sync_frequency_hz_ = frequency_hz;
+    }
+
+    auto WorldSynchronizer::set_max_entities_per_update(uint32_t max_entities) -> void
+    {
+        max_entities_per_update_ = max_entities;
+    }
+
+    auto WorldSynchronizer::set_prediction_enabled(bool enabled) -> void
+    {
+        prediction_enabled_ = enabled;
+    }
+
+    // Private implementation methods
+    auto WorldSynchronizer::sync_loop() -> void
+    {
+        auto sync_interval = std::chrono::milliseconds(1000 / sync_frequency_hz_);
         
-        for (int32_t dx = -cell_radius; dx <= cell_radius; ++dx)
+        while (is_running_)
         {
-            for (int32_t dz = -cell_radius; dz <= cell_radius; ++dz)
+            auto start_time = std::chrono::steady_clock::now();
+            
+            // Process synchronization updates
+            process_sync_updates();
+            
+            // Update snapshots for lag compensation
+            if (lag_compensation_enabled_)
             {
-                result.push_back({center_key.first + dx, center_key.second + dz});
+                update_entity_snapshots();
+                cleanup_old_snapshots();
+            }
+            
+            auto end_time = std::chrono::steady_clock::now();
+            auto processing_time = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+            
+            // Update statistics
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                stats_.average_sync_time_ms = processing_time.count() / 1000.0;
+            }
+            
+            // Wait for next sync cycle
+            std::unique_lock<std::mutex> lock(mutex_);
+            sync_cv_.wait_for(lock, sync_interval, [this] { return !is_running_; });
+        }
+    }
+
+    auto WorldSynchronizer::process_sync_updates() -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        uint32_t processed_count = 0;
+        
+        while (!sync_queue_.empty() && processed_count < max_entities_per_update_)
+        {
+            SyncUpdate update = sync_queue_.front();
+            sync_queue_.pop();
+            
+            // Get nearby clients
+            auto nearby_clients = get_nearby_clients(update.entity_id);
+            
+            // Sync to clients
+            if (!nearby_clients.empty())
+            {
+                sync_entity_to_clients(update.entity_id, nearby_clients);
+            }
+            
+            // Mark entity as clean
+            auto it = entity_states_.find(update.entity_id);
+            if (it != entity_states_.end())
+            {
+                it->second.is_dirty = false;
+            }
+            
+            processed_count++;
+        }
+    }
+
+    auto WorldSynchronizer::update_entity_snapshots() -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::lock_guard<std::mutex> snapshot_lock(snapshot_mutex_);
+        
+        LagCompensationSnapshot snapshot;
+        snapshot.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        
+        // Capture current entity states
+        for (const auto& [entity_id, state] : entity_states_)
+        {
+            snapshot.entity_positions[entity_id] = state.position;
+            snapshot.entity_states[entity_id] = state;
+        }
+        
+        snapshots_.push_back(snapshot);
+        stats_.snapshots_stored = static_cast<uint32_t>(snapshots_.size());
+    }
+
+    auto WorldSynchronizer::cleanup_old_snapshots() -> void
+    {
+        std::lock_guard<std::mutex> snapshot_lock(snapshot_mutex_);
+        
+        auto current_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        
+        auto cutoff_time = current_time - snapshot_history_duration_.count();
+        
+        snapshots_.erase(
+            std::remove_if(snapshots_.begin(), snapshots_.end(),
+                [cutoff_time](const LagCompensationSnapshot& snapshot) {
+                    return snapshot.timestamp < static_cast<uint64_t>(cutoff_time);
+                }),
+            snapshots_.end());
+        
+        stats_.snapshots_stored = static_cast<uint32_t>(snapshots_.size());
+    }
+
+    auto WorldSynchronizer::calculate_sync_priority(const WorldEntityState& state) const -> uint32_t
+    {
+        uint32_t priority = 0;
+        
+        // Higher priority for moving entities
+        if (state.is_moving)
+        {
+            priority += 10;
+        }
+        
+        // Higher priority for entities with recent updates
+        auto current_time = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        
+        auto time_since_update = current_time - state.last_update_time;
+        if (time_since_update < 100) // Less than 100ms ago
+        {
+            priority += 20;
+        }
+        
+        // Higher priority for entities with low health (combat situations)
+        if (state.health < state.max_health * 0.3f)
+        {
+            priority += 15;
+        }
+        
+        return priority;
+    }
+
+    auto WorldSynchronizer::interpolate_entity_state(const WorldEntityState& from, const WorldEntityState& to, float factor) const -> WorldEntityState
+    {
+        WorldEntityState result = to;
+        
+        // Interpolate position
+        result.position.x = from.position.x + (to.position.x - from.position.x) * factor;
+        result.position.y = from.position.y + (to.position.y - from.position.y) * factor;
+        result.position.z = from.position.z + (to.position.z - from.position.z) * factor;
+        
+        // Interpolate rotation
+        result.rotation = from.rotation + (to.rotation - from.rotation) * factor;
+        
+        return result;
+    }
+
+    auto WorldSynchronizer::extrapolate_entity_position(const WorldEntityState& state, std::chrono::milliseconds delta) const -> Location
+    {
+        Location extrapolated = state.position;
+        
+        if (state.is_moving)
+        {
+            float delta_seconds = delta.count() / 1000.0f;
+            extrapolated.x += state.velocity.x * delta_seconds;
+            extrapolated.y += state.velocity.y * delta_seconds;
+            extrapolated.z += state.velocity.z * delta_seconds;
+        }
+        
+        return extrapolated;
+    }
+
+    auto WorldSynchronizer::create_snapshot() -> void
+    {
+        update_entity_snapshots();
+    }
+
+    auto WorldSynchronizer::find_snapshot_at_time(uint64_t timestamp) const -> std::optional<LagCompensationSnapshot>
+    {
+        std::lock_guard<std::mutex> snapshot_lock(snapshot_mutex_);
+        
+        if (snapshots_.empty())
+        {
+            return std::nullopt;
+        }
+        
+        // Find the closest snapshot
+        auto it = std::lower_bound(snapshots_.begin(), snapshots_.end(), timestamp,
+            [](const LagCompensationSnapshot& snapshot, uint64_t time) {
+                return snapshot.timestamp < time;
+            });
+        
+        if (it != snapshots_.end())
+        {
+            return *it;
+        }
+        
+        // Return the latest snapshot if timestamp is beyond all snapshots
+        return snapshots_.back();
+    }
+
+    auto WorldSynchronizer::interpolate_snapshots(const LagCompensationSnapshot& earlier, const LagCompensationSnapshot& later, uint64_t timestamp) const -> LagCompensationSnapshot
+    {
+        if (earlier.timestamp >= later.timestamp)
+        {
+            return later;
+        }
+        
+        float factor = static_cast<float>(timestamp - earlier.timestamp) / 
+                      static_cast<float>(later.timestamp - earlier.timestamp);
+        factor = std::clamp(factor, 0.0f, 1.0f);
+        
+        LagCompensationSnapshot result;
+        result.timestamp = timestamp;
+        
+        // Interpolate positions for common entities
+        for (const auto& [entity_id, later_pos] : later.entity_positions)
+        {
+            auto earlier_it = earlier.entity_positions.find(entity_id);
+            if (earlier_it != earlier.entity_positions.end())
+            {
+                Location interpolated_pos;
+                interpolated_pos.x = earlier_it->second.x + (later_pos.x - earlier_it->second.x) * factor;
+                interpolated_pos.y = earlier_it->second.y + (later_pos.y - earlier_it->second.y) * factor;
+                interpolated_pos.z = earlier_it->second.z + (later_pos.z - earlier_it->second.z) * factor;
+                
+                result.entity_positions[entity_id] = interpolated_pos;
+            }
+            else
+            {
+                result.entity_positions[entity_id] = later_pos;
             }
         }
         
         return result;
     }
-    
-    auto WorldSynchronizer::sync_session(SessionInfo& info) -> void
+
+    auto WorldSynchronizer::calculate_distance(const Location& a, const Location& b) const -> float
     {
-        // Get current visible entities
-        auto current_visible = get_visible_entities(info.session);
-        std::unordered_set<uint64_t> current_ids;
+        float dx = a.x - b.x;
+        float dy = a.y - b.y;
+        float dz = a.z - b.z;
         
-        for (const auto& entity : current_visible)
-        {
-            current_ids.insert(entity.id);
-            
-            // Check if newly visible
-            if (info.visible_entities.find(entity.id) == info.visible_entities.end())
-            {
-                // Send spawn packet for this entity
-                auto spawn_packet = std::make_unique<EntitySpawnPacket>();
-                spawn_packet->set_entity_id(entity.id);
-                spawn_packet->set_entity_type(entity.type);
-                spawn_packet->set_location(entity.location);
-                spawn_packet->set_name(entity.name);
-                spawn_packet->set_level(entity.level);
-                spawn_packet->set_health(entity.health);
-                spawn_packet->set_max_health(entity.max_health);
-                
-                if (info.session->connection())
-                {
-                    info.session->connection()->send_packet(*spawn_packet);
-                }
-            }
-        }
-        
-        // Check for entities that are no longer visible
-        std::vector<uint64_t> to_remove;
-        for (const auto& entity_id : info.visible_entities)
-        {
-            if (current_ids.find(entity_id) == current_ids.end())
-            {
-                to_remove.push_back(entity_id);
-                // Send despawn packet for this entity
-                auto despawn_packet = std::make_unique<EntityDespawnPacket>();
-                despawn_packet->set_entity_id(entity_id);
-                despawn_packet->set_reason(DespawnReason::OutOfRange);
-                
-                if (info.session->connection())
-                {
-                    info.session->connection()->send_packet(*despawn_packet);
-                }
-            }
-        }
-        
-        // Update visible entities
-        info.visible_entities = current_ids;
-        
-        // Send update packets for visible entities based on LOD
-        for (const auto& entity : current_visible)
-        {
-            // Calculate distance for LOD
-            float distance = calculate_distance(info.session->location(), entity.location);
-            
-            // Create update packet with appropriate detail level
-            auto update_packet = std::make_unique<EntityUpdatePacket>();
-            update_packet->set_entity_id(entity.id);
-            
-            // Always send location for visible entities
-            update_packet->set_location(entity.location);
-            
-            // Send health if close enough
-            if (distance < view_distance_ * 0.5f)
-            {
-                update_packet->set_health(entity.health);
-                update_packet->set_state(entity.state);
-            }
-            
-            // Send velocity for moving entities if very close
-            if (distance < view_distance_ * 0.25f && entity.velocity.has_value())
-            {
-                update_packet->set_velocity(entity.velocity.value());
-            }
-            
-            if (info.session->connection())
-            {
-                info.session->connection()->send_packet(*update_packet);
-            }
-        }
-        
-        info.last_sync = std::chrono::steady_clock::now();
-    }
-    
-    auto WorldSynchronizer::sync_all_sessions() -> void
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        for (auto& [id, info] : sessions_)
-        {
-            sync_session(info);
-        }
-        
-        stats_.total_syncs++;
-    }
-    
-    auto WorldSynchronizer::calculate_distance(const Location& loc1, const Location& loc2) -> float
-    {
-        float dx = loc1.x - loc2.x;
-        float dy = loc1.y - loc2.y;
-        float dz = loc1.z - loc2.z;
         return std::sqrt(dx * dx + dy * dy + dz * dz);
     }
-    
-    auto WorldSynchronizer::update_entity_position(uint64_t entity_id, const Location& new_location)
-        -> std::tuple<bool, std::optional<std::string>>
+
+    auto WorldSynchronizer::get_nearby_clients(uint64_t entity_id) const -> std::vector<std::shared_ptr<GameSession>>
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        auto it = entities_.find(entity_id);
-        if (it == entities_.end())
+        auto entity_state = get_entity_state(entity_id);
+        if (!entity_state.has_value())
         {
-            return {false, "Entity not found"};
+            return {};
         }
         
-        // Get old location for grid update
-        auto old_location = it->second.location;
-        it->second.location = new_location;
-        it->second.last_update = std::chrono::steady_clock::now();
-        
-        // Update grid if entity moved to different cell
-        auto old_grid_key = get_grid_key(old_location);
-        auto new_grid_key = get_grid_key(new_location);
-        
-        if (old_grid_key != new_grid_key)
-        {
-            grid_[old_grid_key].entity_ids.erase(entity_id);
-            grid_[new_grid_key].entity_ids.insert(entity_id);
-        }
-        
-        // Create update packet
-        EntityUpdatePacket update_packet;
-        update_packet.set_entity_id(entity_id);
-        update_packet.set_location(new_location);
-        
-        // Broadcast to interested sessions
-        auto interested = get_interested_sessions(new_location, view_distance_);
-        for (const auto& session : interested)
-        {
-            if (session->connection())
-            {
-                session->connection()->send_packet(update_packet);
-            }
-        }
-        
-        return {true, std::nullopt};
+        return get_clients_in_range(entity_state->position, aoi_radius_);
     }
-    
-} // namespace GameNetwork
+
+    auto WorldSynchronizer::should_sync_to_client(uint64_t entity_id, std::shared_ptr<GameSession> client) const -> bool
+    {
+        if (!client || !client->is_connected())
+        {
+            return false;
+        }
+        
+        // Get client's entity position
+        auto client_entity_id = client->get_entity_id();
+        if (client_entity_id == 0) return false; // No entity associated
+        
+        auto client_state = get_entity_state(client_entity_id);
+        auto entity_state = get_entity_state(entity_id);
+        
+        if (!client_state.has_value() || !entity_state.has_value())
+        {
+            return false;
+        }
+        
+        // Check if entity is within client's AOI
+        float distance = calculate_distance(client_state->position, entity_state->position);
+        return distance <= aoi_radius_;
+    }
+}

@@ -28,6 +28,7 @@ namespace GameNetwork
         auto session_id() const -> std::string;
         auto session_id_hash() const -> uint64_t;
         auto account_id() const -> std::string;
+        auto get_account_id() const -> std::string;  // Alias for compatibility
         auto set_account_id(const std::string& id) -> void;
         
         // Connection management
@@ -36,15 +37,18 @@ namespace GameNetwork
         auto current_connection() const -> std::shared_ptr<GameConnection>;
         auto connection() const -> std::shared_ptr<GameConnection>;  // Alias for compatibility
         auto is_online() const -> bool;
+        auto is_connected() const -> bool;  // Alias for compatibility
+        auto is_active() const -> bool;
         
         // State management
-        auto state() const -> SessionState;
-        auto set_state(SessionState new_state) -> void;
+        auto state() const -> SessionConnectionState;
+        auto set_state(SessionConnectionState new_state) -> void;
         
         // Character management
         auto load_character(uint64_t character_id) -> std::tuple<bool, std::optional<std::string>>;
         auto current_character() const -> std::shared_ptr<Character>;
         auto save_character() -> std::tuple<bool, std::optional<std::string>>;
+        auto get_entity_id() const -> uint64_t;
         
         // Location management
         auto current_location() const -> Location;
@@ -56,6 +60,7 @@ namespace GameNetwork
         auto enter_channel(uint32_t channel_id) -> std::tuple<bool, std::optional<std::string>>;
         auto leave_channel() -> void;
         auto current_channel_id() const -> uint32_t;
+        auto get_channel_id() const -> uint32_t;  // Alias for compatibility
         
         // Session persistence
         auto save_state() -> std::tuple<bool, std::optional<std::string>>;
@@ -76,6 +81,9 @@ namespace GameNetwork
         
         auto remove_data(const std::string& key) -> void;
         
+        // Packet sending
+        auto send_packet(const std::vector<uint8_t>& packet_data) -> bool;
+        
     private:
         auto start_grace_period_timer() -> void;
         auto stop_grace_period_timer() -> void;
@@ -88,7 +96,7 @@ namespace GameNetwork
         std::string account_id_;
         
         // State
-        SessionState state_;
+        SessionConnectionState state_;
         
         // Connection
         std::shared_ptr<GameConnection> connection_;
@@ -102,10 +110,13 @@ namespace GameNetwork
         std::chrono::steady_clock::time_point last_activity_;
         std::chrono::steady_clock::time_point disconnected_time_;
         
+        // Channel
+        uint32_t channel_id_;
+        
         // Session data storage
-        std::unordered_map<std::string, std::any> session_data_;
+        std::unordered_map<std::string, std::any> custom_data_;
         
         // Grace period timer
-        std::future<void> grace_period_timer_;
+        std::future<void> grace_timer_;
     };
 }

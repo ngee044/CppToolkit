@@ -22,6 +22,8 @@ namespace GameNetwork
     class WorldSynchronizer;
     class LoadBalancer;
     class ServerMonitor;
+    class GamePacket;
+    struct Location;
     
     struct ServerConfig
     {

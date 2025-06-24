@@ -94,6 +94,23 @@ namespace GameDatabase
 		}
 	}
 
+	auto DBConnection::prepare(const std::wstring& query) -> std::tuple<bool, std::optional<std::string>>
+	{
+		if (statement_ == SQL_NULL_HANDLE)
+		{
+			return { false, "Statement handle is not initialized." };
+		}
+
+		auto ret = ::SQLPrepareW(statement_, const_cast<SQLWCHAR*>(query.c_str()), SQL_NTSL);
+		if (!SQL_SUCCEEDED(ret))
+		{
+			handle_error(ret);
+			return { false, "Failed to prepare query." };
+		}
+
+		return { true, std::nullopt };
+	}
+
 	auto DBConnection::execute(const std::wstring& query) -> std::tuple<bool, std::optional<std::string>>
 	{
 		if (statement_ == SQL_NULL_HANDLE)
@@ -375,4 +392,4 @@ namespace GameDatabase
 			index++;
 		}
 	}
-} 
+}

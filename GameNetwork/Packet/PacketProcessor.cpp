@@ -1,389 +1,189 @@
 #include "PacketProcessor.h"
-
-#ifdef USE_COMPRESSION
+#include <Compressor.h>
+#include <Encryptor.h>
+#include <Converter.h>
+#include <Logger.h>
 #include <zlib.h>
-#endif
-
-#include <cstring>
-#include <algorithm>
+#include <chrono>
 
 namespace GameNetwork
 {
-    PacketProcessor::PacketProcessor(std::shared_ptr<Thread::ThreadPool> thread_pool)
-        : thread_pool_(thread_pool)
-        , compression_enabled_(false)
+    PacketProcessor::PacketProcessor()
+        : compression_enabled_(false)
         , encryption_enabled_(false)
         , batching_enabled_(false)
-        , max_batch_size_(1400)  // MTU safe
-        , batch_timeout_(std::chrono::milliseconds(100))
     {
-        stats_ = {};
-        
-        if (!thread_pool_)
-        {
-            // Create default thread pool if not provided
-            thread_pool_ = std::make_shared<Thread::ThreadPool>("PacketProcessor");
-        }
+        stats_.packets_processed = 0;
+        stats_.packets_compressed = 0;
+        stats_.packets_encrypted = 0;
+        stats_.packets_batched = 0;
+        stats_.compression_ratio_percent = 100;
+        stats_.average_processing_time_us = 0;
     }
-    
+
     PacketProcessor::~PacketProcessor() = default;
-    
-    auto PacketProcessor::serialize_packet(const GamePacket& packet) 
-        -> std::tuple<std::vector<uint8_t>, std::optional<std::string>>
+
+    auto PacketProcessor::serialize(const GamePacket& packet) 
+        -> std::optional<std::string>
     {
         try
         {
-            // Get raw packet data
-            auto data = packet.serialize();
+            auto start_time = std::chrono::high_resolution_clock::now();
             
-            // Validate packet size
-            if (!validate_packet_size(data.size()))
-            {
-                return {{}, "Packet size exceeds maximum"};
-            }
+            // Convert packet to JSON string
+            std::string json_str = packet.to_json();
             
             // Apply compression if enabled
-            if (compression_enabled_ && should_compress(packet))
+            if (compression_enabled_)
             {
-                auto [compressed, error] = compress_packet(data);
-                if (error.has_value())
+                std::vector<uint8_t> json_data(json_str.begin(), json_str.end());
+                auto [compressed_data, error] = Utilities::Compressor::compression(json_data);
+                if (compressed_data.has_value() && !compressed_data->empty())
                 {
-                    return {{}, error};
+                    json_str = std::string(compressed_data->begin(), compressed_data->end());
+                    stats_.packets_compressed++;
                 }
-                data = compressed;
-                stats_.packets_compressed++;
             }
             
             // Apply encryption if enabled
-            if (encryption_enabled_)
+#ifdef USE_ENCRYPT_MODULE
+            if (encryption_enabled_ && !encryption_key_.empty())
             {
-                auto [encrypted, error] = encrypt_packet(data);
-                if (error.has_value())
+                std::vector<uint8_t> json_data(json_str.begin(), json_str.end());
+                auto [encrypted_data, error] = Utilities::Encryptor::encryption(json_data, encryption_key_, "");
+                if (encrypted_data.has_value() && !encrypted_data->empty())
                 {
-                    return {{}, error};
+                    json_str = std::string(encrypted_data->begin(), encrypted_data->end());
+                    stats_.packets_encrypted++;
                 }
-                data = encrypted;
-                stats_.packets_encrypted++;
+            }
+#endif
+            
+            // Update statistics
+            stats_.packets_processed++;
+            auto end_time = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time);
+            
+            // Update average processing time
+            if (stats_.packets_processed == 1)
+            {
+                stats_.average_processing_time_us = duration.count();
+            }
+            else
+            {
+                stats_.average_processing_time_us = 
+                    (stats_.average_processing_time_us * (stats_.packets_processed - 1) + duration.count()) 
+                    / stats_.packets_processed;
             }
             
-            stats_.packets_processed++;
-            
-            return {data, std::nullopt};
+            return json_str;
         }
         catch (const std::exception& e)
         {
-            return {{}, std::string("Serialization error: ") + e.what()};
+            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                "Failed to serialize packet: " + std::string(e.what()));
+            return std::nullopt;
         }
-    }
-    
-    auto PacketProcessor::deserialize_packet(const std::vector<uint8_t>& data) 
-        -> std::tuple<std::unique_ptr<GamePacket>, std::optional<std::string>>
+    }    auto PacketProcessor::deserialize(const std::string& data)
+        -> std::unique_ptr<GamePacket>
     {
         try
         {
-            std::vector<uint8_t> processed_data = data;
+            std::string json_str = data;
             
-            // Decrypt if enabled
-            if (encryption_enabled_)
+            // Apply decryption if enabled
+#ifdef USE_ENCRYPT_MODULE
+            if (encryption_enabled_ && !encryption_key_.empty())
             {
-                auto [decrypted, error] = decrypt_packet(processed_data);
-                if (error.has_value())
+                std::vector<uint8_t> json_data(json_str.begin(), json_str.end());
+                auto [decrypted_data, error] = Utilities::Encryptor::decryption(json_data, encryption_key_, "");
+                if (decrypted_data.has_value() && !decrypted_data->empty())
                 {
-                    return {nullptr, error};
+                    json_str = std::string(decrypted_data->begin(), decrypted_data->end());
                 }
-                processed_data = decrypted;
+                else
+                {
+                    Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                        "Failed to decrypt packet");
+                    return nullptr;
+                }
             }
+#endif
             
-            // Decompress if needed
+            // Apply decompression if enabled
             if (compression_enabled_)
             {
-                // Check if packet is compressed (would need a flag in the header)
-                // For now, try to decompress and fall back if it fails
-                auto [decompressed, error] = decompress_packet(processed_data);
-                if (!error.has_value())
+                std::vector<uint8_t> json_data(json_str.begin(), json_str.end());
+                auto [decompressed_data, error] = Utilities::Compressor::decompression(json_data);
+                if (decompressed_data.has_value() && !decompressed_data->empty())
                 {
-                    processed_data = decompressed;
+                    json_str = std::string(decompressed_data->begin(), decompressed_data->end());
                 }
             }
             
-            // Deserialize packet
-            auto [packet, error] = GamePacket::deserialize(processed_data);
-            if (error.has_value())
-            {
-                return {nullptr, error};
-            }
-            
-            // Validate packet
-            auto [valid, validation_error] = validate_packet(*packet);
-            if (!valid)
-            {
-                return {nullptr, validation_error};
-            }
-            
-            stats_.packets_processed++;
-            
-            return {std::move(packet), std::nullopt};
+            // Parse JSON to packet - For now, we'll return nullptr as GamePacket is abstract
+            // TODO: Implement proper packet factory based on packet type
+            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                "Cannot instantiate abstract GamePacket class - packet factory needed");
+            return nullptr;
         }
         catch (const std::exception& e)
         {
-            return {nullptr, std::string("Deserialization error: ") + e.what()};
+            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                "Failed to deserialize packet: " + std::string(e.what()));
+            return nullptr;
         }
+    }    auto PacketProcessor::deserialize_binary(const std::vector<uint8_t>& data)
+        -> std::unique_ptr<GamePacket>
+    {
+        std::string str_data(data.begin(), data.end());
+        return deserialize(str_data);
     }
-    
-    auto PacketProcessor::enable_compression(bool enable) -> void
+
+    auto PacketProcessor::set_compression_enabled(bool enabled) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        compression_enabled_ = enable;
+        compression_enabled_ = enabled;
     }
-    
+
     auto PacketProcessor::is_compression_enabled() const -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return compression_enabled_;
     }
-    
-    auto PacketProcessor::compress_packet(const std::vector<uint8_t>& data) 
-        -> std::tuple<std::vector<uint8_t>, std::optional<std::string>>
-    {
-#ifdef USE_COMPRESSION
-        // Use zlib compression
-        uLongf compressed_size = compressBound(data.size());
-        std::vector<uint8_t> compressed(compressed_size);
-        
-        int result = compress2(compressed.data(), &compressed_size,
-                               data.data(), data.size(),
-                               Z_BEST_SPEED);  // Fast compression
-        
-        if (result != Z_OK)
-        {
-            return {{}, "Compression failed"};
-        }
-        
-        compressed.resize(compressed_size);
-        
-        // Calculate compression ratio
-        if (data.size() > 0)
-        {
-            stats_.compression_ratio_percent = 
-                (compressed_size * 100) / data.size();
-        }
-        
-        return {compressed, std::nullopt};
-#else
-        // No compression available
-        return {data, std::nullopt};
-#endif
-    }
-    
-    auto PacketProcessor::decompress_packet(const std::vector<uint8_t>& data) 
-        -> std::tuple<std::vector<uint8_t>, std::optional<std::string>>
-    {
-#ifdef USE_COMPRESSION
-        // Estimate decompressed size (would need to store this in packet header)
-        uLongf decompressed_size = data.size() * 10;  // Assume 10x compression max
-        std::vector<uint8_t> decompressed(decompressed_size);
-        
-        int result = uncompress(decompressed.data(), &decompressed_size,
-                                data.data(), data.size());
-        
-        if (result != Z_OK)
-        {
-            return {{}, "Decompression failed"};
-        }
-        
-        decompressed.resize(decompressed_size);
-        return {decompressed, std::nullopt};
-#else
-        // No compression available
-        return {data, std::nullopt};
-#endif
-    }
-    
-    auto PacketProcessor::enable_encryption(bool enable) -> void
+
+    auto PacketProcessor::set_encryption_enabled(bool enabled) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        encryption_enabled_ = enable;
+        encryption_enabled_ = enabled;
     }
-    
+
     auto PacketProcessor::is_encryption_enabled() const -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return encryption_enabled_;
     }
-    
-    auto PacketProcessor::set_encryption_key(const std::vector<uint8_t>& key) -> void
+
+    auto PacketProcessor::set_encryption_key(const std::string& key) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
         encryption_key_ = key;
     }
-    
-    auto PacketProcessor::encrypt_packet(const std::vector<uint8_t>& data) 
-        -> std::tuple<std::vector<uint8_t>, std::optional<std::string>>
-    {
-        // Simple XOR encryption for demonstration
-        // In production, use proper encryption like AES
-        if (encryption_key_.empty())
-        {
-            return {{}, "Encryption key not set"};
-        }
-        
-        std::vector<uint8_t> encrypted = data;
-        for (size_t i = 0; i < encrypted.size(); ++i)
-        {
-            encrypted[i] ^= encryption_key_[i % encryption_key_.size()];
-        }
-        
-        return {encrypted, std::nullopt};
-    }
-    
-    auto PacketProcessor::decrypt_packet(const std::vector<uint8_t>& data) 
-        -> std::tuple<std::vector<uint8_t>, std::optional<std::string>>
-    {
-        // XOR decryption (same as encryption for XOR)
-        return encrypt_packet(data);
-    }
-    
-    auto PacketProcessor::enable_batching(bool enable) -> void
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        batching_enabled_ = enable;
-        
-        if (!enable && !current_batch_.serialized_packets.empty())
-        {
-            // Flush current batch
-            flush_batch();
-        }
-    }
-    
-    auto PacketProcessor::is_batching_enabled() const -> bool
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return batching_enabled_;
-    }
-    
-    auto PacketProcessor::add_to_batch(const GamePacket& packet) -> void
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        if (!batching_enabled_)
-        {
-            return;
-        }
-        
-        // Check if we need to flush based on size or time
-        auto now = std::chrono::steady_clock::now();
-        auto elapsed = now - current_batch_.created_time;
-        
-        if (current_batch_.total_size >= max_batch_size_ || 
-            elapsed >= batch_timeout_)
-        {
-            flush_batch();
-        }
-        
-        // Add packet to batch
-        auto packet_data = packet.serialize();
-        current_batch_.total_size += packet_data.size();
-        current_batch_.serialized_packets.push_back(std::move(packet_data));
-        
-        stats_.packets_batched++;
-    }
-    
-    auto PacketProcessor::flush_batch() -> std::vector<std::vector<uint8_t>>
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        auto result = process_batch();
-        
-        // Clear current batch
-        current_batch_.serialized_packets.clear();
-        current_batch_.total_size = 0;
-        current_batch_.created_time = std::chrono::steady_clock::now();
-        
-        return result;
-    }
-    
-    auto PacketProcessor::validate_packet(const GamePacket& packet) 
-        -> std::tuple<bool, std::optional<std::string>>
-    {
-        // Basic validation
-        if (!validate_packet_type(packet.type()))
-        {
-            return {false, "Invalid packet type"};
-        }
-        
-        // Packet-specific validation
-        auto [valid, error] = packet.validate();
-        if (!valid)
-        {
-            return {false, error};
-        }
-        
-        return {true, std::nullopt};
-    }
-    
-    auto PacketProcessor::validate_packet_size(size_t size) const -> bool
-    {
-        return size <= MAX_PACKET_SIZE;
-    }
-    
-    auto PacketProcessor::validate_packet_type(PacketType type) const -> bool
-    {
-        // All packet types are valid for now
-        return true;
-    }
-    
+
     auto PacketProcessor::get_stats() const -> ProcessorStats
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        
-        // Calculate average processing time
-        if (stats_.packets_processed > 0)
-        {
-            // This would be calculated from actual timing data
-            stats_.average_processing_time_us = 100;  // Placeholder
-        }
-        
         return stats_;
     }
-    
+
     auto PacketProcessor::reset_stats() -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        stats_ = {};
-    }
-    
-    auto PacketProcessor::calculate_checksum(const std::vector<uint8_t>& data) const -> uint32_t
-    {
-        // Simple checksum for demonstration
-        uint32_t checksum = 0;
-        for (const auto& byte : data)
-        {
-            checksum = (checksum << 1) ^ byte;
-        }
-        return checksum;
-    }
-    
-    auto PacketProcessor::process_batch() -> std::vector<std::vector<uint8_t>>
-    {
-        std::vector<std::vector<uint8_t>> result;
-        
-        // Create batch packet containing all packets
-        // In real implementation, would create a special BatchPacket type
-        
-        for (const auto& packet_data : current_batch_.serialized_packets)
-        {
-            // Data is already serialized
-            result.push_back(packet_data);
-        }
-        
-        return result;
-    }
-    
-    auto PacketProcessor::should_compress(const GamePacket& packet) const -> bool
-    {
-        // Compress packets larger than 100 bytes  
-        // First serialize to check size
-        auto data = packet.serialize();
-        return data.size() > 100;
+        stats_.packets_processed = 0;
+        stats_.packets_compressed = 0;
+        stats_.packets_encrypted = 0;
+        stats_.packets_batched = 0;
+        stats_.compression_ratio_percent = 100;
+        stats_.average_processing_time_us = 0;
     }
 }

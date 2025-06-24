@@ -1,365 +1,490 @@
 #include "GameSession.h"
-#include "Character.h"
-#include "../GameNetworkConstants.h"
-#include "../../Utilities/Logger.h"
-
-#include <future>
-#include <algorithm>
-
-using namespace Utilities;
+#include <Character.h>
+#include <SessionPersistence.h>
+#include <Logger.h>
+#include <Converter.h>
+#include <functional>
 
 namespace GameNetwork
 {
     GameSession::GameSession(const std::string& session_id, const std::string& account_id)
         : session_id_(session_id)
         , account_id_(account_id)
-        , state_(SessionState::Inactive)
-        , created_time_(std::chrono::steady_clock::now())
+        , state_(SessionConnectionState::Connected)
+        , channel_id_(0)
         , last_activity_(std::chrono::steady_clock::now())
     {
-        // Initialize location
-        current_location_ = {0.0f, 0.0f, 0.0f, 0, 0};
+        current_location_.x = 0.0f;
+        current_location_.y = 0.0f;
+        current_location_.z = 0.0f;
+        current_location_.map_id = 0;
+        current_location_.zone_id = 0;
     }
-    
+
     GameSession::~GameSession()
     {
+        unbind_connection();
         stop_grace_period_timer();
-        
-        // Save state before destruction
-        save_state();
     }
-    
+
+    auto GameSession::id() const -> uint64_t
+    {
+        return session_id_hash();
+    }
+
     auto GameSession::session_id() const -> std::string
     {
         return session_id_;
     }
-    
+
+    auto GameSession::session_id_hash() const -> uint64_t
+    {
+        std::hash<std::string> hasher;
+        return hasher(session_id_);
+    }
+
     auto GameSession::account_id() const -> std::string
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         return account_id_;
     }
-    
+
+    auto GameSession::set_account_id(const std::string& id) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        account_id_ = id;
+    }
+
     auto GameSession::bind_connection(std::shared_ptr<GameConnection> connection) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
-        connection_ = connection;
-        state_ = SessionState::Active;
-        update_last_activity();
-        
-        stop_grace_period_timer();
-        
-        // Setup packet handler
         if (connection_)
         {
-            connection_->register_packet_handler(
-                [this](const GamePacket& packet)
-                {
-                    // Handle incoming packets
-                    // This would be dispatched to MessageDispatcher
-                });
+            connection_->unbind_session();
         }
+        
+        connection_ = connection;
+        if (connection_)
+        {
+            connection_->bind_session(shared_from_this());
+            state_ = SessionConnectionState::Connected;
+            stop_grace_period_timer();
+        }
+        
+        update_last_activity();
     }
-    
+
     auto GameSession::unbind_connection() -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
         if (connection_)
         {
+            connection_->unbind_session();
             connection_.reset();
-            disconnected_time_ = std::chrono::steady_clock::now();
-            
-            // Start grace period timer for reconnection
+            state_ = SessionConnectionState::Disconnected;
             start_grace_period_timer();
         }
     }
-    
+
     auto GameSession::current_connection() const -> std::shared_ptr<GameConnection>
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return connection_;
     }
-    
+
+    auto GameSession::connection() const -> std::shared_ptr<GameConnection>
+    {
+        return current_connection();
+    }
+
     auto GameSession::is_online() const -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        return connection_ != nullptr && connection_->is_connected();
+        return connection_ != nullptr && state_ == SessionConnectionState::Connected;
     }
-    
-    auto GameSession::state() const -> SessionState
+
+    auto GameSession::state() const -> SessionConnectionState
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return state_;
     }
-    
-    auto GameSession::set_state(SessionState new_state) -> void
+
+    auto GameSession::set_state(SessionConnectionState new_state) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
         state_ = new_state;
     }
-    
-    auto GameSession::load_character(uint64_t character_id) 
-        -> std::tuple<bool, std::optional<std::string>>
+
+    auto GameSession::load_character(uint64_t character_id) -> std::tuple<bool, std::optional<std::string>>
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
-        // TODO: Load character from database
-        // For now, create a dummy character
-        character_ = std::make_shared<Character>(character_id, "Player_" + std::to_string(character_id));
-        character_->set_level(1);
-        character_->set_health(100);
-        character_->set_max_health(100);
-        character_->set_mana(50);
-        character_->set_max_mana(50);
-        character_->set_location(current_location_);
-        
-        return {true, std::nullopt};
+        try
+        {
+            character_ = std::make_shared<Character>();
+            auto [success, error] = character_->load(character_id, account_id_);
+            
+            if (!success)
+            {
+                character_.reset();
+                return { false, error };
+            }
+            
+            // Set character's initial location
+            current_location_ = character_->get_location();
+            
+            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+                "Character loaded for session " + session_id_ + ", character ID: " + std::to_string(character_id));
+            
+            return { true, std::nullopt };
+        }
+        catch (const std::exception& e)
+        {
+            character_.reset();
+            return { false, std::string("Failed to load character: ") + e.what() };
+        }
     }
-    
+
     auto GameSession::current_character() const -> std::shared_ptr<Character>
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return character_;
     }
-    
+
     auto GameSession::save_character() -> std::tuple<bool, std::optional<std::string>>
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
         if (!character_)
         {
-            return {false, "No character loaded"};
+            return { false, "No character loaded" };
         }
         
-        // TODO: Save character to database
-        
-        return {true, std::nullopt};
+        try
+        {
+            // Update character location before saving
+            character_->set_location(current_location_);
+            
+            auto [success, error] = character_->save();
+            if (!success)
+            {
+                return { false, error };
+            }
+            
+            return { true, std::nullopt };
+        }
+        catch (const std::exception& e)
+        {
+            return { false, std::string("Failed to save character: ") + e.what() };
+        }
     }
-    
+
     auto GameSession::current_location() const -> Location
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return current_location_;
     }
-    
+
+    auto GameSession::location() const -> Location
+    {
+        return current_location();
+    }
+
     auto GameSession::move_to(const Location& location) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        
         current_location_ = location;
         
         if (character_)
         {
             character_->set_location(location);
         }
-        
-        update_last_activity();
     }
-    
+
     auto GameSession::teleport_to(const Location& location) -> void
     {
         move_to(location);
         
-        // TODO: Send teleport packet to client
+        // Additional teleport-specific logic could go here
+        // For example, clearing movement buffers, notifying nearby players, etc.
     }
-    
-    auto GameSession::enter_channel(uint32_t channel_id) 
-        -> std::tuple<bool, std::optional<std::string>>
+
+    auto GameSession::enter_channel(uint32_t channel_id) -> std::tuple<bool, std::optional<std::string>>
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
-        if (channel_id == INVALID_CHANNEL_ID)
+        if (channel_id_ != 0)
         {
-            return {false, "Invalid channel ID"};
+            return { false, "Already in channel " + std::to_string(channel_id_) };
         }
         
-        current_location_.channel_id = channel_id;
+        channel_id_ = channel_id;
         
-        if (character_)
-        {
-            character_->set_location(current_location_);
-        }
+        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            "Session " + session_id_ + " entered channel " + std::to_string(channel_id));
         
-        return {true, std::nullopt};
+        return { true, std::nullopt };
     }
-    
+
     auto GameSession::leave_channel() -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
-        current_location_.channel_id = INVALID_CHANNEL_ID;
-        
-        if (character_)
+        if (channel_id_ != 0)
         {
-            character_->set_location(current_location_);
+            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+                "Session " + session_id_ + " left channel " + std::to_string(channel_id_));
+            channel_id_ = 0;
         }
     }
-    
+
     auto GameSession::current_channel_id() const -> uint32_t
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        return current_location_.channel_id;
+        return channel_id_;
     }
-    
+
+    auto GameSession::update_last_activity() -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        last_activity_ = std::chrono::steady_clock::now();
+    }
+
+    auto GameSession::last_activity_time() const -> std::chrono::steady_clock::time_point
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return last_activity_;
+    }
+
+    auto GameSession::is_timeout() const -> bool
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        if (state_ != SessionConnectionState::Disconnected)
+        {
+            return false;
+        }
+        
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_activity_);
+        
+        return elapsed > kSessionTimeout;
+    }
+
+    auto GameSession::remaining_grace_period() const -> std::chrono::seconds
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        if (state_ != SessionConnectionState::Disconnected)
+        {
+            return std::chrono::seconds(0);
+        }
+        
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_activity_);
+        
+        if (elapsed >= kSessionGracePeriod)
+        {
+            return std::chrono::seconds(0);
+        }
+        
+        return kSessionGracePeriod - elapsed;
+    }
+
     auto GameSession::save_state() -> std::tuple<bool, std::optional<std::string>>
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
-        // TODO: Implement actual state persistence
-        // This would save to Redis or database:
-        // - Session info
-        // - Character data
-        // - Location
-        // - Custom session data
-        
-        // Save character first
-        if (character_)
+        try
         {
-            auto [success, error] = save_character();
+            SessionPersistence persistence;
+            
+            // Prepare session data
+            SessionData data;
+            data.session_id = session_id_;
+            data.account_id = account_id_;
+            data.character_id = character_ ? character_->id() : 0;
+            data.location = current_location_;
+            data.channel_id = channel_id_;
+            data.last_activity = last_activity_;
+            data.custom_data = custom_data_;
+            
+            auto [success, error] = persistence.save_session(session_id_, data);
             if (!success)
             {
-                return {false, error};
+                return { false, error };
             }
+            
+            return { true, std::nullopt };
         }
-        
-        return {true, std::nullopt};
+        catch (const std::exception& e)
+        {
+            return { false, std::string("Failed to save session state: ") + e.what() };
+        }
     }
-    
+
     auto GameSession::restore_state() -> std::tuple<bool, std::optional<std::string>>
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
-        // TODO: Implement actual state restoration
-        // This would load from Redis or database
-        
-        return {true, std::nullopt};
-    }
-    
-    auto GameSession::update_last_activity() -> void
-    {
-        last_activity_ = std::chrono::steady_clock::now();
-    }
-    
-    auto GameSession::last_activity_time() const -> std::chrono::steady_clock::time_point
-    {
-        return last_activity_;
-    }
-    
-    auto GameSession::is_timeout() const -> bool
-    {
-        auto now = std::chrono::steady_clock::now();
-        auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_activity_);
-        return elapsed > SESSION_TIMEOUT;
-    }
-    
-    auto GameSession::remaining_grace_period() const -> std::chrono::seconds
-    {
-        if (!is_online())
+        try
         {
-            auto now = std::chrono::steady_clock::now();
-            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - disconnected_time_);
-            auto remaining = RECONNECT_GRACE_PERIOD - elapsed;
+            SessionPersistence persistence;
+            auto [data, error] = persistence.load_session(session_id_);
             
-            return remaining.count() > 0 ? remaining : std::chrono::seconds(0);
+            if (error.has_value())
+            {
+                return { false, error };
+            }
+            
+            // Restore session data
+            account_id_ = data.account_id;
+            current_location_ = data.location;
+            channel_id_ = data.channel_id;
+            last_activity_ = data.last_activity;
+            custom_data_ = data.custom_data;
+            
+            // Restore character if needed
+            if (data.character_id > 0)
+            {
+                auto [char_success, char_error] = load_character(data.character_id);
+                if (!char_success)
+                {
+                    return { false, char_error };
+                }
+            }
+            
+            return { true, std::nullopt };
         }
-        
-        return std::chrono::seconds(0);
+        catch (const std::exception& e)
+        {
+            return { false, std::string("Failed to restore session state: ") + e.what() };
+        }
     }
-    
+
     template<typename T>
     auto GameSession::set_data(const std::string& key, const T& value) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        session_data_[key] = value;
+        custom_data_[key] = value;
     }
-    
+
     template<typename T>
     auto GameSession::get_data(const std::string& key) const -> std::optional<T>
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
-        auto it = session_data_.find(key);
-        if (it != session_data_.end())
+        auto it = custom_data_.find(key);
+        if (it == custom_data_.end())
         {
-            try
-            {
-                return std::any_cast<T>(it->second);
-            }
-            catch (const std::bad_any_cast&)
-            {
-                return std::nullopt;
-            }
+            return std::nullopt;
         }
         
-        return std::nullopt;
+        try
+        {
+            return std::any_cast<T>(it->second);
+        }
+        catch (const std::bad_any_cast&)
+        {
+            return std::nullopt;
+        }
     }
-    
+
     auto GameSession::remove_data(const std::string& key) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        session_data_.erase(key);
+        custom_data_.erase(key);
     }
-    
+
     auto GameSession::start_grace_period_timer() -> void
     {
-        grace_period_timer_ = std::async(std::launch::async, [this]()
+        if (grace_timer_.valid())
         {
-            std::this_thread::sleep_for(RECONNECT_GRACE_PERIOD);
+            return;
+        }
+        
+        grace_timer_ = std::async(std::launch::async, [this]()
+        {
+            std::this_thread::sleep_for(kSessionGracePeriod);
             
             // Check if still disconnected after grace period
-            if (!is_online())
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (state_ == SessionConnectionState::Disconnected && !connection_)
             {
-                set_state(SessionState::Terminating);
+                state_ = SessionConnectionState::Expired;
+                
+                Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+                    "Session " + session_id_ + " expired after grace period");
             }
         });
     }
-    
+
     auto GameSession::stop_grace_period_timer() -> void
     {
-        if (grace_period_timer_.valid())
+        if (grace_timer_.valid())
         {
-            // Note: Can't cancel std::async, it will complete
-            // but the check in the lambda will prevent action
+            // Note: We can't cancel std::async, it will run to completion
+            // But the state check in the timer will prevent any action
         }
     }
-    
-    // Explicit template instantiations
-    template auto GameSession::set_data<int>(const std::string&, const int&) -> void;
-    template auto GameSession::set_data<float>(const std::string&, const float&) -> void;
-    template auto GameSession::set_data<std::string>(const std::string&, const std::string&) -> void;
-    template auto GameSession::set_data<bool>(const std::string&, const bool&) -> void;
-    
-    template auto GameSession::get_data<int>(const std::string&) const -> std::optional<int>;
-    template auto GameSession::get_data<float>(const std::string&) const -> std::optional<float>;
-    template auto GameSession::get_data<std::string>(const std::string&) const -> std::optional<std::string>;
-    template auto GameSession::get_data<bool>(const std::string&) const -> std::optional<bool>;
-    
-    auto GameSession::connection() const -> std::shared_ptr<GameConnection>
+
+    auto GameSession::get_account_id() const -> std::string
     {
-        return current_connection();
+        return account_id();
     }
-    
-    auto GameSession::location() const -> Location
+
+    auto GameSession::get_channel_id() const -> uint32_t
     {
-        return current_location();
+        return current_channel_id();
     }
-    
-    auto GameSession::id() const -> uint64_t
+
+    auto GameSession::is_connected() const -> bool
     {
-        return session_id_hash();
+        return is_online();
     }
-    
-    auto GameSession::session_id_hash() const -> uint64_t
+
+    auto GameSession::is_active() const -> bool
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        std::hash<std::string> hasher;
-        return hasher(session_id_);
+        return state_ == SessionConnectionState::Connected && connection_ != nullptr;
     }
-    
-    auto GameSession::set_account_id(const std::string& id) -> void
+
+    auto GameSession::get_entity_id() const -> uint64_t
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        account_id_ = id;
+        if (character_)
+        {
+            // Assuming Character has an id() method
+            // return character_->id();
+            return 0; // Placeholder until Character class is fully implemented
+        }
+        return 0;
     }
+
+    auto GameSession::send_packet(const std::vector<uint8_t>& packet_data) -> bool
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (connection_ && is_online())
+        {
+            return connection_->send_binary(packet_data);
+        }
+        return false;
+    }
+
+    // Template instantiations
+    template void GameSession::set_data<int>(const std::string&, const int&);
+    template void GameSession::set_data<uint64_t>(const std::string&, const uint64_t&);
+    template void GameSession::set_data<float>(const std::string&, const float&);
+    template void GameSession::set_data<double>(const std::string&, const double&);
+    template void GameSession::set_data<std::string>(const std::string&, const std::string&);
+    template void GameSession::set_data<bool>(const std::string&, const bool&);
+
+    template std::optional<int> GameSession::get_data<int>(const std::string&) const;
+    template std::optional<uint64_t> GameSession::get_data<uint64_t>(const std::string&) const;
+    template std::optional<float> GameSession::get_data<float>(const std::string&) const;
+    template std::optional<double> GameSession::get_data<double>(const std::string&) const;
+    template std::optional<std::string> GameSession::get_data<std::string>(const std::string&) const;
+    template std::optional<bool> GameSession::get_data<bool>(const std::string&) const;
 }

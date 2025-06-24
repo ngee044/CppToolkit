@@ -63,6 +63,19 @@ namespace GameNetwork
         Terminating = 4
     };
     
+    // Session timeout constants
+    constexpr auto kSessionTimeout = std::chrono::seconds(600);  // 10 minutes
+    constexpr auto kSessionGracePeriod = std::chrono::seconds(60);  // 1 minute
+
+    // Session state enum
+    enum class SessionConnectionState : uint8_t
+    {
+        Connected = 0,
+        Disconnected = 1,
+        Expired = 2,
+        Reconnecting = 3
+    };
+
     // Game structures
     struct Location
     {
@@ -71,6 +84,7 @@ namespace GameNetwork
         float z = 0.0f;
         uint32_t map_id = 0;
         uint32_t channel_id = 0;
+        uint32_t zone_id = 0;  // Added missing zone_id
     };
     
     struct Vector3

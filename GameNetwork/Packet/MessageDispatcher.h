@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Packet/GamePacket.h"
+#include <ThreadPool.h>
 
 #include <memory>
 #include <functional>
@@ -11,6 +12,8 @@
 #include <tuple>
 #include <future>
 #include <atomic>
+#include <thread>
+#include <condition_variable>
 
 namespace GameNetwork
 {
@@ -32,12 +35,18 @@ namespace GameNetwork
         
         // Message dispatching
         auto dispatch(std::shared_ptr<GameSession> session, 
-                      std::unique_ptr<GamePacket> packet) 
-            -> std::tuple<bool, std::optional<std::string>>;
+                     const GamePacket& packet) -> void;
         
-        // Async dispatching
-        auto dispatch_async(std::shared_ptr<GameSession> session, 
-                            std::unique_ptr<GamePacket> packet) -> void;
+        // Queue management
+        auto queue_message(std::shared_ptr<GameSession> session,
+                          std::unique_ptr<GamePacket> packet) -> void;
+        
+        // Thread pool
+        auto set_thread_pool(std::shared_ptr<Thread::ThreadPool> thread_pool) -> void;
+        
+        // Lifecycle
+        auto start() -> void;
+        auto stop() -> void;
         
         // Priority queue management
         auto set_priority(PacketType type, PacketPriority priority) -> void;
@@ -73,6 +82,34 @@ namespace GameNetwork
             PacketPriority priority;
             std::chrono::steady_clock::time_point queued_time;
             
+            // Default constructor
+            QueuedMessage() = default;
+            
+            // Move constructor
+            QueuedMessage(QueuedMessage&& other) noexcept
+                : session(std::move(other.session))
+                , packet(std::move(other.packet))
+                , priority(other.priority)
+                , queued_time(other.queued_time)
+            {}
+            
+            // Move assignment operator
+            QueuedMessage& operator=(QueuedMessage&& other) noexcept
+            {
+                if (this != &other)
+                {
+                    session = std::move(other.session);
+                    packet = std::move(other.packet);
+                    priority = other.priority;
+                    queued_time = other.queued_time;
+                }
+                return *this;
+            }
+            
+            // Delete copy constructor and copy assignment
+            QueuedMessage(const QueuedMessage&) = delete;
+            QueuedMessage& operator=(const QueuedMessage&) = delete;
+            
             auto operator<(const QueuedMessage& other) const -> bool
             {
                 return priority < other.priority;
@@ -81,21 +118,16 @@ namespace GameNetwork
         
         struct RateLimitInfo
         {
-            uint32_t max_per_second;
-            std::chrono::steady_clock::time_point window_start;
-            uint32_t count_in_window;
+            std::queue<std::chrono::steady_clock::time_point> timestamps;
         };
         
-        auto process_queue() -> void;
-        auto handle_heartbeat(std::shared_ptr<GameSession> session, 
-                              const GamePacket& packet) 
-            -> std::tuple<bool, std::optional<std::string>>;
-        auto handle_authentication(std::shared_ptr<GameSession> session, 
-                                   const GamePacket& packet) 
-            -> std::tuple<bool, std::optional<std::string>>;
+        auto worker_thread() -> void;
         
     private:
-        mutable std::mutex mutex_;
+        mutable std::mutex handlers_mutex_;
+        mutable std::mutex queue_mutex_;
+        mutable std::mutex rate_limit_mutex_;
+        std::condition_variable queue_cv_;
         
         // Handler storage
         std::unordered_map<PacketType, PacketHandler> handlers_;
@@ -105,15 +137,18 @@ namespace GameNetwork
         std::priority_queue<QueuedMessage> message_queue_;
         
         // Rate limiting
-        bool rate_limiting_enabled_;
+        std::atomic<bool> rate_limiting_enabled_;
         std::unordered_map<PacketType, uint32_t> rate_limits_;
-        std::unordered_map<std::string, std::unordered_map<PacketType, RateLimitInfo>> rate_limit_tracking_;
+        std::unordered_map<std::string, RateLimitInfo> rate_limit_info_;
         
         // Statistics
         DispatcherStats stats_;
         
-        // Processing thread
-        std::future<void> processing_thread_;
-        std::atomic<bool> processing_running_;
+        // Thread pool
+        std::shared_ptr<Thread::ThreadPool> thread_pool_;
+        
+        // Worker threads
+        std::vector<std::thread> workers_;
+        std::atomic<bool> is_running_;
     };
 }

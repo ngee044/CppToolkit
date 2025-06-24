@@ -9,6 +9,7 @@
 #include <tuple>
 #include <optional>
 #include <functional>
+#include <mutex>
 #include <glm/glm.hpp>
 
 namespace GameNetwork

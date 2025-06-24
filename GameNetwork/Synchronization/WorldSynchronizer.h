@@ -2,163 +2,174 @@
 
 #include "../GameNetworkConstants.h"
 #include "../Session/GameSession.h"
+#include "../Packet/GamePacket.h"
+#include <ThreadPool.h>
+#include <Logger.h>
 
 #include <memory>
-#include <vector>
+#include <string>
+#include <chrono>
 #include <unordered_map>
-#include <unordered_set>
+#include <vector>
 #include <mutex>
-#include <optional>
-#include <tuple>
-#include <future>
 #include <atomic>
-
-#include "boost/functional/hash.hpp"
+#include <thread>
+#include <condition_variable>
+#include <queue>
+#include <functional>
 
 namespace GameNetwork
 {
-    struct Entity
+    // Forward declarations
+    class GameSessionManager;
+    
+    // Entity state for synchronization
+    struct WorldEntityState
     {
-        uint64_t id;
-        EntityType type;
-        Location location;
-        std::string name;
-        uint32_t level;
+        uint64_t entity_id;
+        Location position;
+        Location velocity;
+        float rotation;
         uint32_t health;
         uint32_t max_health;
-        EntityState state;
-        std::optional<Vector3> velocity;
-        std::unordered_map<std::string, std::any> properties;
-        std::chrono::steady_clock::time_point last_update;
+        uint64_t last_update_time;
+        uint64_t client_timestamp;
+        bool is_moving;
+        bool is_dirty;
     };
     
-    class WorldSynchronizer : public std::enable_shared_from_this<WorldSynchronizer>
+    // Lag compensation data
+    struct LagCompensationSnapshot
+    {
+        uint64_t timestamp;
+        std::unordered_map<uint64_t, Location> entity_positions;
+        std::unordered_map<uint64_t, WorldEntityState> entity_states;
+    };
+    
+    // Synchronization update
+    struct SyncUpdate
+    {
+        uint64_t entity_id;
+        WorldEntityState state;
+        std::chrono::steady_clock::time_point created_time;
+        uint32_t priority;
+    };
+    
+    class WorldSynchronizer
     {
     public:
         WorldSynchronizer();
-        virtual ~WorldSynchronizer();
+        ~WorldSynchronizer();
         
-        // Area of Interest (AOI) management
-        auto set_view_distance(float distance) -> void;
-        auto get_view_distance() const -> float;
+        // Initialization
+        auto initialize(std::shared_ptr<GameSessionManager> session_manager) -> bool;
+        auto shutdown() -> void;
+        auto set_thread_pool(std::shared_ptr<Thread::ThreadPool> thread_pool) -> void;
         
-        auto enter_area(std::shared_ptr<GameSession> session, const Location& location) 
-            -> std::tuple<bool, std::optional<std::string>>;
-        auto leave_area(std::shared_ptr<GameSession> session) 
-            -> std::tuple<bool, std::optional<std::string>>;
-        auto update_position(std::shared_ptr<GameSession> session, const Location& location) 
-            -> std::tuple<bool, std::optional<std::string>>;
+        // Entity synchronization
+        auto register_entity(uint64_t entity_id, const WorldEntityState& initial_state) -> void;
+        auto unregister_entity(uint64_t entity_id) -> void;
+        auto update_entity_state(uint64_t entity_id, const WorldEntityState& state) -> void;
+        auto get_entity_state(uint64_t entity_id) const -> std::optional<WorldEntityState>;
         
-        // Entity management
-        auto spawn_entity(const Entity& entity) 
-            -> std::tuple<bool, std::optional<std::string>>;
-        auto despawn_entity(uint64_t entity_id) 
-            -> std::tuple<bool, std::optional<std::string>>;
-        auto update_entity(uint64_t entity_id, const Entity& updated_entity) 
-            -> std::tuple<bool, std::optional<std::string>>;
-        auto update_entity_position(uint64_t entity_id, const Location& new_location)
-            -> std::tuple<bool, std::optional<std::string>>;
-        
-        // Interest management
-        auto get_interested_sessions(const Location& location, float radius = 0.0f) const 
-            -> std::vector<std::shared_ptr<GameSession>>;
-        auto get_visible_entities(std::shared_ptr<GameSession> session) const 
-            -> std::vector<Entity>;
-        
-        // Broadcasting
-        auto broadcast_to_area(const Location& center, 
-                               float radius, 
-                               const GamePacket& packet, 
-                               std::shared_ptr<GameSession> exclude = nullptr) 
-            -> std::tuple<bool, std::optional<std::string>>;
-        
-        // Channel management
-        auto get_channel_sessions(uint32_t channel_id) const 
-            -> std::vector<std::shared_ptr<GameSession>>;
-        auto broadcast_to_channel(uint32_t channel_id, 
-                                  const GamePacket& packet, 
-                                  std::shared_ptr<GameSession> exclude = nullptr) 
-            -> std::tuple<bool, std::optional<std::string>>;
-        
-        // Synchronization
-        auto start_sync_timer() -> void;
-        auto stop_sync_timer() -> void;
+        // Real-time synchronization
+        auto start_sync_loop() -> void;
+        auto stop_sync_loop() -> void;
         auto force_sync() -> void;
+        auto sync_entity_to_clients(uint64_t entity_id, const std::vector<std::shared_ptr<GameSession>>& clients) -> void;
+        auto sync_area_to_client(const Location& center, float radius, std::shared_ptr<GameSession> client) -> void;
         
-        // Level of Detail (LOD)
-        enum class DetailLevel
-        {
-            Full = 0,
-            High = 1,
-            Medium = 2,
-            Low = 3
-        };
+        // Lag compensation
+        auto enable_lag_compensation(bool enable) -> void;
+        auto set_snapshot_history_duration(std::chrono::milliseconds duration) -> void;
+        auto get_entity_position_at_time(uint64_t entity_id, uint64_t timestamp) const -> std::optional<Location>;
+        auto validate_movement(uint64_t entity_id, const Location& from, const Location& to, uint64_t client_timestamp) const -> bool;
+        auto compensate_for_lag(uint64_t entity_id, const Location& client_position, uint64_t client_timestamp) -> Location;
         
-        auto calculate_detail_level(float distance) const -> DetailLevel;
-        auto set_lod_distances(float high, float medium, float low) -> void;
+        // Area of Interest (AOI)
+        auto set_aoi_radius(float radius) -> void;
+        auto get_entities_in_range(const Location& center, float radius) const -> std::vector<uint64_t>;
+        auto get_clients_in_range(const Location& center, float radius) const -> std::vector<std::shared_ptr<GameSession>>;
         
-        // Statistics
+        // Conflict resolution
+        auto resolve_movement_conflict(uint64_t entity_id, const std::vector<WorldEntityState>& conflicting_states) -> WorldEntityState;
+        auto is_position_valid(const Location& position) const -> bool;
+        auto clamp_to_world_bounds(Location& position) const -> void;
+        
+        // Performance monitoring
         struct SyncStats
         {
-            uint64_t total_syncs;
-            uint64_t entities_tracked;
-            uint64_t sessions_tracked;
-            uint64_t packets_broadcasted;
-            std::chrono::microseconds average_sync_time;
+            uint64_t total_updates_processed;
+            uint64_t total_entities_synced;
+            uint64_t lag_compensation_queries;
+            uint64_t conflict_resolutions;
+            double average_sync_time_ms;
+            uint32_t active_entities;
+            uint32_t snapshots_stored;
         };
         
         auto get_stats() const -> SyncStats;
         auto reset_stats() -> void;
         
+        // Configuration
+        auto set_sync_frequency(uint32_t frequency_hz) -> void;
+        auto set_max_entities_per_update(uint32_t max_entities) -> void;
+        auto set_prediction_enabled(bool enabled) -> void;
+        
     private:
-        struct SessionInfo
-        {
-            std::shared_ptr<GameSession> session;
-            Location location;
-            std::unordered_set<uint64_t> visible_entities;
-            std::chrono::steady_clock::time_point last_sync;
-        };
+        // Internal synchronization methods
+        auto sync_loop() -> void;
+        auto process_sync_updates() -> void;
+        auto update_entity_snapshots() -> void;
+        auto cleanup_old_snapshots() -> void;
+        auto calculate_sync_priority(const WorldEntityState& state) const -> uint32_t;
+        auto interpolate_entity_state(const WorldEntityState& from, const WorldEntityState& to, float factor) const -> WorldEntityState;
+        auto extrapolate_entity_position(const WorldEntityState& state, std::chrono::milliseconds delta) const -> Location;
         
-        struct GridCell
-        {
-            std::unordered_set<std::string> session_ids;
-            std::unordered_set<uint64_t> entity_ids;
-        };
+        // Lag compensation helpers
+        auto create_snapshot() -> void;
+        auto find_snapshot_at_time(uint64_t timestamp) const -> std::optional<LagCompensationSnapshot>;
+        auto interpolate_snapshots(const LagCompensationSnapshot& earlier, const LagCompensationSnapshot& later, uint64_t timestamp) const -> LagCompensationSnapshot;
         
-        auto get_grid_key(const Location& location) const -> std::pair<int32_t, int32_t>;
-        auto get_nearby_cells(const Location& location, float radius) const 
-            -> std::vector<std::pair<int32_t, int32_t>>;
-        
-        auto sync_session(SessionInfo& info) -> void;
-        auto sync_all_sessions() -> void;
-        auto calculate_distance(const Location& loc1, const Location& loc2) -> float;
+        // Area of Interest helpers
+        auto calculate_distance(const Location& a, const Location& b) const -> float;
+        auto get_nearby_clients(uint64_t entity_id) const -> std::vector<std::shared_ptr<GameSession>>;
+        auto should_sync_to_client(uint64_t entity_id, std::shared_ptr<GameSession> client) const -> bool;
         
     private:
         mutable std::mutex mutex_;
+        mutable std::mutex snapshot_mutex_;
+        std::condition_variable sync_cv_;
+        
+        // Core components
+        std::shared_ptr<Thread::ThreadPool> thread_pool_;
+        std::shared_ptr<GameSessionManager> session_manager_;
+        
+        // Entity management
+        std::unordered_map<uint64_t, WorldEntityState> entity_states_;
+        std::queue<SyncUpdate> sync_queue_;
+        
+        // Lag compensation
+        bool lag_compensation_enabled_;
+        std::chrono::milliseconds snapshot_history_duration_;
+        std::vector<LagCompensationSnapshot> snapshots_;
         
         // Configuration
-        float view_distance_;
-        float grid_cell_size_;
-        float lod_high_distance_;
-        float lod_medium_distance_;
-        float lod_low_distance_;
+        uint32_t sync_frequency_hz_;
+        uint32_t max_entities_per_update_;
+        float aoi_radius_;
+        bool prediction_enabled_;
         
-        // Session tracking
-        std::unordered_map<std::string, SessionInfo> sessions_;
+        // Synchronization loop
+        std::atomic<bool> is_running_;
+        std::thread sync_thread_;
         
-        // Entity tracking
-        std::unordered_map<uint64_t, Entity> entities_;
-        
-        // Spatial indexing
-        std::unordered_map<std::pair<int32_t, int32_t>, GridCell, 
-                           boost::hash<std::pair<int32_t, int32_t>>> grid_;
-        
-        // Synchronization
-        std::future<void> sync_timer_;
-        std::atomic<bool> sync_running_;
-        std::chrono::milliseconds sync_interval_;
+        // World bounds
+        Location world_min_;
+        Location world_max_;
         
         // Statistics
-        SyncStats stats_;
+        mutable SyncStats stats_;
+        mutable std::chrono::steady_clock::time_point last_sync_time_;
     };
 }

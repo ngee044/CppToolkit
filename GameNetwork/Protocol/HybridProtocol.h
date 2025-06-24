@@ -6,6 +6,7 @@
 #include <tuple>
 #include <optional>
 #include <functional>
+#include <mutex>
 
 namespace GameNetwork
 {

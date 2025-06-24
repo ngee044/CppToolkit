@@ -7,6 +7,7 @@
 #include <memory>
 #include <tuple>
 #include <optional>
+#include <mutex>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 

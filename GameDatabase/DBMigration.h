@@ -3,6 +3,7 @@
 #include "DBConnection.h"
 #include "DBTransaction.h"
 #include "DBConnectionPool.h"
+#include "DBBind.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -10,6 +11,8 @@
 #include <functional>
 #include <filesystem>
 #include <map>
+#include <thread>
+#include <iomanip>
 
 namespace GameDatabase
 {
@@ -103,19 +106,14 @@ namespace GameDatabase
 		// 마이그레이션 롤백
 		auto revert_migration(const MigrationInfo& migration) -> std::tuple<bool, std::optional<std::string>>;
 
-		// 히스토리 기록
-		auto record_migration_history(const MigrationHistory& history) -> std::tuple<bool, std::optional<std::string>>;
-
-		// 스크립트 파싱
-		auto parse_migration_file(const std::filesystem::path& file_path) 
-			-> std::tuple<bool, std::optional<std::string>, MigrationInfo>;
-
-		// 체크섬 계산
-		auto calculate_checksum(const std::wstring& script) -> std::string;
-
-		// SQL 스크립트 실행 (여러 문장 지원)
-		auto execute_sql_script(std::shared_ptr<DBConnection> connection, const std::wstring& script) 
+	private:
+		// 내부 헬퍼 함수들
+		auto apply_migration(const MigrationInfo& migration, bool is_upgrade) 
 			-> std::tuple<bool, std::optional<std::string>>;
+		auto split_sql_script(const std::wstring& script) -> std::vector<std::wstring>;
+		auto calculate_checksum(const std::wstring& content) -> std::string;
+		auto acquire_lock() -> std::tuple<bool, std::optional<std::string>>;
+		auto release_lock() -> void;
 
 	private:
 		std::shared_ptr<DBConnectionPool> connection_pool_;
@@ -123,6 +121,7 @@ namespace GameDatabase
 		std::function<void(std::uint32_t)> before_migration_hook_;
 		std::function<void(std::uint32_t, bool)> after_migration_hook_;
 		mutable std::mutex migration_mutex_;
+		bool is_initialized_;
 	};
 
 	// 마이그레이션 파일 생성 헬퍼

@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <bitset>
 #include <cstring>
+#include <mutex>
 
 namespace GameNetwork
 {

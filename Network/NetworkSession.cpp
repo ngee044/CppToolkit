@@ -334,4 +334,42 @@ namespace Network
 
 		return received_connection_callback_(array_data);
 	}
+
+	// Implementation of missing methods for GameConnection compatibility
+	auto NetworkSession::get_id() const -> std::string
+	{
+		return id();
+	}
+	auto NetworkSession::get_remote_address() const -> std::string
+	{
+		// Note: socket() is not const, so we need to cast away const
+		auto* non_const_this = const_cast<NetworkSession*>(this);
+		auto sock = non_const_this->socket();
+		if (!sock)
+		{
+			return "";
+		}
+
+		try
+		{
+			return sock->remote_endpoint().address().to_string();
+		}
+		catch (const std::exception&)
+		{
+			return "";
+		}
+	}
+
+	auto NetworkSession::is_connected() const -> bool
+	{
+		// Note: socket() and condition() are not const, so we need to cast away const
+		auto* non_const_this = const_cast<NetworkSession*>(this);
+		auto sock = non_const_this->socket();
+		return sock && sock->is_open() && non_const_this->condition() == ConnectConditions::Confirmed;
+	}
+
+	auto NetworkSession::disconnect() -> void
+	{
+		stop();
+	}
 }
