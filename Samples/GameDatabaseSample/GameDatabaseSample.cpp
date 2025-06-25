@@ -38,7 +38,8 @@ struct PlayerInfo
 
 struct ItemInfo
 {
-	std::int64_t item_id;	std::wstring item_name;
+	std::int64_t item_id;
+	std::wstring item_name;
 	std::int32_t item_type;
 	std::int32_t rarity;
 	std::int32_t attack_power;
