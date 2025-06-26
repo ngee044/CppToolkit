@@ -142,48 +142,47 @@ namespace GameNetwork
         auto reset_stats() -> void;
         
     private:
+        struct Connection
+        {
+            std::shared_ptr<Network::NetworkClient> client;
+            bool is_connected = false;
+            std::chrono::steady_clock::time_point last_active;
+            std::queue<InterServerMessage> outgoing_queue;
+        };
+
         struct PendingRequest
         {
             uint32_t correlation_id;
             std::promise<std::vector<uint8_t>> response_promise;
             std::chrono::steady_clock::time_point timeout_time;
         };
-        
-        struct ServerConnection
-        {
-            std::shared_ptr<Network::NetworkClient> client;
-            ServerInfo info;
-            std::queue<InterServerMessage> outgoing_queue;
-            bool is_connected;
-        };
-        
-        auto handle_incoming_message(const std::string& source_server_id,
-                                     const std::vector<uint8_t>& data) 
-            -> std::tuple<bool, std::optional<std::string>>;
-        
-        auto process_heartbeat(const ServerInfo& server_info) -> void;
+
+        // Private methods
+        auto handle_incoming_message(const std::string& source_server_id, const std::string& message, const std::vector<uint8_t>& data) -> void;
+        auto get_or_create_connection(const std::string& target_server_id) -> std::shared_ptr<Network::NetworkClient>;
+        auto establish_connection(const ServerInfo& server_info) -> bool;
         auto send_heartbeat() -> void;
         auto cleanup_dead_servers() -> void;
-        auto establish_connection(const ServerInfo& server_info) 
-            -> std::tuple<bool, std::optional<std::string>>;
-        
-    private:
+        auto handle_heartbeat(const std::string& source_server_id) -> void;
+        auto handle_response(uint32_t correlation_id, const std::vector<uint8_t>& payload) -> void;
+        auto send_response(const std::string& target_server_id, uint32_t correlation_id, const std::vector<uint8_t>& payload) -> void;
+
+        // Member variables
         mutable std::mutex mutex_;
-        
-        // Server identity
         std::string server_id_;
         ServerType server_type_;
-        uint32_t current_load_;
-        uint32_t max_capacity_;
-        
-        // Network components
+        uint16_t listen_port_;
         std::shared_ptr<Network::NetworkServer> server_;
-        std::unordered_map<std::string, ServerConnection> connections_;
-        
-        // Server registry
+        std::unordered_map<std::string, Connection> connections_;
         std::unordered_map<std::string, ServerInfo> known_servers_;
         std::string cluster_address_;
         uint16_t cluster_port_;
+        std::shared_ptr<Network::NetworkClient> cluster_connection_;
+        
+        uint32_t current_load_;
+        uint32_t max_capacity_;
+        
+        std::atomic<bool> is_running_;
         
         // Message handling
         std::unordered_map<std::string, MessageHandler> message_handlers_;
@@ -191,19 +190,16 @@ namespace GameNetwork
         std::atomic<uint32_t> next_correlation_id_;
         
         // Heartbeat
-        std::future<void> heartbeat_thread_;
         std::atomic<bool> heartbeat_enabled_;
         std::chrono::seconds heartbeat_interval_;
+        std::future<void> heartbeat_thread_;
         
         // Callbacks
-        std::vector<ServerEventCallback> server_connected_callbacks_;
-        std::vector<ServerEventCallback> server_disconnected_callbacks_;
-        std::vector<ServerEventCallback> server_load_changed_callbacks_;
+        std::vector<ServerEventCallback> on_server_connected_callbacks_;
+        std::vector<ServerEventCallback> on_server_disconnected_callbacks_;
+        std::vector<ServerEventCallback> on_server_load_changed_callbacks_;
         
-        // State
-        std::atomic<bool> is_running_;
-        
-        // Statistics
+        // Stats
         InterServerStats stats_;
     };
 }

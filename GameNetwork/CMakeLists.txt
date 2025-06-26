@@ -39,7 +39,6 @@ set(SOURCE_FILES
     
     # Optimization
     Optimization/NetworkOptimizer.cpp
-    Optimization/LatencyCompensator.cpp
     
     # Security
     Security/GamePacketValidator.cpp
@@ -70,6 +69,7 @@ set(SOURCE_FILES
     # Prediction
     Prediction/NetworkPrediction.cpp
     Prediction/LagCompensation.cpp
+    Prediction/LatencyCompensator.cpp
     
     # Compression
     Compression/DeltaCompression.cpp
@@ -111,7 +111,6 @@ set(HEADER_FILES
     
     # Optimization
     Optimization/NetworkOptimizer.h
-    Optimization/LatencyCompensator.h
     
     # Security
     Security/GamePacketValidator.h
@@ -142,6 +141,7 @@ set(HEADER_FILES
     # Prediction
     Prediction/NetworkPrediction.h
     Prediction/LagCompensation.h
+    Prediction/LatencyCompensator.h
     
     # Compression
     Compression/DeltaCompression.h
@@ -175,6 +175,7 @@ target_include_directories(${LIBRARY_NAME} PUBLIC
 
 # Find packages
 find_package(Boost REQUIRED COMPONENTS system)
+find_package(boost_json CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 
 # Link libraries
@@ -185,6 +186,7 @@ target_link_libraries(${LIBRARY_NAME}
         Utilities        # Utilities
         Redis            # For session persistence
         Boost::system
+        Boost::json
         glm::glm
 )
 

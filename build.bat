@@ -11,4 +11,4 @@ if not exist build (
 	cd build
 )
 
-cmake --build . --config Release
+cmake --build . --config Release -- /m:16

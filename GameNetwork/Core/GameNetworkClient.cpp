@@ -221,12 +221,16 @@ void GameNetworkClient::onDataReceived(std::shared_ptr<Network::NetworkSession> 
 
 void GameNetworkClient::processReceivedData(const std::vector<uint8_t>& data) {
     try {
-        // TODO: 구체적인 패킷 구현이 필요하면 여기서 처리
-        // 현재는 GamePacket이 추상 클래스이므로 기본 로깅만 수행
-        Logger::handle().write(LogTypes::Debug, "Received data packet of size: " + std::to_string(data.size()));
+        // 수신된 데이터 처리를 위한 기본 로깅
+        Logger::handle().write(LogTypes::Debug, 
+            "Received " + std::to_string(data.size()) + " bytes");
+        
+        // TODO: 패킷 프로세서가 구현되면 여기서 패킷을 디시리얼라이즈
+        // TODO: 메시지 디스패처가 구현되면 여기서 핸들러로 전달
         
     } catch (const std::exception& e) {
-        Logger::handle().write(LogTypes::Error, "Failed to process received data: " + std::string(e.what()));
+        Logger::handle().write(LogTypes::Error, 
+            "Failed to process received data: " + std::string(e.what()));
     }
 }
 

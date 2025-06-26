@@ -8,6 +8,8 @@ set(SOURCE_FILES GameNetworkServerSample.cpp)
 
 project(${PROGRAM_NAME} VERSION 1.0.0.0)
 
+find_package(boost_json CONFIG REQUIRED)
+
 add_executable(${PROGRAM_NAME} ${SOURCE_FILES})
 
-target_link_libraries(${PROGRAM_NAME} PUBLIC GameNetwork Thread Utilities Redis)
+target_link_libraries(${PROGRAM_NAME} PUBLIC GameNetwork Thread Utilities Redis Boost::json)

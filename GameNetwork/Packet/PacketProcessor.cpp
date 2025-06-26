@@ -1,8 +1,9 @@
 #include "PacketProcessor.h"
-#include <Compressor.h>
-#include <Encryptor.h>
-#include <Converter.h>
-#include <Logger.h>
+#include "../../Utilities/Compressor.h"
+#include "../../Utilities/Encryptor.h" 
+#include "../../Utilities/Converter.h"
+#include "../../Utilities/Logger.h"
+#include <boost/json.hpp>
 #include <zlib.h>
 #include <chrono>
 
@@ -121,11 +122,44 @@ namespace GameNetwork
                 }
             }
             
-            // Parse JSON to packet - For now, we'll return nullptr as GamePacket is abstract
-            // TODO: Implement proper packet factory based on packet type
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-                "Cannot instantiate abstract GamePacket class - packet factory needed");
+            // Parse JSON to packet - Create packet based on type
+            // Since we don't have jsoncpp anymore, we'll need to use boost::json
+            // For now, just return nullptr and log a warning
+            // Utilities::Logger::handle().write(Utilities::LogTypes::Warning, 
+            //     "PacketProcessor: Cannot create abstract GamePacket instance");
             return nullptr;
+            
+            // TODO: Implement concrete packet types that inherit from GamePacket
+            // Example:
+            // std::unique_ptr<GamePacket> packet = std::make_unique<ConcreteGamePacket>(packet_type);
+            
+            // Set basic properties would be:
+            // boost::json::value json_value = boost::json::parse(json_str);
+            // boost::json::object const& obj = json_value.as_object();
+            // if (obj.contains("sender_id"))
+            // {
+            //     packet->set_sender_id(boost::json::value_to<uint64_t>(obj.at("sender_id")));
+            // }
+            // if (parsed_json.isMember("target_id"))
+            // {
+            //     packet->set_target_id(parsed_json["target_id"].asUInt64());
+            // }
+            // if (parsed_json.isMember("sequence"))
+            // {
+            //     packet->set_sequence_number(parsed_json["sequence"].asUInt64());
+            // }
+            
+            // Set payload data
+            // if (parsed_json.isMember("data"))
+            // {
+            //     const Json::Value& data_json = parsed_json["data"];
+            //     Json::StreamWriterBuilder builder;
+            //     std::string data_str = Json::writeString(builder, data_json);
+            //     std::vector<uint8_t> data_vec(data_str.begin(), data_str.end());
+            //     packet->set_payload(data_vec);
+            // }
+            
+            // return packet;
         }
         catch (const std::exception& e)
         {

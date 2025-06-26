@@ -1,35 +1,140 @@
 #include "SessionPersistence.h"
-#include <Logger.h>
+#include "../../Utilities/Logger.h"
+#include <boost/json.hpp>
+#include <boost/system/error_code.hpp>
+#include <fstream>
+#include <chrono>
 
 namespace GameNetwork
 {
     SessionPersistence::SessionPersistence()
     {
-        // TODO: Initialize Redis client
+        redis_client_ = std::make_shared<Redis::RedisClient>("127.0.0.1", 6379);
     }
 
     SessionPersistence::~SessionPersistence() = default;
 
     auto SessionPersistence::initialize() -> std::tuple<bool, std::optional<std::string>>
     {
-        // TODO: Connect to Redis
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "SessionPersistence initialized (stub)");
+        // Connect to Redis (no parameters)
+        auto result = redis_client_->connect();
+        if (!std::get<0>(result))
+        {
+            auto error_msg = "Failed to connect to Redis: " + std::get<1>(result).value_or("Unknown error");
+            // Utilities::Logger::handle().write(Utilities::LogTypes::Error, error_msg);
+            return {false, error_msg};
+        }
+        
+        // Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        //     "SessionPersistence initialized successfully");
         return { true, std::nullopt };
     }
 
     auto SessionPersistence::save_session(const std::string& session_id, const SessionData& data) 
         -> std::tuple<bool, std::optional<std::string>>
     {
-        // TODO: Implement Redis save
-        return { true, std::nullopt };
+        try
+        {
+            // Serialize session data to JSON
+            boost::json::object json_data;
+            json_data["session_id"] = data.session_id;
+            json_data["account_id"] = data.account_id;
+            json_data["character_id"] = data.character_id;
+            
+            // Serialize location
+            boost::json::object location;
+            location["x"] = data.location.x;
+            location["y"] = data.location.y;
+            location["z"] = data.location.z;
+            location["map_id"] = data.location.map_id;
+            location["zone_id"] = data.location.zone_id;
+            json_data["location"] = location;
+            
+            json_data["channel_id"] = data.channel_id;
+            
+            // Convert time_point to timestamp
+            auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+                data.last_activity.time_since_epoch()).count();
+            json_data["last_activity"] = timestamp;
+            
+            // Convert to string
+            std::string serialized = boost::json::serialize(json_data);
+            
+            // Save to Redis with TTL of 24 hours
+            auto save_result = redis_client_->set("session:" + session_id, serialized, 86400);
+            if (!std::get<0>(save_result))
+            {
+                return {false, "Failed to save session to Redis: " + std::get<1>(save_result).value_or("Unknown error")};
+            }
+            
+            // Utilities::Logger::handle().write(Utilities::LogTypes::Debug,
+            //     "Session saved: " + session_id);
+            
+            return { true, std::nullopt };
+        }
+        catch (const std::exception& e)
+        {
+            return {false, std::string("Exception saving session: ") + e.what()};
+        }
     }
 
     auto SessionPersistence::load_session(const std::string& session_id) 
         -> std::tuple<SessionData, std::optional<std::string>>
     {
-        // TODO: Implement Redis load
-        SessionData data;
-        return { data, "Not implemented" };
+        try
+        {
+            // Load from Redis
+            auto load_result = redis_client_->get("session:" + session_id);
+            if (std::get<1>(load_result).has_value())
+            {
+                return {SessionData{}, "Session not found: " + std::get<1>(load_result).value()};
+            }
+            
+            std::string json_string = std::get<0>(load_result);
+            if (json_string.empty())
+            {
+                return {SessionData{}, "Session not found"};
+            }
+            
+            // Parse JSON
+            boost::system::error_code ec;
+            auto json_value = boost::json::parse(json_string, ec);
+            if (ec)
+            {
+                return {SessionData{}, "Failed to parse session data: " + ec.message()};
+            }
+            
+            auto json_data = json_value.as_object();
+            
+            // Deserialize session data
+            SessionData data;
+            data.session_id = boost::json::value_to<std::string>(json_data.at("session_id"));
+            data.account_id = boost::json::value_to<std::string>(json_data.at("account_id"));
+            data.character_id = boost::json::value_to<uint64_t>(json_data.at("character_id"));
+            
+            // Deserialize location
+            const auto& location = json_data.at("location").as_object();
+            data.location.x = static_cast<float>(boost::json::value_to<double>(location.at("x")));
+            data.location.y = static_cast<float>(boost::json::value_to<double>(location.at("y")));
+            data.location.z = static_cast<float>(boost::json::value_to<double>(location.at("z")));
+            data.location.map_id = boost::json::value_to<uint32_t>(location.at("map_id"));
+            data.location.zone_id = boost::json::value_to<uint32_t>(location.at("zone_id"));
+            
+            data.channel_id = boost::json::value_to<uint32_t>(json_data.at("channel_id"));
+            
+            // Convert timestamp to time_point
+            auto timestamp = boost::json::value_to<int64_t>(json_data.at("last_activity"));
+            data.last_activity = std::chrono::steady_clock::time_point(
+                std::chrono::seconds(timestamp));
+            
+            // Utilities::Logger::handle().write(Utilities::LogTypes::Debug,
+            //     "Session loaded: " + session_id);
+            
+            return { data, std::nullopt };
+        }
+        catch (const std::exception& e)
+        {
+            return {SessionData{}, std::string("Exception loading session: ") + e.what()};
+        }
     }
 }
