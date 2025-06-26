@@ -12,6 +12,7 @@ set(SOURCE_FILES
 	DBStoredProcedure.cpp
 	DBCache.cpp
 	DBMigration.cpp
+	Optimization/OptimizedDBConnectionPool.cpp
 )
 
 set (HEADER_FILES
@@ -22,6 +23,8 @@ set (HEADER_FILES
 	DBStoredProcedure.h
 	DBCache.h
 	DBMigration.h
+	Optimization/LockFreePool.h
+	Optimization/OptimizedDBConnectionPool.h
 )
 
 project(${LIBRARY_NAME} VERSION 1.0.0.0)

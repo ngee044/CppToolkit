@@ -44,6 +44,10 @@ set(SOURCE_FILES
     
     # Optimization
     Optimization/NetworkOptimizer.cpp
+    Optimization/ZeroCopy/ZeroCopyBuffer.cpp
+    Optimization/LockFree/LockFreeMessageQueue.cpp
+    Optimization/Asio/AsioZeroCopyBuffer.cpp
+    Optimization/OptimizedPacketProcessor.cpp
     
     # Security
     Security/GamePacketValidator.cpp
@@ -126,6 +130,10 @@ set(HEADER_FILES
     
     # Optimization
     Optimization/NetworkOptimizer.h
+    Optimization/ZeroCopy/ZeroCopyBuffer.h
+    Optimization/LockFree/LockFreeMessageQueue.h
+    Optimization/Asio/AsioZeroCopyBuffer.h
+    Optimization/OptimizedPacketProcessor.h
     
     # Security
     Security/GamePacketValidator.h
