@@ -1,8 +1,8 @@
 #include "GameSession.h"
-#include <Character.h>
-#include <SessionPersistence.h>
-#include <Logger.h>
-#include <Converter.h>
+#include "../Synchronization/Character.h"
+#include "SessionPersistence.h"
+#include "../../Utilities/Logger.h"
+#include "../../Utilities/Converter.h"
 #include <functional>
 
 namespace GameNetwork
@@ -13,6 +13,7 @@ namespace GameNetwork
         , state_(SessionConnectionState::Connected)
         , channel_id_(0)
         , last_activity_(std::chrono::steady_clock::now())
+        , kicked_by_duplicate_login_(false)
     {
         current_location_.x = 0.0f;
         current_location_.y = 0.0f;
@@ -487,4 +488,36 @@ namespace GameNetwork
     template std::optional<double> GameSession::get_data<double>(const std::string&) const;
     template std::optional<std::string> GameSession::get_data<std::string>(const std::string&) const;
     template std::optional<bool> GameSession::get_data<bool>(const std::string&) const;
+    
+    // Security token management
+    auto GameSession::set_session_token(const std::string& token) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        session_token_ = token;
+    }
+    
+    auto GameSession::get_session_token() const -> std::string
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return session_token_;
+    }
+    
+    auto GameSession::clear_session_token() -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        session_token_.clear();
+    }
+    
+    // Session limits
+    auto GameSession::set_kicked_by_duplicate_login(bool kicked) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        kicked_by_duplicate_login_ = kicked;
+    }
+    
+    auto GameSession::was_kicked_by_duplicate_login() const -> bool
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return kicked_by_duplicate_login_;
+    }
 }

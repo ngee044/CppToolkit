@@ -4,6 +4,7 @@
 #include "GameConnection.h"
 #include "ChannelManager.h"
 #include "SessionPersistence.h"
+#include "Security/SessionSecurityManager.h"
 #include "../GameNetworkConstants.h"
 #include "../../Network/NetworkSession.h"
 #include "../../ThreadPool/ThreadPool.h"
@@ -36,6 +37,9 @@ namespace GameNetwork
         // Initialization
         auto initialize(std::shared_ptr<Thread::ThreadPool> thread_pool) 
             -> std::tuple<bool, std::optional<std::string>>;
+        auto initialize_with_security(std::shared_ptr<Thread::ThreadPool> thread_pool,
+                                     const Security::SessionSecurityPolicy& security_policy) 
+            -> std::tuple<bool, std::optional<std::string>>;
         auto shutdown() -> void;
         
         // Session lifecycle
@@ -48,8 +52,14 @@ namespace GameNetwork
         auto terminate_session(const std::string& session_id) 
             -> std::tuple<bool, std::optional<std::string>>;
         
-        // Connection management
-        auto on_network_connected(std::shared_ptr<Network::NetworkSession> network_session, const std::string& account_id) 
+        // Connection management with security
+        auto on_network_connected(std::shared_ptr<Network::NetworkSession> network_session, 
+                                 const std::string& account_id) 
+            -> std::tuple<bool, std::optional<std::string>>;
+        auto on_network_connected_secure(std::shared_ptr<Network::NetworkSession> network_session, 
+                                        const std::string& account_id,
+                                        const std::string& client_ip,
+                                        const std::string& device_id) 
             -> std::tuple<bool, std::optional<std::string>>;
         auto on_network_disconnected(const std::string& connection_id) 
             -> std::tuple<bool, std::optional<std::string>>;
@@ -72,6 +82,20 @@ namespace GameNetwork
         
         // Session migration
         auto migrate_session(const std::string& session_id, const std::string& target_server) -> std::tuple<bool, std::optional<std::string>>;
+        
+        // Security management
+        auto validate_session_token(const std::string& session_id,
+                                   const std::string& token,
+                                   const std::string& client_ip,
+                                   const std::string& device_id) 
+            -> std::tuple<bool, std::optional<std::string>>;
+        auto refresh_session_token(const std::string& session_id,
+                                  const std::string& old_token) 
+            -> std::tuple<std::string, std::optional<std::string>>;
+        auto check_session_security(const std::string& session_id) 
+            -> std::tuple<bool, std::optional<std::string>>;
+        auto get_active_sessions_for_account(const std::string& account_id) 
+            -> std::vector<std::string>;
         
         // Cleanup and maintenance
         auto cleanup_inactive_sessions() -> size_t;
@@ -145,6 +169,7 @@ namespace GameNetwork
         std::unique_ptr<ChannelManager> channel_manager_;
         std::unique_ptr<SessionPersistence> session_persistence_;
         std::unique_ptr<DisconnectionHandler> disconnection_handler_;
+        std::unique_ptr<Security::SessionSecurityManager> security_manager_;
         
         // Session storage
         std::unordered_map<std::string, std::shared_ptr<GameSession>> sessions_by_id_;

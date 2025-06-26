@@ -81,6 +81,15 @@ namespace GameNetwork
         
         auto remove_data(const std::string& key) -> void;
         
+        // Security token management
+        auto set_session_token(const std::string& token) -> void;
+        auto get_session_token() const -> std::string;
+        auto clear_session_token() -> void;
+        
+        // Session limits
+        auto set_kicked_by_duplicate_login(bool kicked) -> void;
+        auto was_kicked_by_duplicate_login() const -> bool;
+        
         // Packet sending
         auto send_packet(const std::vector<uint8_t>& packet_data) -> bool;
         
@@ -115,6 +124,10 @@ namespace GameNetwork
         
         // Session data storage
         std::unordered_map<std::string, std::any> custom_data_;
+        
+        // Security
+        std::string session_token_;
+        bool kicked_by_duplicate_login_;
         
         // Grace period timer
         std::future<void> grace_timer_;

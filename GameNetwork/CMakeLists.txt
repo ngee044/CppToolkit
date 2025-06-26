@@ -24,6 +24,7 @@ set(SOURCE_FILES
     Session/SessionPersistence.cpp
     Session/ChannelManager.cpp
     Session/DisconnectionHandler.cpp
+    Session/Security/SessionSecurityManager.cpp
     
     # Packet
     Packet/GamePacket.cpp
@@ -100,6 +101,7 @@ set(HEADER_FILES
     Session/SessionPersistence.h
     Session/ChannelManager.h
     Session/DisconnectionHandler.h
+    Session/Security/SessionSecurityManager.h
     
     # Packet
     Packet/GamePacket.h
