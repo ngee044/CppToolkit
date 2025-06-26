@@ -25,6 +25,9 @@ namespace GameNetwork
     class GamePacket;
     struct Location;
     
+    namespace Monitoring { class SystemMonitor; }
+    class DisconnectionHandler;
+    
     struct ServerConfig
     {
         std::string server_id;
@@ -124,6 +127,12 @@ namespace GameNetwork
         auto get_active_connections() const -> std::vector<std::string>;
         auto kick_client(const std::string& client_id) -> std::tuple<bool, std::optional<std::string>>;
         
+        // 모니터링 시스템
+        auto get_system_monitor() -> std::shared_ptr<Monitoring::SystemMonitor>;
+        
+        // 재접속 핸들러
+        auto get_disconnection_handler() -> std::shared_ptr<DisconnectionHandler>;
+        
     private:
         auto initialize_components() -> std::tuple<bool, std::optional<std::string>>;
         auto setup_network_callbacks() -> void;
@@ -161,6 +170,8 @@ namespace GameNetwork
         std::shared_ptr<WorldSynchronizer> world_synchronizer_;
         std::shared_ptr<LoadBalancer> load_balancer_;
         std::shared_ptr<ServerMonitor> server_monitor_;
+        std::shared_ptr<Monitoring::SystemMonitor> system_monitor_;
+        std::shared_ptr<DisconnectionHandler> disconnection_handler_;
         
         // Server state
         std::atomic<bool> is_running_;

@@ -156,6 +156,13 @@ namespace GameNetwork
         auto get_channel_sessions(uint32_t channel_id) const -> std::vector<std::shared_ptr<GameSession>>;
         auto disconnect_all() -> void;
         auto set_thread_pool(std::shared_ptr<Thread::ThreadPool> thread_pool) -> void;
+        
+        // Alias methods for DisconnectionHandler compatibility
+        auto find_session(const std::string& session_id) const -> std::shared_ptr<GameSession> 
+        { 
+            return get_session_by_id(session_id); 
+        }
+        auto add_session(std::shared_ptr<GameSession> session) -> void;
 
     private:
         mutable std::mutex mutex_;

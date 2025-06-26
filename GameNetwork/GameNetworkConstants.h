@@ -124,4 +124,17 @@ namespace GameNetwork
         Teleport = 3,
         ChannelChange = 4
     };
+    
+    // Disconnect reasons
+    enum class DisconnectReason : uint8_t
+    {
+        Normal = 0,
+        Timeout = 1,
+        NetworkError = 2,
+        ServerShutdown = 3,
+        ClientRequest = 4,
+        Kicked = 5,
+        DuplicateLogin = 6,
+        Maintenance = 7
+    };
 }
