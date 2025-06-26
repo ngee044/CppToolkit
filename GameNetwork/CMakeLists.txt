@@ -30,11 +30,10 @@ set(SOURCE_FILES
     Packet/GamePacket.cpp
     Packet/PacketProcessor.cpp
     Packet/MessageDispatcher.cpp
+    Packet/BinaryBuffer.cpp
+    Packet/BinaryGamePacket.cpp
     Packet/PacketFragmentation.cpp
-    Packet/GamePacket_Binary.cpp
-    
-    # Serialization
-    Serialization/BinarySerializer.cpp
+    Packet/PacketManager.cpp
     
     # Synchronization
     Synchronization/WorldSynchronizer.cpp
@@ -112,11 +111,11 @@ set(HEADER_FILES
     Packet/GamePacket.h
     Packet/PacketProcessor.h
     Packet/MessageDispatcher.h
+    Packet/BinaryBuffer.h
+    Packet/BinaryGamePacket.h
     Packet/PacketFragmentation.h
-    Packet/GamePacket_Binary.h
-    
-    # Serialization
-    Serialization/BinarySerializer.h
+    Packet/PacketManager.h
+    Packet/GamePacketExamples.h
     
     # Synchronization
     Synchronization/WorldSynchronizer.h
