@@ -32,5 +32,6 @@ if(BUILD_GAME_NETWORK_SESSION)
 	add_subdirectory(GameDatabaseSample)
 	add_subdirectory(GameNetworkServerSample)
 	add_subdirectory(GameNetworkClientSample)
+	add_subdirectory(GameServerSample)  # Character 사용 예제
 endif()
 

@@ -1,7 +1,8 @@
 #include "Character.h"
-#include "../../Utilities/Logger.h"
+#include <Logger.h>  // Utilities 모듈
 
-namespace GameNetwork
+// 샘플용이므로 별도 namespace 사용
+namespace GameServerSample
 {
     Character::Character()
         : character_id_(0)
@@ -89,4 +90,4 @@ namespace GameNetwork
         
         return { true, std::nullopt };
     }
-}
+} // namespace GameServerSample

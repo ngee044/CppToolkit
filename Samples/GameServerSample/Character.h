@@ -1,13 +1,15 @@
 #pragma once
 
-#include "../GameNetworkConstants.h"
+#include <GameNetworkConstants.h>  // GameNetwork 모듈의 상수 사용
 #include <string>
 #include <optional>
 #include <tuple>
 #include <chrono>
 
-namespace GameNetwork
+namespace GameServerSample
 {
+    // GameNetwork::Location 사용
+    using Location = GameNetwork::Location;
     class Character
     {
     public:

@@ -21,7 +21,6 @@ set(SOURCE_FILES
     Session/GameConnection.cpp
     Session/GameSession.cpp
     Session/GameSessionManager.cpp
-    Session/Character.cpp
     Session/SessionPersistence.cpp
     Session/ChannelManager.cpp
     Session/DisconnectionHandler.cpp
@@ -93,7 +92,6 @@ set(HEADER_FILES
     Session/GameConnection.h
     Session/GameSession.h
     Session/GameSessionManager.h
-    Session/Character.h
     Session/SessionPersistence.h
     Session/ChannelManager.h
     Session/DisconnectionHandler.h
