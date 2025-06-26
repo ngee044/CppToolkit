@@ -40,11 +40,14 @@ namespace GameNetwork
             
             // Get packed data
             auto get_data() const -> std::vector<uint8_t>;
+            auto get_buffer() const -> const std::vector<uint8_t>&;
             auto get_bit_count() const -> size_t;
+            auto get_bit_position() const -> size_t;
             auto get_byte_count() const -> size_t;
             
             // Reset
             auto clear() -> void;
+            auto reset() -> void;
 
         private:
             std::vector<uint8_t> buffer_;

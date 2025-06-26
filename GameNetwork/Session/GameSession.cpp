@@ -5,6 +5,8 @@
 #include "../../Utilities/Converter.h"
 #include <functional>
 
+using namespace Utilities;
+
 namespace GameNetwork
 {
     GameSession::GameSession(const std::string& session_id, const std::string& account_id)
@@ -136,7 +138,7 @@ namespace GameNetwork
             // Set character's initial location
             current_location_ = character_->get_location();
             
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            Logger::handle().write(LogTypes::Information,
                 "Character loaded for session " + session_id_ + ", character ID: " + std::to_string(character_id));
             
             return { true, std::nullopt };
@@ -223,7 +225,7 @@ namespace GameNetwork
         
         channel_id_ = channel_id;
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "Session " + session_id_ + " entered channel " + std::to_string(channel_id));
         
         return { true, std::nullopt };
@@ -235,7 +237,7 @@ namespace GameNetwork
         
         if (channel_id_ != 0)
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            Logger::handle().write(LogTypes::Information,
                 "Session " + session_id_ + " left channel " + std::to_string(channel_id_));
             channel_id_ = 0;
         }
@@ -416,7 +418,7 @@ namespace GameNetwork
             {
                 state_ = SessionConnectionState::Expired;
                 
-                Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+                Logger::handle().write(LogTypes::Information,
                     "Session " + session_id_ + " expired after grace period");
             }
         });
@@ -519,5 +521,15 @@ namespace GameNetwork
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return kicked_by_duplicate_login_;
+    }
+
+    auto GameSession::get_player_location() const -> std::optional<Location>
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (character_)
+        {
+            return current_location_;
+        }
+        return std::nullopt;
     }
 }

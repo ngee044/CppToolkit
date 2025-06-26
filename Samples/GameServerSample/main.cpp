@@ -4,6 +4,8 @@
 #include <thread>
 #include <csignal>
 
+using namespace Utilities;
+
 std::unique_ptr<GameServerSample::GameServer> g_server;
 std::atomic<bool> g_running{true};
 
@@ -23,9 +25,9 @@ int main(int argc, char* argv[])
     std::signal(SIGTERM, signal_handler);
     
     // Initialize logger
-    Utilities::Logger::handle().set_log_level(Utilities::LogTypes::Information);
-    Utilities::Logger::handle().enable_console_output(true);
-    Utilities::Logger::handle().set_log_path("./logs/");
+    Logger::handle().set_log_level(LogTypes::Information);
+    Logger::handle().enable_console_output(true);
+    Logger::handle().set_log_path("./logs/");
     
     // Parse port from command line
     uint16_t port = 8080;

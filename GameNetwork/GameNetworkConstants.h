@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <chrono>
+#include <glm/glm.hpp>
 
 namespace GameNetwork
 {
@@ -79,6 +80,7 @@ namespace GameNetwork
     // Game structures
     struct Location
     {
+        glm::vec3 position{0.0f, 0.0f, 0.0f};
         float x = 0.0f;
         float y = 0.0f;
         float z = 0.0f;

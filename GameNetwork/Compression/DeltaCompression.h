@@ -93,6 +93,15 @@ namespace GameNetwork
             auto calculate_field_delta(const void* old_data, const void* new_data, 
                                      const FieldDescriptor& field) -> std::vector<uint8_t>;
 
+            // Vector3 and quaternion helpers
+            bool position_equals(const glm::vec3& a, const glm::vec3& b, float precision);
+            bool rotation_equals(const glm::quat& a, const glm::quat& b, float precision);
+            bool vector_equals(const glm::vec3& a, const glm::vec3& b, float precision);
+            void append_compressed_vector3(std::vector<uint8_t>& data, const glm::vec3& vec, float precision);
+            void append_compressed_quaternion(std::vector<uint8_t>& data, const glm::quat& quat);
+            glm::vec3 extract_compressed_vector3(const std::vector<uint8_t>& data, size_t& offset, float precision);
+            glm::quat extract_compressed_quaternion(const std::vector<uint8_t>& data, size_t& offset);
+
             // Huffman encoding
             auto huffman_encode(const std::vector<uint8_t>& data) -> std::vector<uint8_t>;
             auto huffman_decode(const std::vector<uint8_t>& data) -> std::vector<uint8_t>;

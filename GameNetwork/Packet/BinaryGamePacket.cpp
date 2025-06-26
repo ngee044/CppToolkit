@@ -124,4 +124,17 @@ namespace GameNetwork
     {
         timestamp_ = timestamp;
     }
+
+    auto BinaryGamePacket::clone() const -> std::unique_ptr<GamePacket>
+    {
+        auto cloned = std::make_unique<BinaryGamePacket>();
+        cloned->packet_type = packet_type;
+        cloned->data = data;
+        cloned->set_sequence_number(get_sequence_number());
+        cloned->set_sender_id(get_sender_id());
+        cloned->set_target_id(get_target_id());
+        cloned->serialization_type_ = serialization_type_;
+        cloned->timestamp_ = timestamp_;
+        return cloned;
+    }
 }

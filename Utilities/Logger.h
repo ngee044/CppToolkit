@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Log.h"
+#include "LogTypes.h"
 
 #include <map>
 #include <deque>

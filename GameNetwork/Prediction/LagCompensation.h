@@ -116,7 +116,7 @@ namespace GameNetwork
                 -> std::optional<WorldSnapshot>;
             auto interpolate_snapshots(const WorldSnapshot& before,
                                      const WorldSnapshot& after,
-                                     std::chrono::steady_clock::time_point target_time)
+                                     std::chrono::steady_clock::time_point target_time) const
                 -> WorldSnapshot;
 
         private:

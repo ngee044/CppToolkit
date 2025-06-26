@@ -26,6 +26,7 @@ namespace GameNetwork
         // Session identification
         auto id() const -> uint64_t;  // Returns hashed session ID
         auto session_id() const -> std::string;
+        auto get_session_id() const -> std::string { return session_id(); }  // Alias for compatibility
         auto session_id_hash() const -> uint64_t;
         auto account_id() const -> std::string;
         auto get_account_id() const -> std::string;  // Alias for compatibility
@@ -89,6 +90,9 @@ namespace GameNetwork
         // Session limits
         auto set_kicked_by_duplicate_login(bool kicked) -> void;
         auto was_kicked_by_duplicate_login() const -> bool;
+        
+        // Connection status
+        auto get_player_location() const -> std::optional<Location>;
         
         // Packet sending
         auto send_packet(const std::vector<uint8_t>& packet_data) -> bool;

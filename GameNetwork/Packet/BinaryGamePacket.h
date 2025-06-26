@@ -31,6 +31,7 @@ namespace GameNetwork
         // Override virtual functions for binary support
         virtual auto serialize() const -> std::vector<uint8_t> override;
         virtual auto deserialize(const std::vector<uint8_t>& data) -> bool override;
+        virtual auto clone() const -> std::unique_ptr<GamePacket> override;
         
         // Get/Set timestamp
         auto get_timestamp() const -> std::chrono::microseconds;

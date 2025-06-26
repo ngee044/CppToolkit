@@ -2,4 +2,8 @@
 
 namespace GameNetwork
 {
+    namespace Prediction
+    {
+        // Placeholder implementation
+    }
 }

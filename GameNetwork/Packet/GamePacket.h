@@ -118,6 +118,16 @@ namespace GameNetwork
         QuestAccept = 8002,
         QuestAbandon = 8003,
         
+        // Session packets (9000-9999)
+        SessionCreate = 9000,
+        SessionDestroy = 9001,
+        Transaction = 9002,
+        DamageEvent = 9003,
+        StateChange = 9004,
+        PositionUpdate = 9005,
+        RotationUpdate = 9006,
+        AnimationUpdate = 9007,
+        
         // Custom packets (10000+)
         Custom = 10000
     };
@@ -144,6 +154,10 @@ namespace GameNetwork
         auto get_type() const -> PacketType;
         auto set_type(PacketType type) -> void;
         
+        // Compatibility with legacy code
+        PacketType packet_type;
+        std::vector<uint8_t> data;
+        
         auto get_sequence_number() const -> uint64_t;
         auto set_sequence_number(uint64_t seq) -> void;
         
@@ -158,6 +172,9 @@ namespace GameNetwork
         
         auto get_priority() const -> PacketPriority { return priority_; }
         auto set_priority(PacketPriority priority) -> void { priority_ = priority; }
+        
+        // Clone method for copying packets
+        virtual auto clone() const -> std::unique_ptr<GamePacket> = 0;
         
         // Payload
         auto get_payload() const -> const std::vector<uint8_t>&;
@@ -233,6 +250,7 @@ namespace GameNetwork
         
         auto serialize() const -> std::vector<uint8_t> override;
         auto deserialize(const std::vector<uint8_t>& data) -> bool override;
+        auto clone() const -> std::unique_ptr<GamePacket> override;
         static auto from_data(const std::vector<uint8_t>& data)
             -> std::tuple<std::unique_ptr<AuthenticationPacket>, std::optional<std::string>>;
         
@@ -324,6 +342,7 @@ namespace GameNetwork
         
         auto serialize() const -> std::vector<uint8_t> override;
         auto deserialize(const std::vector<uint8_t>& data) -> bool override;
+        auto clone() const -> std::unique_ptr<GamePacket> override;
         static auto from_data(const std::vector<uint8_t>& data)
             -> std::tuple<std::unique_ptr<EntityUpdatePacket>, std::optional<std::string>>;
         
@@ -355,6 +374,7 @@ namespace GameNetwork
         
         auto serialize() const -> std::vector<uint8_t> override;
         auto deserialize(const std::vector<uint8_t>& data) -> bool override;
+        auto clone() const -> std::unique_ptr<GamePacket> override;
         static auto from_data(const std::vector<uint8_t>& data)
             -> std::tuple<std::unique_ptr<MoveToPacket>, std::optional<std::string>>;
         

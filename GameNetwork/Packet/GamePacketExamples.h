@@ -49,6 +49,17 @@ namespace GameNetwork
             
             return true;
         }
+        
+        auto clone() const -> std::unique_ptr<GamePacket> override
+        {
+            auto packet = std::make_unique<MovePacket>();
+            packet->entity_id_ = entity_id_;
+            packet->from_location_ = from_location_;
+            packet->to_location_ = to_location_;
+            packet->speed_ = speed_;
+            packet->movement_flags_ = movement_flags_;
+            return packet;
+        }
     };
     
     // Example: Chat packet with binary serialization
@@ -89,6 +100,16 @@ namespace GameNetwork
             channel_ = ch;
             
             return true;
+        }
+        
+        auto clone() const -> std::unique_ptr<GamePacket> override
+        {
+            auto packet = std::make_unique<ChatPacket>();
+            packet->sender_id_ = sender_id_;
+            packet->sender_name_ = sender_name_;
+            packet->message_ = message_;
+            packet->channel_ = channel_;
+            return packet;
         }
     };
 }

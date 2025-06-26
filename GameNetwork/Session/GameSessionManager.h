@@ -36,6 +36,10 @@ namespace GameNetwork
         GameSessionManager(uint32_t max_players = 1000, uint32_t max_channels = 10);
         virtual ~GameSessionManager();
         
+        // Static instance management
+        static auto get_instance() -> std::shared_ptr<GameSessionManager>;
+        static auto set_instance(std::shared_ptr<GameSessionManager> instance) -> void;
+        
         // Initialization
         auto initialize(std::shared_ptr<Thread::ThreadPool> thread_pool) 
             -> std::tuple<bool, std::optional<std::string>>;
@@ -74,6 +78,7 @@ namespace GameNetwork
         auto get_connection_by_id(const std::string& connection_id) const 
             -> std::shared_ptr<GameConnection>;
         auto get_all_online_sessions() const -> std::vector<std::shared_ptr<GameSession>>;
+        auto get_all_sessions() const -> std::unordered_map<std::string, std::shared_ptr<GameSession>>;
         auto get_sessions_in_channel(uint32_t channel_id) const -> std::vector<std::shared_ptr<GameSession>>;
         
         // Statistics
@@ -152,7 +157,6 @@ namespace GameNetwork
         // Public methods for GameNetworkServer
         auto get_session(const std::string& client_id) const -> std::shared_ptr<GameSession>;
         auto remove_session(const std::string& client_id) -> void;
-        auto get_all_sessions() const -> std::vector<std::shared_ptr<GameSession>>;
         auto get_channel_sessions(uint32_t channel_id) const -> std::vector<std::shared_ptr<GameSession>>;
         auto disconnect_all() -> void;
         auto set_thread_pool(std::shared_ptr<Thread::ThreadPool> thread_pool) -> void;
@@ -197,5 +201,9 @@ namespace GameNetwork
         
         // Constants
         static constexpr std::chrono::seconds kMaintenanceInterval{30};
+        
+        // Static instance
+        static std::shared_ptr<GameSessionManager> instance_;
+        static std::mutex instance_mutex_;
     };
 }

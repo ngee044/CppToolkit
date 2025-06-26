@@ -1,6 +1,8 @@
 #include "Character.h"
 #include <Logger.h>  // Utilities 모듈
 
+using namespace Utilities;
+
 // 샘플용이므로 별도 namespace 사용
 namespace GameServerSample
 {
@@ -57,7 +59,7 @@ namespace GameServerSample
         location_.map_id = 1;
         location_.zone_id = 1;
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "Character loaded: " + name_ + " (ID: " + std::to_string(character_id_) + ")");
         
         return { true, std::nullopt };
@@ -85,7 +87,7 @@ namespace GameServerSample
         
         last_save_time_ = std::chrono::system_clock::now();
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Debug,
+        Logger::handle().write(LogTypes::Debug,
             "Character saved: " + name_ + " (ID: " + std::to_string(character_id_) + ")");
         
         return { true, std::nullopt };

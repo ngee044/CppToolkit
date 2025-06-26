@@ -4,10 +4,13 @@
 #include <Converter.h>
 #include <boost/json.hpp>
 
+using namespace Utilities;
+
 namespace GameNetwork
 {
     GamePacket::GamePacket()
         : type_(PacketType::Unknown)
+        , packet_type(PacketType::Unknown)
         , timestamp_(std::chrono::steady_clock::now())
         , sequence_number_(0)
         , sender_id_(0)
@@ -19,6 +22,7 @@ namespace GameNetwork
 
     GamePacket::GamePacket(PacketType type)
         : type_(type)
+        , packet_type(type)
         , timestamp_(std::chrono::steady_clock::now())
         , sequence_number_(0)
         , sender_id_(0)
@@ -75,7 +79,7 @@ namespace GameNetwork
         }
         catch (const std::exception& e)
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+            Logger::handle().write(LogTypes::Error,
                 "Failed to serialize GamePacket to JSON: " + std::string(e.what()));
             return "{}";
         }
@@ -153,7 +157,7 @@ namespace GameNetwork
         }
         catch (const std::exception& e)
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+            Logger::handle().write(LogTypes::Error,
                 "Failed to deserialize GamePacket from JSON: " + std::string(e.what()));
             return false;
         }
@@ -167,6 +171,7 @@ namespace GameNetwork
     auto GamePacket::set_type(PacketType type) -> void
     {
         type_ = type;
+        packet_type = type;
     }
 
     auto GamePacket::get_sequence_number() const -> uint64_t
@@ -313,6 +318,15 @@ namespace GameNetwork
         return { nullptr, "Failed to deserialize AuthenticationPacket" };
     }
 
+    auto AuthenticationPacket::clone() const -> std::unique_ptr<GamePacket>
+    {
+        auto packet = std::make_unique<AuthenticationPacket>();
+        packet->account_id_ = account_id_;
+        packet->session_token_ = session_token_;
+        packet->client_version_ = client_version_;
+        return packet;
+    }
+
     // MoveToPacket implementation
     MoveToPacket::MoveToPacket()
         : GamePacket(PacketType::MoveTo)
@@ -430,6 +444,16 @@ namespace GameNetwork
         packet->movement_type_ = data[offset];
         
         return { std::move(packet), std::nullopt };
+    }
+
+    auto MoveToPacket::clone() const -> std::unique_ptr<GamePacket>
+    {
+        auto packet = std::make_unique<MoveToPacket>();
+        packet->entity_id_ = entity_id_;
+        packet->destination_ = destination_;
+        packet->movement_speed_ = movement_speed_;
+        packet->movement_type_ = movement_type_;
+        return packet;
     }
 
     // MoveStopPacket implementation
@@ -1011,5 +1035,18 @@ namespace GameNetwork
             return { nullptr, "Failed to deserialize EntityUpdatePacket" };
         }
         return { std::move(packet), std::nullopt };
+    }
+
+    auto EntityUpdatePacket::clone() const -> std::unique_ptr<GamePacket>
+    {
+        auto packet = std::make_unique<EntityUpdatePacket>();
+        packet->entity_id_ = entity_id_;
+        packet->location_ = location_;
+        packet->health_ = health_;
+        packet->state_ = state_;
+        packet->velocity_ = velocity_;
+        packet->rotation_ = rotation_;
+        packet->is_moving_ = is_moving_;
+        return packet;
     }
 }

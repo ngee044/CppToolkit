@@ -1,6 +1,8 @@
 #include "GameServer.h"
 #include <Logger.h>
 
+using namespace Utilities;
+
 namespace GameServerSample
 {
     GameServer::GameServer() = default;
@@ -31,7 +33,7 @@ namespace GameServerSample
         
         // Register message handlers
         network_server_->on_client_connected([this](const std::string& session_id) {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            Logger::handle().write(LogTypes::Information,
                 "Player connected: " + session_id);
             // Convert session_id to player_id (simplified)
             uint64_t player_id = std::hash<std::string>{}(session_id);
@@ -39,7 +41,7 @@ namespace GameServerSample
         });
         
         network_server_->on_client_disconnected([this](const std::string& session_id) {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            Logger::handle().write(LogTypes::Information,
                 "Player disconnected: " + session_id);
             uint64_t player_id = std::hash<std::string>{}(session_id);
             on_player_disconnected(player_id);
@@ -50,7 +52,7 @@ namespace GameServerSample
         if (std::get<0>(result))
         {
             is_running_ = true;
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            Logger::handle().write(LogTypes::Information,
                 "Game server started on port " + std::to_string(port));
         }
         
@@ -75,7 +77,7 @@ namespace GameServerSample
         player_characters_.clear();
         
         is_running_ = false;
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "Game server stopped");
     }
     
@@ -96,7 +98,7 @@ namespace GameServerSample
         
         player_characters_[player_id] = std::move(character);
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "Character created for player " + std::to_string(player_id));
         
         return {true, std::nullopt};

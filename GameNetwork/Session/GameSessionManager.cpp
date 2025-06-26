@@ -13,6 +13,10 @@ using namespace Utilities;
 
 namespace GameNetwork
 {
+    // Static member definitions
+    std::shared_ptr<GameSessionManager> GameSessionManager::instance_ = nullptr;
+    std::mutex GameSessionManager::instance_mutex_;
+
     GameSessionManager::GameSessionManager(uint32_t max_players, uint32_t max_channels)
         : max_players_(max_players)
         , max_channels_(max_channels)
@@ -30,6 +34,18 @@ namespace GameNetwork
     GameSessionManager::~GameSessionManager()
     {
         // shutdown();
+    }
+
+    auto GameSessionManager::get_instance() -> std::shared_ptr<GameSessionManager>
+    {
+        std::lock_guard<std::mutex> lock(instance_mutex_);
+        return instance_;
+    }
+
+    auto GameSessionManager::set_instance(std::shared_ptr<GameSessionManager> instance) -> void
+    {
+        std::lock_guard<std::mutex> lock(instance_mutex_);
+        instance_ = instance;
     }
 
     auto GameSessionManager::initialize(std::shared_ptr<Thread::ThreadPool> thread_pool) 
@@ -68,7 +84,7 @@ namespace GameNetwork
         // Check max players limit
         if (sessions_by_id_.size() >= max_players_)
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+            Logger::handle().write(LogTypes::Error,
                 "Maximum player limit reached: " + std::to_string(max_players_));
             return { nullptr, "Maximum player limit reached" };
         }
@@ -90,7 +106,7 @@ namespace GameNetwork
             stats_.peak_concurrent_sessions = sessions_by_id_.size();
         }
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "Created session " + session_id + " for connection");
         
         return { session, std::nullopt };
@@ -147,23 +163,8 @@ namespace GameNetwork
         // Update statistics
         stats_.total_sessions_terminated++;
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "Removed session " + session->session_id());
-    }
-
-    auto GameSessionManager::get_all_sessions() const -> std::vector<std::shared_ptr<GameSession>>
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        std::vector<std::shared_ptr<GameSession>> sessions;
-        sessions.reserve(sessions_by_id_.size());
-        
-        for (const auto& [id, session] : sessions_by_id_)
-        {
-            sessions.push_back(session);
-        }
-        
-        return sessions;
     }
 
     auto GameSessionManager::get_channel_sessions(uint32_t channel_id) const 
@@ -181,7 +182,7 @@ namespace GameNetwork
             session->unbind_connection();
         }
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "Disconnected all sessions");
     }
 
@@ -260,7 +261,7 @@ namespace GameNetwork
         
         if (!sessions_to_remove.empty())
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            Logger::handle().write(LogTypes::Information,
                 "Cleaned up " + std::to_string(sessions_to_remove.size()) + " timeout sessions");
         }
         
@@ -272,7 +273,7 @@ namespace GameNetwork
         auto now = std::chrono::steady_clock::now();
         auto uptime = std::chrono::duration_cast<std::chrono::hours>(now - stats_.start_time);
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "Session Manager Statistics - Uptime: " + std::to_string(uptime.count()) + " hours, " +
             "Total Sessions: " + std::to_string(stats_.total_sessions_created) + ", " +
             "Active Sessions: " + std::to_string(sessions_by_id_.size()) + ", " +

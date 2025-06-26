@@ -2,6 +2,8 @@
 #include <Logger.h>
 #include <Converter.h>
 
+using namespace Utilities;
+
 namespace Redis
 {
     RedisClient::RedisClient(const std::string& host, const int& port, const TLSOptions& tls_options, const int& db_index)
@@ -29,7 +31,7 @@ namespace Redis
                 return { false, error };
             }
 
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information, 
+            Logger::handle().write(LogTypes::Information, 
                 "Redis client connected successfully");
             
             return { true, std::nullopt };
@@ -56,7 +58,7 @@ namespace Redis
 
             redis_connector_->disconnect();
             
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information, 
+            Logger::handle().write(LogTypes::Information, 
                 "Redis client disconnected");
             
             return { true, std::nullopt };

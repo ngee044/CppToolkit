@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cmath>
 
+using namespace Utilities;
+
 namespace GameNetwork
 {
     WorldSynchronizer::WorldSynchronizer()
@@ -18,8 +20,8 @@ namespace GameNetwork
         , is_running_(false)
     {
         // Set default world bounds
-        world_min_ = { -1000.0f, -1000.0f, -1000.0f };
-        world_max_ = { 1000.0f, 1000.0f, 1000.0f };
+        world_min_ = { glm::vec3(-1000.0f, -1000.0f, -1000.0f) };
+        world_max_ = { glm::vec3(1000.0f, 1000.0f, 1000.0f) };
         
         // Initialize stats
         stats_ = {};
@@ -42,7 +44,7 @@ namespace GameNetwork
         
         session_manager_ = session_manager;
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "WorldSynchronizer initialized successfully");
         
         return true;
@@ -58,7 +60,7 @@ namespace GameNetwork
         std::lock_guard<std::mutex> snapshot_lock(snapshot_mutex_);
         snapshots_.clear();
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "WorldSynchronizer shutdown completed");
     }
 
@@ -77,7 +79,7 @@ namespace GameNetwork
         
         stats_.active_entities = static_cast<uint32_t>(entity_states_.size());
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "Registered entity " + std::to_string(entity_id) + " for synchronization");
     }
 
@@ -88,7 +90,7 @@ namespace GameNetwork
         
         stats_.active_entities = static_cast<uint32_t>(entity_states_.size());
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "Unregistered entity " + std::to_string(entity_id) + " from synchronization");
     }
 
@@ -150,7 +152,7 @@ namespace GameNetwork
         is_running_ = true;
         sync_thread_ = std::thread(&WorldSynchronizer::sync_loop, this);
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "WorldSynchronizer sync loop started at " + std::to_string(sync_frequency_hz_) + " Hz");
     }
 
@@ -168,7 +170,7 @@ namespace GameNetwork
             sync_thread_.join();
         }
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "WorldSynchronizer sync loop stopped");
     }
 
@@ -230,7 +232,7 @@ namespace GameNetwork
     {
         lag_compensation_enabled_ = enable;
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "Lag compensation " + std::string(enable ? "enabled" : "disabled"));
     }
 
@@ -284,7 +286,7 @@ namespace GameNetwork
             
             if (distance > max_allowed_distance)
             {
-                Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                Logger::handle().write(LogTypes::Error,
                     "Movement validation failed for entity " + std::to_string(entity_id) + 
                     ": distance " + std::to_string(distance) + " exceeds max " + std::to_string(max_allowed_distance));
                 return false;
@@ -361,7 +363,7 @@ namespace GameNetwork
         
         auto all_sessions = session_manager_->get_all_sessions();
         
-        for (auto& session : all_sessions)
+        for (const auto& [session_id, session] : all_sessions)
         {
             if (session && session->is_connected())
             {
@@ -413,7 +415,7 @@ namespace GameNetwork
         
         stats_.conflict_resolutions++;
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+        Logger::handle().write(LogTypes::Information,
             "Resolved movement conflict for entity " + std::to_string(entity_id));
         
         return resolved_state;
