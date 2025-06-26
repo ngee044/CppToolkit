@@ -25,7 +25,7 @@ GameNetworkClient::~GameNetworkClient() {
     disconnect();
 }
 
-bool GameNetworkClient::initialize() {
+auto GameNetworkClient::initialize() -> std::tuple<bool, std::optional<std::string>> {
     Logger::handle().write(LogTypes::Information, "Initializing GameNetworkClient...");
     
     // ThreadPool 생성
@@ -33,14 +33,14 @@ bool GameNetworkClient::initialize() {
     
     if (!thread_pool_) {
         Logger::handle().write(LogTypes::Error, "Failed to create ThreadPool");
-        return false;
+        return { false, "Failed to create ThreadPool" };
     }
     
     auto start_result = thread_pool_->start();
     if (!std::get<0>(start_result)) {
         std::string error = std::get<1>(start_result).value_or("Unknown error");
         Logger::handle().write(LogTypes::Error, "Failed to start ThreadPool: " + error);
-        return false;
+        return { false, "Failed to start ThreadPool: " + error };
     }
     
     // NetworkClient 생성 (실제 API에 맞게 수정)
@@ -53,30 +53,30 @@ bool GameNetworkClient::initialize() {
     
     if (!network_client_) {
         Logger::handle().write(LogTypes::Error, "Failed to create NetworkClient");
-        return false;
+        return { false, "Failed to create NetworkClient" };
     }
     
     // 콜백 설정
     network_client_->received_connection_callback([this](const bool& connected, const bool& by_server) {
         if (connected) {
-            onConnected(nullptr); // NetworkSession은 내부에서 관리됨
+            on_connected(nullptr); // NetworkSession은 내부에서 관리됨
         } else {
-            onDisconnected(nullptr);
+            on_disconnected(nullptr);
         }
         return std::make_tuple(true, std::nullopt);
     });
     
     network_client_->received_binary_callback([this](const std::string& sender_id, const std::vector<uint8_t>& data) {
-        onDataReceived(nullptr, data); // NetworkSession은 내부에서 관리됨
+        on_data_received(nullptr, data); // NetworkSession은 내부에서 관리됨
         return std::make_tuple(true, std::nullopt);
     });
     
     is_running_ = true;
     Logger::handle().write(LogTypes::Information, "GameNetworkClient initialized successfully");
-    return true;
+    return { true, std::nullopt };
 }
 
-void GameNetworkClient::shutdown() {
+auto GameNetworkClient::shutdown() -> void {
     Logger::handle().write(LogTypes::Information, "Shutting down GameNetworkClient...");
     
     disconnect();
@@ -95,16 +95,16 @@ void GameNetworkClient::shutdown() {
     Logger::handle().write(LogTypes::Information, "GameNetworkClient shutdown complete");
 }
 
-bool GameNetworkClient::connect() {
+auto GameNetworkClient::connect() -> std::tuple<bool, std::optional<std::string>> {
     if (!network_client_) {
         Logger::handle().write(LogTypes::Error, "NetworkClient is not initialized");
-        return false;
+        return {false, "NetworkClient is not initialized"};
     }
     
     if (connection_state_ == ConnectionState::Connected || 
         connection_state_ == ConnectionState::Connecting) {
         Logger::handle().write(LogTypes::Error, "Already connected or connecting");
-        return true;
+        return {false, "Already connected or connecting"};
     }
     
     connection_state_ = ConnectionState::Connecting;
@@ -114,12 +114,13 @@ bool GameNetworkClient::connect() {
     if (!result) {
         connection_state_ = ConnectionState::Disconnected;
         Logger::handle().write(LogTypes::Error, "Failed to connect to server");
+        return {false, "Failed to connect to server"};
     }
     
-    return result;
+    return {true, std::nullopt};
 }
 
-void GameNetworkClient::disconnect() {
+auto GameNetworkClient::disconnect() -> void {
     if (connection_state_ == ConnectionState::Disconnected) {
         return;
     }
@@ -135,7 +136,7 @@ void GameNetworkClient::disconnect() {
     Logger::handle().write(LogTypes::Information, "Disconnected from server");
 }
 
-bool GameNetworkClient::sendPacket(const GamePacket& packet) {
+bool GameNetworkClient::send_packet(const GamePacket& packet) {
     if (!network_client_ || connection_state_ != ConnectionState::Connected) {
         Logger::handle().write(LogTypes::Error, "Cannot send packet: not connected");
         return false;
@@ -151,7 +152,7 @@ bool GameNetworkClient::sendPacket(const GamePacket& packet) {
     }
 }
 
-void GameNetworkClient::onConnected(std::shared_ptr<Network::NetworkSession> session) {
+auto GameNetworkClient::on_connected(std::shared_ptr<Network::NetworkSession> session) -> void {
     if (!session) {
         Logger::handle().write(LogTypes::Error, "Connected callback received null session, but connection is established");
     }
@@ -176,7 +177,7 @@ void GameNetworkClient::onConnected(std::shared_ptr<Network::NetworkSession> ses
     }
 }
 
-void GameNetworkClient::onDisconnected(std::shared_ptr<Network::NetworkSession> session) {
+auto GameNetworkClient::on_disconnected(std::shared_ptr<Network::NetworkSession> session) -> void {
     Logger::handle().write(LogTypes::Information, "Disconnected from server");
     
     connection_state_ = ConnectionState::Disconnected;
@@ -200,8 +201,8 @@ void GameNetworkClient::onDisconnected(std::shared_ptr<Network::NetworkSession> 
     }
 }
 
-void GameNetworkClient::onDataReceived(std::shared_ptr<Network::NetworkSession> session, 
-                                     const std::vector<uint8_t>& data) {
+auto GameNetworkClient::on_data_received(std::shared_ptr<Network::NetworkSession> session, 
+                                     const std::vector<uint8_t>& data) -> void {
     if (!thread_pool_) {
         Logger::handle().write(LogTypes::Error, "ThreadPool is null, cannot process received data");
         return;
@@ -211,7 +212,7 @@ void GameNetworkClient::onDataReceived(std::shared_ptr<Network::NetworkSession> 
     auto job = std::make_shared<Thread::Job>(
         Thread::JobPriorities::High,
         [this, data]() -> std::tuple<bool, std::optional<std::string>> {
-            processReceivedData(data);
+            process_received_data(data);
             return {true, std::nullopt};
         },
         "PacketProcessing"
@@ -219,7 +220,7 @@ void GameNetworkClient::onDataReceived(std::shared_ptr<Network::NetworkSession> 
     thread_pool_->push(job);
 }
 
-void GameNetworkClient::processReceivedData(const std::vector<uint8_t>& data) {
+auto GameNetworkClient::process_received_data(const std::vector<uint8_t>& data) -> void {
     try {
         // 수신된 데이터 처리를 위한 기본 로깅
         Logger::handle().write(LogTypes::Debug, 
@@ -241,7 +242,7 @@ void GameNetworkClient::processReceivedData(const std::vector<uint8_t>& data) {
     }
 }
 
-void GameNetworkClient::handlePacket(const GamePacket& packet) {
+auto GameNetworkClient::handle_packet(const GamePacket& packet) -> void {
     // 기본 패킷 처리 로직
     Logger::handle().write(LogTypes::Debug, "Received packet");
     
@@ -249,11 +250,11 @@ void GameNetworkClient::handlePacket(const GamePacket& packet) {
     // 가상 함수로 만들거나 콜백을 사용할 수 있음
 }
 
-bool GameNetworkClient::isConnected() const {
+auto GameNetworkClient::is_connected() const -> bool {
     return connection_state_ == ConnectionState::Connected;
 }
 
-ConnectionState GameNetworkClient::getConnectionState() const {
+auto GameNetworkClient::get_connection_state() const -> ConnectionState {
     return connection_state_;
 }
 

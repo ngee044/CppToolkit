@@ -1,12 +1,15 @@
 #include "GameSessionManager.h"
+#include "GameSession.h"
 #include "GameConnection.h"
 #include "SessionPersistence.h"
 #include "ChannelManager.h"
 #include "DisconnectionHandler.h"
 #include "Security/SessionSecurityManager.h"
-#include "../../Utilities/Logger.h"
-#include "../../Utilities/Converter.h"
-#include "../../Utilities/Generator.h"
+#include <Logger.h>
+#include <Converter.h>
+#include <Generator.h>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -361,7 +364,7 @@ namespace GameNetwork
                     // Unregister from security manager
                     if (security_manager_)
                     {
-                        security_manager_->unregister_active_session(account_id, id);
+                        security_manager_->unregister_session(id);
                     }
                     
                     // Clear security token

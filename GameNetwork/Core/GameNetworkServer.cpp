@@ -10,6 +10,8 @@
 #include <Job.h>
 #include <chrono>
 
+using namespace Utilities;
+
 namespace GameNetwork
 {
     GameNetworkServer::GameNetworkServer(const ServerConfig& config)

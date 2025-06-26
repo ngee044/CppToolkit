@@ -1,10 +1,10 @@
 #pragma once
 
 #include "GameNetworkConstants.h"
-#include "../../Network/NetworkClient.h"
-#include "../../Network/NetworkSession.h"
-#include "../../ThreadPool/ThreadPool.h"
-#include "../../Utilities/Logger.h"
+#include <NetworkClient.h>
+#include <NetworkSession.h>
+#include <ThreadPool.h>
+#include <Logger.h>
 
 #include <memory>
 #include <string>
@@ -47,25 +47,25 @@ namespace GameNetwork
 		virtual ~GameNetworkClient();
 
 		// Basic connection methods
-		bool initialize();
-		void shutdown();
-		bool connect();
-		void disconnect();
-		bool isConnected() const;
-		ConnectionState getConnectionState() const;
+		auto initialize() -> std::tuple<bool, std::optional<std::string>>;
+		auto shutdown() -> void;
+		auto connect() -> std::tuple<bool, std::optional<std::string>>;
+		auto disconnect() -> void;
+		auto is_connected() const -> bool;
+		auto get_connection_state() const -> ConnectionState;
 
 		// Packet handling
-		bool sendPacket(const GamePacket& packet);
+		auto send_packet(const GamePacket& packet) -> bool;
 
 	private:
 		// Event handlers
-		void onConnected(std::shared_ptr<Network::NetworkSession> session);
-		void onDisconnected(std::shared_ptr<Network::NetworkSession> session);
-		void onDataReceived(std::shared_ptr<Network::NetworkSession> session, const std::vector<uint8_t>& data);
+		auto on_connected(std::shared_ptr<Network::NetworkSession> session) -> void;
+		auto on_disconnected(std::shared_ptr<Network::NetworkSession> session) -> void;
+		auto on_data_received(std::shared_ptr<Network::NetworkSession> session, const std::vector<uint8_t>& data) -> void;
 
 		// Internal processing
-		void processReceivedData(const std::vector<uint8_t>& data);
-		void handlePacket(const GamePacket& packet);
+		auto process_received_data(const std::vector<uint8_t>& data) -> void;
+		auto handle_packet(const GamePacket& packet) -> void;
 
 	private:
 		ClientConfig config_;

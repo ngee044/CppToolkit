@@ -4,11 +4,11 @@
 #include "GameConnection.h"
 #include "ChannelManager.h"
 #include "SessionPersistence.h"
-#include "Security/SessionSecurityManager.h"
-#include "../GameNetworkConstants.h"
-#include "../../Network/NetworkSession.h"
-#include "../../ThreadPool/ThreadPool.h"
-#include "../../Utilities/Logger.h"
+#include "SessionSecurityManager.h"
+#include "GameNetworkConstants.h"
+#include <NetworkSession.h>
+#include <ThreadPool.h>
+#include <Logger.h>
 
 #include <memory>
 #include <string>
@@ -25,7 +25,9 @@
 
 namespace GameNetwork
 {
-    // Forward declarations
+    // Forward declarations  
+    class ChannelManager;
+    class SessionPersistence;
     class DisconnectionHandler;
     
     class GameSessionManager : public std::enable_shared_from_this<GameSessionManager>

@@ -2,6 +2,7 @@
 
 #include "DBConnection.h"
 #include <ThreadPool.h>
+#include <Job.h>
 #include <functional>
 #include <future>
 #include <chrono>
@@ -88,29 +89,33 @@ namespace GameDatabase
             return;
         }
 
-        thread_pool_->add_job(Thread::ThreadPriority::Normal, [this, operation, callback]()
-        {
-            auto connection = pop();
-            if (!connection)
+        auto job = std::make_shared<Thread::Job>(
+            [this, operation, callback]() -> void
             {
-                callback(ResultType{}, "Failed to get connection from pool");
-                failed_queries_++;
-                return;
-            }
+                auto connection = pop();
+                if (!connection)
+                {
+                    callback(ResultType{}, "Failed to get connection from pool");
+                    failed_queries_++;
+                    return;
+                }
 
-            try
-            {
-                auto result = operation(connection);
-                push(connection);
-                callback(result, std::nullopt);
-                total_queries_++;
+                try
+                {
+                    auto result = operation(connection);
+                    push(connection);
+                    callback(result, std::nullopt);
+                    total_queries_++;
+                }
+                catch (const std::exception& e)
+                {
+                    push(connection);
+                    callback(ResultType{}, std::string("Database operation failed: ") + e.what());
+                    failed_queries_++;
+                }
             }
-            catch (const std::exception& e)
-            {
-                push(connection);
-                callback(ResultType{}, std::string("Database operation failed: ") + e.what());
-                failed_queries_++;
-            }
-        });
+        );
+
+        thread_pool_->add_job(Thread::ThreadPriority::Normal, job);
     }
 }

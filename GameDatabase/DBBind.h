@@ -6,31 +6,23 @@
 
 namespace GameDatabase
 {
+	// Compile-time bit mask generation
 	template<std::int32_t C>
 	struct FullBits
 	{
-		enum
-		{
-			value = (1 << (C - 1)) | FullBits<C-1>::value
-		};
-	};
-
-	template<>
-	struct FullBits<1> 
-	{
-		enum 
-		{ 
-			value = 1 
-		}; 
+		static constexpr std::int32_t value = (C > 0) ? ((1 << (C - 1)) | FullBits<C - 1>::value) : 0;
 	};
 
 	template<>
 	struct FullBits<0> 
 	{ 
-		enum 
-		{ 
-			value = 0
-		}; 
+		static constexpr std::int32_t value = 0;
+	};
+
+	template<>
+	struct FullBits<1> 
+	{
+		static constexpr std::int32_t value = 1;
 	};
 
 

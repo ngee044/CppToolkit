@@ -52,19 +52,51 @@ namespace GameDatabase
 		auto row_count() -> std::int32_t;
 		auto unbind() -> void;
 				// Additional methods for compatibility
-		auto is_valid() const -> bool { return connection_ != SQL_NULL_HDBC && statement_ != SQL_NULL_HSTMT; }
+		auto is_valid() const -> bool { return connection_ != SQL_NULL_HANDLE && statement_ != SQL_NULL_HANDLE; }
 		auto is_null() const -> bool { return !is_valid(); }
-		auto get_data() -> void* { return static_cast<void*>(statement_); }
+		auto get_statement_handle() const -> SQLHSTMT { return statement_; }
+		auto get_connection_handle() const -> SQLHDBC { return connection_; }
 		auto get_affected_rows() -> std::int32_t { return row_count(); }
 		
-		// Template method for getting typed data
+		// Template method for getting typed data from result set
 		template<typename T>
-		auto get_data(int column_index) -> T
+		auto get_column_data(std::int32_t column_index) -> std::tuple<T, std::optional<std::string>>
 		{
-			// This is a placeholder implementation
-			// In a real implementation, you would extract data from the result set
-			static_assert(std::is_default_constructible_v<T>, "Type must be default constructible");
-			return T{};
+			static_assert(std::is_arithmetic_v<T> || std::is_same_v<T, std::string> || std::is_same_v<T, std::wstring>, 
+				"Type must be arithmetic, string, or wstring");
+			
+			T result{};
+			SQLLEN indicator = 0;
+			SQLRETURN ret = SQL_ERROR;
+			
+			if constexpr (std::is_same_v<T, std::int32_t>)
+			{
+				ret = SQLGetData(statement_, column_index, SQL_C_SLONG, &result, sizeof(result), &indicator);
+			}
+			else if constexpr (std::is_same_v<T, std::int64_t>)
+			{
+				ret = SQLGetData(statement_, column_index, SQL_C_SBIGINT, &result, sizeof(result), &indicator);
+			}
+			else if constexpr (std::is_same_v<T, double>)
+			{
+				ret = SQLGetData(statement_, column_index, SQL_C_DOUBLE, &result, sizeof(result), &indicator);
+			}
+			else if constexpr (std::is_same_v<T, std::wstring>)
+			{
+				WCHAR buffer[4096] = {};
+				ret = SQLGetData(statement_, column_index, SQL_C_WCHAR, buffer, sizeof(buffer), &indicator);
+				if (SQL_SUCCEEDED(ret))
+				{
+					result = std::wstring(buffer);
+				}
+			}
+			
+			if (!SQL_SUCCEEDED(ret))
+			{
+				return { T{}, "Failed to get column data" };
+			}
+			
+			return { result, std::nullopt };
 		}
 
 		auto bind_param(std::int32_t param_index, bool* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>;

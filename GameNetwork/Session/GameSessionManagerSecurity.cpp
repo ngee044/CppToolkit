@@ -1,5 +1,6 @@
 #include "GameSessionManagerSecurity.h"
 #include "GameSessionManager.h"
+#include "../Security/SessionSecurityManager.h"
 #include "../../Utilities/Logger.h"
 #include "../../Utilities/Generator.h"
 
@@ -25,12 +26,11 @@ namespace GameNetwork
             auto [sec_success, sec_error] = security_manager_->initialize(security_policy);
             if (!sec_success)
             {
-                shutdown();
-                return {false, "Failed to initialize security: " + sec_error.value_or("Unknown error")};
-            }
-            
-            Logger::handle().write(LogTypes::Information, "GameSessionManager initialized with security features");
-            return {true, std::nullopt};
+                shutdown();            return {false, "Failed to initialize security: " + sec_error.value_or("Unknown error")};
+        }
+        
+        Logger::handle().write(LogTypes::Information, "GameSessionManager initialized with security features");
+        return {true, std::nullopt};
         }
         catch (const std::exception& e)
         {

@@ -1,10 +1,14 @@
 #include "DBConnection.h"
+#include <Logger.h>
+#include <Converter.h>
 
 #include <fmt/format.h>
 #include <fmt/xchar.h>
 
 #include <iostream>
 #include <cstdint>
+
+using namespace Utilities;
 
 namespace GameDatabase
 {
@@ -353,7 +357,6 @@ namespace GameDatabase
 		SQLINTEGER native_error = 0;
 		SQLWCHAR message[SQL_MAX_MESSAGE_LENGTH] = {};
 		SQLSMALLINT message_length = 0;
-		SQLRETURN error_ret = 0;
 
 		while (true)
 		{
@@ -376,17 +379,22 @@ namespace GameDatabase
 				break; // Error retrieving error record
 			}
 
-			// Log error message to console with proper encoding
+			// Use Logger instead of direct console output
 			try
 			{
-				std::wcout << L"SQL Error [" << sql_state << L"]: " << message << std::endl;
+				std::wstring sql_state_str(sql_state);
+				std::wstring message_str(message);
+				std::string error_log = fmt::format("SQL Error [{}]: {}", 
+					Converter::to_string(sql_state_str), 
+					Converter::to_string(message_str));
+				
+				Logger::handle().write(LogTypes::Error, error_log);
 			}
-			catch (...)
+			catch (const std::exception& e)
 			{
-				// Fallback to narrow string output if wide character output fails
-				std::wstring wmsg(message);
-				std::string narrow_msg(wmsg.begin(), wmsg.end());
-				std::cout << "SQL Error: " << narrow_msg << std::endl;
+				// Fallback logging if conversion fails
+				Logger::handle().write(LogTypes::Error, 
+					fmt::format("SQL Error occurred but failed to convert message: {}", e.what()));
 			}
 
 			index++;
