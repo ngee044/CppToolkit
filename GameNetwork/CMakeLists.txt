@@ -42,6 +42,7 @@ set(SOURCE_FILES
     # Security
     Security/GamePacketValidator.cpp
     Security/RateLimiter.cpp
+    Security/SecureNetwork.cpp
     
     # Metrics
     Metrics/NetworkMetrics.cpp
@@ -60,10 +61,14 @@ set(SOURCE_FILES
     LoadBalancing/AutoScaler.cpp
     LoadBalancing/SeamlessMigration.cpp
     LoadBalancing/HighAvailability.cpp
+    LoadBalancing/HealthCheck.cpp
+    LoadBalancing/StickySession.cpp
+    LoadBalancing/CircuitBreaker.cpp
     
     # Protocol
     Protocol/ReliableUDP.cpp
     Protocol/HybridProtocol.cpp
+    Protocol/ProtocolVersion.cpp
     
     # Prediction
     Prediction/NetworkPrediction.cpp
@@ -113,6 +118,7 @@ set(HEADER_FILES
     # Security
     Security/GamePacketValidator.h
     Security/RateLimiter.h
+    Security/SecureNetwork.h
     
     # Metrics
     Metrics/NetworkMetrics.h
@@ -131,10 +137,14 @@ set(HEADER_FILES
     LoadBalancing/AutoScaler.h
     LoadBalancing/SeamlessMigration.h
     LoadBalancing/HighAvailability.h
+    LoadBalancing/HealthCheck.h
+    LoadBalancing/StickySession.h
+    LoadBalancing/CircuitBreaker.h
     
     # Protocol
     Protocol/ReliableUDP.h
     Protocol/HybridProtocol.h
+    Protocol/ProtocolVersion.h
     
     # Prediction
     Prediction/NetworkPrediction.h
