@@ -21,6 +21,7 @@ set(SOURCE_FILES
     Session/GameConnection.cpp
     Session/GameSession.cpp
     Session/GameSessionManager.cpp
+    Session/GameSessionManagerSecurity.cpp
     Session/SessionPersistence.cpp
     Session/ChannelManager.cpp
     Session/DisconnectionHandler.cpp
@@ -194,9 +195,9 @@ target_include_directories(${LIBRARY_NAME} PUBLIC
 )
 
 # Find packages
-find_package(Boost REQUIRED COMPONENTS system)
-find_package(boost_json CONFIG REQUIRED)
-find_package(glm CONFIG REQUIRED)
+# find_package(Boost REQUIRED COMPONENTS system)
+# find_package(boost_json CONFIG REQUIRED)
+# find_package(glm CONFIG REQUIRED)
 
 # Link libraries
 target_link_libraries(${LIBRARY_NAME} 
@@ -205,9 +206,9 @@ target_link_libraries(${LIBRARY_NAME}
         Thread           # Thread pool
         Utilities        # Utilities
         Redis            # For session persistence
-        Boost::system
-        Boost::json
-        glm::glm
+        # Boost::system
+        # Boost::json
+        # glm::glm
 )
 
 # Optional compression support

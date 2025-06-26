@@ -32,7 +32,9 @@ namespace GameNetwork
         virtual auto serialize() const -> std::vector<uint8_t> override;
         virtual auto deserialize(const std::vector<uint8_t>& data) -> bool override;
         
-        // Serialization type
+        // Get/Set timestamp
+        auto get_timestamp() const -> std::chrono::microseconds;
+        auto set_timestamp(std::chrono::microseconds timestamp) -> void;
         auto set_serialization_type(SerializationType type) -> void;
         auto get_serialization_type() const -> SerializationType;
         
@@ -43,6 +45,7 @@ namespace GameNetwork
         
     private:
         SerializationType serialization_type_;
+        std::chrono::microseconds timestamp_;
     };
     
     // Helper for Location serialization

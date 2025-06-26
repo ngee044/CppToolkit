@@ -28,6 +28,7 @@ namespace GameNetwork
         
         // Connection info
         auto get_connection_id() const -> std::string;
+        auto id() const -> std::string; // Add id() method as alias for get_connection_id()
         auto get_remote_address() const -> std::string;
         auto get_connection_time() const -> std::chrono::steady_clock::time_point;
         

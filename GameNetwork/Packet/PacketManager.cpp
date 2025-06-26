@@ -65,7 +65,7 @@ namespace GameNetwork
         
         if (!type_success)
         {
-            Logger::error("PacketManager: Failed to read packet type");
+            Logger::handle().write(LogTypes::Error, "PacketManager: Failed to read packet type");
             return {false, nullptr};
         }
         
@@ -75,7 +75,7 @@ namespace GameNetwork
         auto packet = create_packet_from_type(packet_type);
         if (!packet)
         {
-            Logger::error("PacketManager: Unknown packet type " + 
+            Logger::handle().write(LogTypes::Error, "PacketManager: Unknown packet type " + 
                          std::to_string(static_cast<uint16_t>(packet_type)));
             return {false, nullptr};
         }
@@ -83,7 +83,7 @@ namespace GameNetwork
         // Deserialize packet data
         if (!packet->deserialize(*complete_data))
         {
-            Logger::error("PacketManager: Failed to deserialize packet");
+            Logger::handle().write(LogTypes::Error, "PacketManager: Failed to deserialize packet");
             return {false, nullptr};
         }
         

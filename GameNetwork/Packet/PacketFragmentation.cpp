@@ -31,7 +31,7 @@ namespace GameNetwork
         
         if (data.empty())
         {
-            Logger::warning("PacketFragmenter: Empty data to fragment");
+            Logger::handle().write(LogTypes::Warning, "PacketFragmenter: Empty data to fragment");
             return {false, fragments};
         }
         
@@ -61,7 +61,7 @@ namespace GameNetwork
         
         if (total_fragments > 65535)
         {
-            Logger::error("PacketFragmenter: Data too large, would require " + 
+            Logger::handle().write(LogTypes::Error, "PacketFragmenter: Data too large, would require " + 
                          std::to_string(total_fragments) + " fragments");
             return {false, fragments};
         }
@@ -91,7 +91,7 @@ namespace GameNetwork
             fragments.push_back(std::move(fragment));
         }
         
-        Logger::debug("PacketFragmenter: Fragmented " + std::to_string(data.size()) + 
+        Logger::handle().write(LogTypes::Debug, "PacketFragmenter: Fragmented " + std::to_string(data.size()) + 
                      " bytes into " + std::to_string(fragments.size()) + " fragments");
         
         return {true, fragments};
@@ -112,7 +112,7 @@ namespace GameNetwork
     {
         return next_message_id_++;
     }
-}
+
     // PacketReassembler implementation
     PacketReassembler::PacketReassembler()
     {
@@ -129,14 +129,14 @@ namespace GameNetwork
         auto [header_valid, header] = extract_header(fragment_data);
         if (!header_valid)
         {
-            Logger::warning("PacketReassembler: Invalid fragment header");
+            Logger::handle().write(LogTypes::Warning, "PacketReassembler: Invalid fragment header");
             return {false, std::nullopt};
         }
         
         // Validate fragment
         if (header.fragment_index >= header.total_fragments)
         {
-            Logger::warning("PacketReassembler: Invalid fragment index " + 
+            Logger::handle().write(LogTypes::Warning, "PacketReassembler: Invalid fragment index " + 
                            std::to_string(header.fragment_index) + " >= " + 
                            std::to_string(header.total_fragments));
             return {false, std::nullopt};
@@ -144,7 +144,7 @@ namespace GameNetwork
         
         if (fragment_data.size() != PacketFragmenter::kFragmentHeaderSize + header.fragment_size)
         {
-            Logger::warning("PacketReassembler: Fragment size mismatch");
+            Logger::handle().write(LogTypes::Warning, "PacketReassembler: Fragment size mismatch");
             return {false, std::nullopt};
         }
         
@@ -168,7 +168,7 @@ namespace GameNetwork
         // Check for duplicate fragment
         if (pending.fragment_received[header.fragment_index])
         {
-            Logger::debug("PacketReassembler: Duplicate fragment received");
+            Logger::handle().write(LogTypes::Debug, "PacketReassembler: Duplicate fragment received");
             return {false, std::nullopt};
         }
         
@@ -195,7 +195,7 @@ namespace GameNetwork
             
             pending_messages_.erase(header.message_id);
             
-            Logger::debug("PacketReassembler: Message " + std::to_string(header.message_id) + 
+            Logger::handle().write(LogTypes::Debug, "PacketReassembler: Message " + std::to_string(header.message_id) + 
                          " reassembled (" + std::to_string(complete_message.size()) + " bytes)");
             
             return {true, complete_message};
@@ -215,7 +215,7 @@ namespace GameNetwork
         {
             if (now - it->second.last_fragment_time > timeout)
             {
-                Logger::debug("PacketReassembler: Message " + std::to_string(it->second.message_id) + 
+                Logger::handle().write(LogTypes::Debug, "PacketReassembler: Message " + std::to_string(it->second.message_id) + 
                              " timed out (" + std::to_string(it->second.received_fragments) + "/" + 
                              std::to_string(it->second.total_fragments) + " fragments)");
                 

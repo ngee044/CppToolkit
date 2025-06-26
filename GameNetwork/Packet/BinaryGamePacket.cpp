@@ -10,12 +10,16 @@ namespace GameNetwork
     BinaryGamePacket::BinaryGamePacket()
         : GamePacket()
         , serialization_type_(SerializationType::Binary)
+        , timestamp_(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()))
     {
     }
     
     BinaryGamePacket::BinaryGamePacket(PacketType type)
         : GamePacket(type)
         , serialization_type_(SerializationType::Binary)
+        , timestamp_(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()))
     {
     }
     
@@ -28,7 +32,7 @@ namespace GameNetwork
         // Write header
         buffer.write_uint8(static_cast<uint8_t>(serialization_type_));
         buffer.write_uint16(static_cast<uint16_t>(get_type()));
-        buffer.write_uint64(get_timestamp().count());
+        buffer.write_uint64(timestamp_.count());
         
         // Write packet-specific data
         write_to_buffer(buffer);
@@ -49,13 +53,13 @@ namespace GameNetwork
         
         if (!type_success || !packet_type_success || !timestamp_success)
         {
-            Logger::error("BinaryGamePacket: Failed to read header");
+            Logger::handle().write(LogTypes::Error, "BinaryGamePacket: Failed to read header");
             return false;
         }
         
         serialization_type_ = static_cast<SerializationType>(type_value);
         set_type(static_cast<PacketType>(packet_type_value));
-        set_timestamp(std::chrono::microseconds(timestamp_value));
+        timestamp_ = std::chrono::microseconds(timestamp_value);
         
         // Read packet-specific data
         return read_from_buffer(buffer);
@@ -109,5 +113,15 @@ namespace GameNetwork
     {
         // Base class has no specific data
         return true;
+    }
+
+    auto BinaryGamePacket::get_timestamp() const -> std::chrono::microseconds
+    {
+        return timestamp_;
+    }
+    
+    auto BinaryGamePacket::set_timestamp(std::chrono::microseconds timestamp) -> void
+    {
+        timestamp_ = timestamp;
     }
 }

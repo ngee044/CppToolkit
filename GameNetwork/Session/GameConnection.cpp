@@ -47,6 +47,11 @@ namespace GameNetwork
         return "";
     }
 
+    auto GameConnection::id() const -> std::string
+    {
+        return get_connection_id();
+    }
+
     auto GameConnection::get_remote_address() const -> std::string
     {
         if (network_session_)
