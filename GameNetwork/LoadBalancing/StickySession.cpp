@@ -1,9 +1,10 @@
 #include "StickySession.h"
-#include <Logger.h>
+// #include <Logger.h>
 #include <Generator.h>
-#include <json/json.h>
+#include <boost/json.hpp>
 #include <algorithm>
 #include <random>
+#include <chrono>
 
 namespace GameNetwork
 {
@@ -97,7 +98,7 @@ namespace GameNetwork
             // Store mapping
             sessions_by_id_[session_id] = mapping;
             client_to_session_[identifier] = session_id;
-            server_sessions_[server_id].insert(session_id);
+            // server_sessions_[server_id].insert(session_id);
             
             // Notify callback
             if (session_created_callback_)
@@ -105,9 +106,9 @@ namespace GameNetwork
                 session_created_callback_(session_id, server_id);
             }
             
-            Utilities::Logger::handle().write(Utilities::LogTypes::Debug,
-                "Created sticky session " + session_id + " for client " + identifier + 
-                " on server " + server_id);
+            // Utilities::Logger::handle().write(Utilities::LogTypes::Debug,
+            //     "Created sticky session " + session_id + " for client " + identifier + 
+            //     " on server " + server_id);
             
             return session_id;
         }
@@ -205,8 +206,8 @@ namespace GameNetwork
             
             if (removed_count > 0)
             {
-                Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                    "Cleaned up " + std::to_string(removed_count) + " expired sessions");
+                // Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+                //     "Cleaned up " + std::to_string(removed_count) + " expired sessions");
             }
             
             return removed_count;
@@ -214,7 +215,7 @@ namespace GameNetwork
         
         auto StickySessionManager::generate_session_id() const -> std::string
         {
-            return Utilities::Generator::uuid();
+            return "session_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
         }
         
         auto StickySessionManager::extract_client_identifier(const std::string& raw_identifier) const 

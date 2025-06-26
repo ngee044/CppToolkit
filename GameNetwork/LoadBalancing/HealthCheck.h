@@ -8,6 +8,7 @@
 #include <thread>
 #include <optional>
 #include <tuple>
+#include <mutex>
 
 namespace GameNetwork
 {

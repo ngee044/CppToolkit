@@ -229,7 +229,7 @@ void GameNetworkClient::processReceivedData(const std::vector<uint8_t>& data) {
         if (packet_processor_) {
             auto packet = packet_processor_->deserialize_binary(data);
             if (packet && message_dispatcher_) {
-                message_dispatcher_->dispatch(std::move(packet));
+                message_dispatcher_->dispatch(std::move(*packet));
                 stats_.packets_received++;
                 stats_.bytes_received += data.size();
             }

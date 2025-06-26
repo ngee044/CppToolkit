@@ -12,7 +12,7 @@ namespace GameNetwork
     class Character
     {
     public:
-        Character(uint64_t character_id) : character_id_(character_id) {}
+        Character(uint64_t character_id) : character_id_(character_id), id(character_id) {}
         
         auto get_location() const -> Location 
         { 
@@ -30,11 +30,13 @@ namespace GameNetwork
             return {true, std::nullopt};
         }
         
-        static auto load(uint64_t character_id) -> std::tuple<std::shared_ptr<Character>, std::optional<std::string>>
+        static auto load(uint64_t character_id, const std::string& name) -> std::tuple<std::shared_ptr<Character>, std::optional<std::string>>
         {
             // TODO: Implement character loading
             return {std::make_shared<Character>(character_id), std::nullopt};
         }
+        
+        uint64_t id; // Public id member
         
     private:
         uint64_t character_id_;

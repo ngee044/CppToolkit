@@ -1,5 +1,5 @@
 #include "SecureNetwork.h"
-#include <Logger.h>
+#include "../../Utilities/Logger.h"
 
 #ifdef USE_OPENSSL
 #include <openssl/ssl.h>
@@ -110,3 +110,33 @@ namespace GameNetwork
             return {false, "SSL support not compiled (OpenSSL required)"};
 #endif
         }
+
+        // Static callback functions (stubbed implementations)
+        auto SSLContext::verify_callback(int preverify_ok, X509_STORE_CTX* ctx) -> int
+        {
+#ifdef USE_OPENSSL
+            // Simple verification - just return preverify result
+            return preverify_ok;
+#else
+            return 1; // Success in stub mode
+#endif
+        }
+
+        auto SSLContext::new_session_callback(SSL* ssl, SSL_SESSION* session) -> int
+        {
+#ifdef USE_OPENSSL
+            // Session caching callback - return 0 to indicate session was not cached
+            return 0;
+#else
+            return 0;
+#endif
+        }
+
+        auto SSLContext::remove_session_callback(SSL_CTX* ctx, SSL_SESSION* session) -> void
+        {
+#ifdef USE_OPENSSL
+            // Session removal callback - no action needed for basic implementation
+#endif
+        }
+    }
+}

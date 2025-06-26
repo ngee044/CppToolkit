@@ -124,14 +124,14 @@ namespace GameNetwork
         
         try
         {
-            character_ = std::make_shared<Character>();
-            auto [success, error] = character_->load(character_id, account_id_);
-            
-            if (!success)
+            // Use static load method from Character class
+            auto [loaded_character, error] = Character::load(character_id, account_id_);
+            if (!loaded_character)
             {
-                character_.reset();
-                return { false, error };
+                return { false, error.value_or("Failed to load character") };
             }
+            
+            character_ = loaded_character;
             
             // Set character's initial location
             current_location_ = character_->get_location();
@@ -306,7 +306,7 @@ namespace GameNetwork
             SessionData data;
             data.session_id = session_id_;
             data.account_id = account_id_;
-            data.character_id = character_ ? character_->id() : 0;
+            data.character_id = character_ ? character_->id : 0;
             data.location = current_location_;
             data.channel_id = channel_id_;
             data.last_activity = last_activity_;

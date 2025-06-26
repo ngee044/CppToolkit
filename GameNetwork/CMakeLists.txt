@@ -30,6 +30,11 @@ set(SOURCE_FILES
     Packet/GamePacket.cpp
     Packet/PacketProcessor.cpp
     Packet/MessageDispatcher.cpp
+    Packet/PacketFragmentation.cpp
+    Packet/GamePacket_Binary.cpp
+    
+    # Serialization
+    Serialization/BinarySerializer.cpp
     
     # Synchronization
     Synchronization/WorldSynchronizer.cpp
@@ -107,6 +112,11 @@ set(HEADER_FILES
     Packet/GamePacket.h
     Packet/PacketProcessor.h
     Packet/MessageDispatcher.h
+    Packet/PacketFragmentation.h
+    Packet/GamePacket_Binary.h
+    
+    # Serialization
+    Serialization/BinarySerializer.h
     
     # Synchronization
     Synchronization/WorldSynchronizer.h
@@ -181,6 +191,7 @@ target_include_directories(${LIBRARY_NAME} PUBLIC
     Prediction
     Compression
     Monitoring
+    Serialization
 )
 
 # Find packages

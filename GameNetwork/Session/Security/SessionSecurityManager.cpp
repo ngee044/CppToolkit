@@ -35,7 +35,7 @@ namespace GameNetwork
                 failed_validations_.clear();
                 lockout_times_.clear();
                 
-                Utilities::Logger::info("SessionSecurityManager initialized with policy settings");
+                // Utilities::Logger::info("SessionSecurityManager initialized with policy settings");
                 return {true, std::nullopt};
             }
             catch (const std::exception& e)
@@ -80,7 +80,7 @@ namespace GameNetwork
                 // Update session activity
                 update_session_activity(session_id);
                 
-                Utilities::Logger::debug("Generated session token for session: " + session_id);
+                // Utilities::Logger::debug("Generated session token for session: " + session_id);
                 return {token, std::nullopt};
             }
             catch (const std::exception& e)
@@ -139,7 +139,7 @@ namespace GameNetwork
                     
                     if (policy_.enable_session_hijacking_protection)
                     {
-                        Utilities::Logger::warning("Possible session hijacking attempt detected for session: " + session_id);
+                        // Utilities::Logger::warning("Possible session hijacking attempt detected for session: " + session_id);
                     }
                     
                     return {false, "Token validation constraints failed"};
@@ -269,7 +269,7 @@ namespace GameNetwork
             if (failed_validations_[session_id] >= policy_.max_failed_validations)
             {
                 lockout_times_[session_id] = std::chrono::steady_clock::now();
-                Utilities::Logger::warning("Session locked due to excessive validation failures: " + session_id);
+                // Utilities::Logger::warning("Session locked due to excessive validation failures: " + session_id);
             }
         }
 
@@ -328,7 +328,7 @@ namespace GameNetwork
                         session_activity_.erase(oldest_session);
                         session_start_time_.erase(oldest_session);
                         
-                        Utilities::Logger::info("Kicked previous session due to concurrent limit: " + oldest_session);
+                        // Utilities::Logger::info("Kicked previous session due to concurrent limit: " + oldest_session);
                     }
                 }
                 

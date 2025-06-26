@@ -1,5 +1,6 @@
 #include "ProtocolVersion.h"
-#include <Logger.h>
+// #include <Logger.h>
+#include <algorithm>
 
 namespace GameNetwork
 {
@@ -155,11 +156,11 @@ namespace GameNetwork
             
             version_registry_[v1_0_0.version.to_uint32()] = v1_0_0;
             
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "Protocol version manager initialized with version " +
-                std::to_string(CURRENT_VERSION.major) + "." +
-                std::to_string(CURRENT_VERSION.minor) + "." +
-                std::to_string(CURRENT_VERSION.patch));
+            // Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+            //     "Protocol version manager initialized with version " +
+            //     std::to_string(CURRENT_VERSION.major) + "." +
+            //     std::to_string(CURRENT_VERSION.minor) + "." +
+            //     std::to_string(CURRENT_VERSION.patch));
         }
         
     } // namespace Protocol

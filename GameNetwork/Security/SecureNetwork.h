@@ -5,10 +5,13 @@
 #include <optional>
 #include <tuple>
 #include <functional>
+#include <cstddef>  // for ptrdiff_t
 
 // Forward declarations for OpenSSL types
 typedef struct ssl_st SSL;
 typedef struct ssl_ctx_st SSL_CTX;
+typedef struct x509_store_ctx_st X509_STORE_CTX;
+typedef struct ssl_session_st SSL_SESSION;
 typedef struct x509_st X509;
 
 namespace GameNetwork
@@ -97,23 +100,23 @@ namespace GameNetwork
             
             // Send/Receive secure data
             auto send_secure(SSL* ssl, const void* data, size_t size) 
-                -> std::tuple<ssize_t, std::optional<std::string>>;
+                -> std::tuple<std::ptrdiff_t, std::optional<std::string>>;
             auto receive_secure(SSL* ssl, void* buffer, size_t size) 
-                -> std::tuple<ssize_t, std::optional<std::string>>;
+                -> std::tuple<std::ptrdiff_t, std::optional<std::string>>;
             
             // Connection info
             auto get_cipher_info(SSL* ssl) -> std::string;
             auto get_protocol_version(SSL* ssl) -> std::string;
             
             // Callbacks
-            using SSLErrorCallback = std::function<void(const std::string&)>;
-            auto on_ssl_error(SSLErrorCallback callback) -> void { ssl_error_callback_ = callback; }
+            // using SSLErrorCallback = std::function<void(const std::string&)>;
+            // auto on_ssl_error(SSLErrorCallback callback) -> void { ssl_error_callback_ = callback; }
             
         private:
             std::unique_ptr<SSLContext> ssl_context_;
             bool ssl_enabled_;
             SSLConfig config_;
-            SSLErrorCallback ssl_error_callback_;
+            // SSLErrorCallback ssl_error_callback_;
             
             // Error handling
             auto get_ssl_error_string(SSL* ssl, int ret) -> std::string;
@@ -139,9 +142,9 @@ namespace GameNetwork
             
             // Send/Receive secure data
             auto send_secure(SSL* ssl, const void* data, size_t size) 
-                -> std::tuple<ssize_t, std::optional<std::string>>;
+                -> std::tuple<std::ptrdiff_t, std::optional<std::string>>;
             auto receive_secure(SSL* ssl, void* buffer, size_t size) 
-                -> std::tuple<ssize_t, std::optional<std::string>>;
+                -> std::tuple<std::ptrdiff_t, std::optional<std::string>>;
             
         private:
             std::unique_ptr<SSLContext> ssl_context_;
