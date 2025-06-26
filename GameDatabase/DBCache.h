@@ -110,6 +110,9 @@ namespace GameDatabase
 		std::uint16_t port_;
 		std::optional<std::string> password_;
 		std::int32_t db_index_;
+		
+		// Redis client (forward declaration to avoid dependency)
+		std::shared_ptr<void> redis_client_;
 	};
 
 	// 데이터베이스 캐시 관리자

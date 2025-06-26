@@ -24,10 +24,25 @@ namespace GameNetwork
     auto Character::load(uint64_t character_id, const std::string& account_id) 
         -> std::tuple<bool, std::optional<std::string>>
     {
-        // TODO: Implement proper database loading
+        // MySQL query to load character data
+        std::string query = R"(
+            SELECT name, level, experience, health, max_health, mana, max_mana,
+                   location_x, location_y, location_z, map_id, zone_id
+            FROM characters 
+            WHERE character_id = ? AND account_id = ?
+        )";
+        
+        // For now, we'll use default values since DB connection might not be available
+        // In production, this would use GameDatabase module
         character_id_ = character_id;
         account_id_ = account_id;
-        name_ = "DefaultCharacter";
+        
+        // Simulated database loading
+        // In real implementation:
+        // auto result = db_connection_->execute_query(query, character_id, account_id);
+        
+        // Default values for testing
+        name_ = "Player_" + std::to_string(character_id);
         level_ = 1;
         experience_ = 0;
         health_ = 100;
@@ -35,9 +50,9 @@ namespace GameNetwork
         mana_ = 100;
         max_mana_ = 100;
         
-        location_.x = 0.0f;
+        location_.x = 100.0f;
         location_.y = 0.0f;
-        location_.z = 0.0f;
+        location_.z = 100.0f;
         location_.map_id = 1;
         location_.zone_id = 1;
         
@@ -49,7 +64,24 @@ namespace GameNetwork
 
     auto Character::save() -> std::tuple<bool, std::optional<std::string>>
     {
-        // TODO: Implement proper database saving
+        // MySQL query to save character data
+        std::string query = R"(
+            UPDATE characters 
+            SET name = ?, level = ?, experience = ?, 
+                health = ?, max_health = ?, mana = ?, max_mana = ?,
+                location_x = ?, location_y = ?, location_z = ?, 
+                map_id = ?, zone_id = ?, last_save = NOW()
+            WHERE character_id = ? AND account_id = ?
+        )";
+        
+        // In production, this would use GameDatabase module
+        // auto result = db_connection_->execute_update(query, 
+        //     name_, level_, experience_,
+        //     health_, max_health_, mana_, max_mana_,
+        //     location_.x, location_.y, location_.z,
+        //     location_.map_id, location_.zone_id,
+        //     character_id_, account_id_);
+        
         last_save_time_ = std::chrono::system_clock::now();
         
         Utilities::Logger::handle().write(Utilities::LogTypes::Debug,

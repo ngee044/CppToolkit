@@ -225,8 +225,15 @@ void GameNetworkClient::processReceivedData(const std::vector<uint8_t>& data) {
         Logger::handle().write(LogTypes::Debug, 
             "Received " + std::to_string(data.size()) + " bytes");
         
-        // TODO: 패킷 프로세서가 구현되면 여기서 패킷을 디시리얼라이즈
-        // TODO: 메시지 디스패처가 구현되면 여기서 핸들러로 전달
+        // 패킷 프로세서와 메시지 디스패처를 사용하여 처리
+        if (packet_processor_) {
+            auto packet = packet_processor_->deserialize_binary(data);
+            if (packet && message_dispatcher_) {
+                message_dispatcher_->dispatch(std::move(packet));
+                stats_.packets_received++;
+                stats_.bytes_received += data.size();
+            }
+        }
         
     } catch (const std::exception& e) {
         Logger::handle().write(LogTypes::Error, 

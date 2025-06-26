@@ -441,7 +441,68 @@ namespace GameNetwork
         std::sort(region_loads.begin(), region_loads.end(),
                   [](const auto& a, const auto& b) { return a.second > b.second; });
         
-        // TODO: Implement actual entity migration logic
+        // Implement entity migration logic
+        const float HIGH_LOAD_THRESHOLD = 0.8f;
+        const float LOW_LOAD_THRESHOLD = 0.3f;
+        
+        // Find overloaded and underloaded regions
+        std::vector<uint32_t> overloaded_regions;
+        std::vector<uint32_t> underloaded_regions;
+        
+        for (const auto& [region_id, load] : region_loads)
+        {
+            if (load > HIGH_LOAD_THRESHOLD)
+            {
+                overloaded_regions.push_back(region_id);
+            }
+            else if (load < LOW_LOAD_THRESHOLD)
+            {
+                underloaded_regions.push_back(region_id);
+            }
+        }
+        
+        // Migrate entities from overloaded to underloaded regions
+        for (uint32_t overloaded_id : overloaded_regions)
+        {
+            if (underloaded_regions.empty())
+                break;
+                
+            auto& overloaded_region = regions_[overloaded_id];
+            auto entities_to_migrate = overloaded_region.entity_ids;
+            
+            for (uint64_t entity_id : entities_to_migrate)
+            {
+                // Check if entity is at region boundary
+                auto entity_it = entity_positions_.find(entity_id);
+                if (entity_it == entity_positions_.end())
+                    continue;
+                    
+                const auto& entity_pos = entity_it->second.position;
+                
+                // Find best neighboring region for migration
+                auto neighbors = get_neighboring_regions(overloaded_id);
+                for (uint32_t neighbor_id : neighbors)
+                {
+                    auto neighbor_it = std::find(underloaded_regions.begin(), 
+                                                  underloaded_regions.end(), 
+                                                  neighbor_id);
+                    if (neighbor_it != underloaded_regions.end())
+                    {
+                        // Check if entity is close to this neighbor
+                        if (is_position_in_region(entity_pos, regions_[neighbor_id]))
+                        {
+                            // Trigger entity migration
+                            notify_region_change(entity_id, overloaded_id, neighbor_id);
+                            break;
+                        }
+                    }
+                }
+                
+                // Stop if we've balanced enough
+                if (get_region_load(overloaded_id) < HIGH_LOAD_THRESHOLD)
+                    break;
+            }
+        }
     }
     
     auto RegionManager::get_total_entities() const -> size_t
