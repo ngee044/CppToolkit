@@ -17,8 +17,16 @@ namespace GameNetwork
         , last_activity_(std::chrono::steady_clock::now())
         , current_server_id_("unassigned")
         , kicked_by_duplicate_login_(false)
+        , session_recording_enabled_(false)
+        , packets_sent_count_(0)
+        , packets_received_count_(0)
+        , bytes_sent_count_(0)
+        , bytes_received_count_(0)
+        , reconnection_count_(0)
+        , command_count_(0)
     {
         current_location_ = 0;  // Default location ID
+        created_time_ = std::chrono::steady_clock::now();
     }
 
     GameSession::~GameSession()
@@ -375,34 +383,6 @@ namespace GameNetwork
         }
     }
 
-    template<typename T>
-    auto GameSession::set_data(const std::string& key, const T& value) -> void
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        custom_data_[key] = value;
-    }
-
-    template<typename T>
-    auto GameSession::get_data(const std::string& key) const -> std::optional<T>
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        
-        auto it = custom_data_.find(key);
-        if (it == custom_data_.end())
-        {
-            return std::nullopt;
-        }
-        
-        try
-        {
-            return std::any_cast<T>(it->second);
-        }
-        catch (const std::bad_any_cast&)
-        {
-            return std::nullopt;
-        }
-    }
-
     auto GameSession::remove_data(const std::string& key) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -514,5 +494,93 @@ namespace GameNetwork
     {
         std::lock_guard<std::mutex> lock(mutex_);
         return custom_data_;
+    }
+
+    // ⭐ Session Statistics and Metadata Implementation
+    auto GameSession::get_session_statistics() -> SessionStatistics
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        SessionStatistics stats;
+        stats.creation_time = created_time_;
+        stats.last_activity_time = last_activity_;
+        stats.total_session_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - created_time_);
+        stats.packets_sent = packets_sent_count_;
+        stats.packets_received = packets_received_count_;
+        stats.bytes_sent = bytes_sent_count_;
+        stats.bytes_received = bytes_received_count_;
+        stats.reconnection_count = reconnection_count_;
+        stats.command_count = command_count_;
+        stats.activity_log = activity_log_;
+        
+        return stats;
+    }
+
+    auto GameSession::set_session_metadata(const std::unordered_map<std::string, std::string>& metadata) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        session_metadata_ = metadata;
+        
+        if (session_recording_enabled_)
+        {
+            add_activity_log("Metadata updated with " + std::to_string(metadata.size()) + " entries");
+        }
+    }
+
+    auto GameSession::get_session_metadata() const -> std::unordered_map<std::string, std::string>
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return session_metadata_;
+    }
+
+    auto GameSession::enable_session_recording(bool enable) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        session_recording_enabled_ = enable;
+        
+        if (enable)
+        {
+            add_activity_log("Session recording enabled");
+        }
+        else
+        {
+            add_activity_log("Session recording disabled");
+        }
+    }
+
+    auto GameSession::is_session_recording_enabled() const -> bool
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return session_recording_enabled_;
+    }
+
+    auto GameSession::add_activity_log(const std::string& activity) -> void
+    {
+        if (!session_recording_enabled_) return;
+        
+        auto now = std::chrono::steady_clock::now();
+        auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            now.time_since_epoch()).count();
+        
+        std::string log_entry = "[" + std::to_string(timestamp) + "] " + activity;
+        activity_log_.push_back(log_entry);
+        
+        // Maintain max log size
+        if (activity_log_.size() > MAX_ACTIVITY_LOG_SIZE)
+        {
+            activity_log_.erase(activity_log_.begin());
+        }
+    }
+
+    auto GameSession::clear_activity_log() -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        activity_log_.clear();
+        
+        if (session_recording_enabled_)
+        {
+            add_activity_log("Activity log cleared");
+        }
     }
 }

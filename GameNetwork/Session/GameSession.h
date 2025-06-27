@@ -126,6 +126,28 @@ namespace GameNetwork
         auto disconnect(const std::string& reason = "") -> void;
         auto set_network_session(std::shared_ptr<GameConnection> connection) -> void;
         
+        // ⭐ Session Statistics and Metadata (새로 추가)
+        struct SessionStatistics {
+            std::chrono::steady_clock::time_point creation_time;
+            std::chrono::steady_clock::time_point last_activity_time;
+            std::chrono::milliseconds total_session_duration;
+            uint64_t packets_sent;
+            uint64_t packets_received;
+            uint64_t bytes_sent;
+            uint64_t bytes_received;
+            uint32_t reconnection_count;
+            uint32_t command_count;
+            std::vector<std::string> activity_log;
+        };
+        
+        auto get_session_statistics() -> SessionStatistics;
+        auto set_session_metadata(const std::unordered_map<std::string, std::string>& metadata) -> void;
+        auto get_session_metadata() const -> std::unordered_map<std::string, std::string>;
+        auto enable_session_recording(bool enable) -> void;
+        auto is_session_recording_enabled() const -> bool;
+        auto add_activity_log(const std::string& activity) -> void;
+        auto clear_activity_log() -> void;
+        
     private:
         auto start_grace_period_timer() -> void;
         auto stop_grace_period_timer() -> void;
@@ -169,5 +191,42 @@ namespace GameNetwork
         
         // Grace period timer
         std::future<void> grace_timer_;
+        
+        // ⭐ Session Statistics and Metadata (새로 추가)
+        std::unordered_map<std::string, std::string> session_metadata_;
+        bool session_recording_enabled_;
+        uint64_t packets_sent_count_;
+        uint64_t packets_received_count_;
+        uint64_t bytes_sent_count_;
+        uint64_t bytes_received_count_;
+        uint32_t reconnection_count_;
+        uint32_t command_count_;
+        std::vector<std::string> activity_log_;
+        static constexpr size_t MAX_ACTIVITY_LOG_SIZE = 1000;
     };
+
+    // Template function implementations
+    template<typename T>
+    auto GameSession::set_data(const std::string& key, const T& value) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        custom_data_[key] = value;
+    }
+
+    template<typename T>
+    auto GameSession::get_data(const std::string& key) const -> std::optional<T>
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = custom_data_.find(key);
+        if (it != custom_data_.end())
+        {
+            try {
+                return std::any_cast<T>(it->second);
+            }
+            catch (const std::bad_any_cast&) {
+                return std::nullopt;
+            }
+        }
+        return std::nullopt;
+    }
 }

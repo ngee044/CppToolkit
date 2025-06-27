@@ -7,6 +7,10 @@
 #include <unordered_map>
 #include <optional>
 #include <tuple>
+#include <functional>
+#include <vector>
+#include <thread>
+#include <functional>
 
 namespace GameNetwork
 {
@@ -87,6 +91,46 @@ namespace GameNetwork
         // Connection scoring (0-100)
         auto get_connection_score() const -> float;
         
+        // Metrics export
+        auto export_metrics_json() const -> std::string;
+        auto export_metrics_csv() const -> std::string;
+        auto export_metrics_prometheus() const -> std::string;
+        
+        // Alert thresholds and callbacks
+        struct AlertThreshold
+        {
+            float rtt_threshold_ms = 200.0f;
+            float packet_loss_threshold = 0.05f; // 5%
+            float jitter_threshold_ms = 50.0f;
+            uint64_t bandwidth_threshold_bps = 1000000; // 1 Mbps
+            float connection_score_threshold = 50.0f;
+        };
+        
+        using AlertCallback = std::function<void(const std::string& metric_name, 
+                                                float current_value, 
+                                                float threshold, 
+                                                const std::string& severity)>;
+        
+        auto set_alert_thresholds(const AlertThreshold& thresholds) -> void;
+        auto get_alert_thresholds() const -> AlertThreshold;
+        auto register_alert_callback(AlertCallback callback) -> void;
+        auto clear_alert_callbacks() -> void;
+        
+        // Metrics change callbacks
+        using MetricsChangeCallback = std::function<void(const NetworkQualityInfo& quality_info)>;
+        auto register_metrics_callback(MetricsChangeCallback callback) -> void;
+        auto clear_metrics_callbacks() -> void;
+        
+        // External monitoring integration
+        auto enable_external_export(bool enable) -> void;
+        auto set_export_interval(std::chrono::seconds interval) -> void;
+        auto get_export_interval() const -> std::chrono::seconds;
+        
+        // Real-time monitoring
+        auto start_monitoring() -> void;
+        auto stop_monitoring() -> void;
+        auto is_monitoring_active() const -> bool;
+        
     private:
         struct PingInfo
         {
@@ -129,7 +173,25 @@ namespace GameNetwork
         // Statistics
         MetricsStats stats_;
         
-        // Configuration
+        // Alert system
+        AlertThreshold alert_thresholds_;
+        std::vector<AlertCallback> alert_callbacks_;
+        std::vector<MetricsChangeCallback> metrics_callbacks_;
+        
+        // External monitoring
+        bool external_export_enabled_;
+        std::chrono::seconds export_interval_;
+        std::thread monitoring_thread_;
+        std::atomic<bool> monitoring_active_;
+        
+        // Helper methods for alerts
+        auto check_alerts(const NetworkQualityInfo& quality_info) -> void;
+        auto trigger_alert(const std::string& metric_name, float current_value, 
+                          float threshold, const std::string& severity) -> void;
+        auto trigger_metrics_callbacks(const NetworkQualityInfo& quality_info) -> void;
+        auto monitoring_thread_func() -> void;
+        
+        // Configuration constants
         static constexpr size_t MAX_RTT_HISTORY = 100;
         static constexpr size_t MAX_BANDWIDTH_SAMPLES = 60;
         static constexpr size_t MAX_JITTER_SAMPLES = 30;

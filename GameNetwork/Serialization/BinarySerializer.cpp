@@ -1,19 +1,25 @@
 #include "BinarySerializer.h"
 #include <algorithm>
-#include <bit>
 
 namespace GameNetwork
 {
     namespace Serialization
     {
+        // Helper function to detect endianness in C++17
+        static bool is_little_endian()
+        {
+            uint16_t test = 0x0001;
+            return *reinterpret_cast<uint8_t*>(&test) == 0x01;
+        }
+
         BinarySerializer::BinarySerializer()
-            : little_endian_(std::endian::native == std::endian::little)
+            : little_endian_(is_little_endian())
         {
             buffer_.reserve(256);  // Default initial capacity
         }
 
         BinarySerializer::BinarySerializer(size_t initial_capacity)
-            : little_endian_(std::endian::native == std::endian::little)
+            : little_endian_(is_little_endian())
         {
             buffer_.reserve(initial_capacity);
         }
@@ -184,7 +190,7 @@ namespace GameNetwork
             : data_(data.data())
             , size_(data.size())
             , position_(0)
-            , little_endian_(std::endian::native == std::endian::little)
+            , little_endian_(is_little_endian())
         {
         }
 
@@ -192,7 +198,7 @@ namespace GameNetwork
             : data_(data)
             , size_(size)
             , position_(0)
-            , little_endian_(std::endian::native == std::endian::little)
+            , little_endian_(is_little_endian())
         {
         }
 

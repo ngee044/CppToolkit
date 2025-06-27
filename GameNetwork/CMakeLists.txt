@@ -16,6 +16,7 @@ set(SOURCE_FILES
     Core/GameNetworkServer.cpp
     Core/GameNetworkClient.cpp
     Core/InterServerCommunication.cpp
+    Core/ServerRegistry.cpp
     
     # Session
     Session/GameConnection.cpp
@@ -93,6 +94,9 @@ set(SOURCE_FILES
     
     # Monitoring
     Monitoring/SystemMonitor.cpp
+    
+    # Serialization
+    Serialization/BinarySerializer.cpp
 )
 
 # Header files
@@ -104,6 +108,7 @@ set(HEADER_FILES
     Core/GameNetworkServer.h
     Core/GameNetworkClient.h
     Core/InterServerCommunication.h
+    Core/ServerRegistry.h
     
     # Session
     Session/GameConnection.h
@@ -181,6 +186,9 @@ set(HEADER_FILES
     
     # Monitoring
     Monitoring/SystemMonitor.h
+    
+    # Serialization
+    Serialization/BinarySerializer.h
 )
 
 project(${LIBRARY_NAME} VERSION 1.0.0.0)

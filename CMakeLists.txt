@@ -33,11 +33,11 @@ endif()
 
 add_subdirectory(Utilities)
 add_subdirectory(ThreadPool)
-#add_subdirectory(Database)  # Temporarily disabled
+add_subdirectory(Database)  # Temporarily disabled
 
 if (BUILD_GAME_NETWORK_SESSION)
     add_subdirectory(GameNetwork)
-    #add_subdirectory(GameDatabase)  # Temporarily disabled
+    add_subdirectory(GameDatabase)  # Temporarily disabled
 endif()
 if (BUILD_NETWORK_LIB)
     add_subdirectory(Network)
@@ -46,11 +46,11 @@ if (BUILD_REDIS_LIB)
     add_subdirectory(Redis)
 endif()
 if (BUILD_RABBIT_MQ_LIB)
-    #add_subdirectory(RabbitMQ)  # Temporarily disabled
+    add_subdirectory(RabbitMQ)  # Temporarily disabled
 endif()
 if (BUILD_SAMPLES)
-    #add_subdirectory(Samples)  # Temporarily disabled
+    add_subdirectory(Samples)  # Temporarily disabled
 endif()
 if (BUILD_KAFKA_LIB)
-    #add_subdirectory(Kafka)  # Temporarily disabled
+    add_subdirectory(Kafka)  # Temporarily disabled
 endif()
