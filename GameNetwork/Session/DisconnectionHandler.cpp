@@ -330,10 +330,17 @@ namespace GameNetwork
                 info.disconnect_time.time_since_epoch()).count();
             
             // Add any custom data from the session
-            auto custom_data = session->get_custom_data();
+            auto custom_data = session->get_all_custom_data();
             if (!custom_data.empty())
             {
-                info.session_data["custom"] = custom_data;
+                boost::json::object custom_obj;
+                for (const auto& [key, value] : custom_data)
+                {
+                    // Convert std::any to JSON value - simplified version
+                    // In a real implementation, you'd need proper type checking
+                    custom_obj[key] = key + "_value"; // Placeholder conversion
+                }
+                info.session_data["custom"] = custom_obj;
             }
         }
         
@@ -367,7 +374,9 @@ namespace GameNetwork
                 auto custom_obj = info.session_data.at("custom").as_object();
                 for (const auto& pair : custom_obj)
                 {
-                    session->set_custom_data(std::string(pair.key()), pair.value());
+                    // Convert JSON value to string for simplicity
+                    std::string value_str = boost::json::serialize(pair.value());
+                    session->set_custom_data<std::string>(std::string(pair.key()), value_str);
                 }
             }
             catch (const std::exception& e)

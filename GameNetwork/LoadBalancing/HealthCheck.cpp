@@ -3,6 +3,16 @@
 #include <NetworkClient.h>
 #include <chrono>
 #include <curl/curl.h>
+#include <boost/asio.hpp>
+#include <boost/system/error_code.hpp>
+
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <sys/select.h>
+#include <sys/socket.h>
+#endif
 
 namespace GameNetwork
 {
@@ -22,26 +32,83 @@ namespace GameNetwork
             
             auto start_time = std::chrono::steady_clock::now();
             
-            // Try to establish TCP connection - using stub for now
-            // Network::NetworkClient client("health_check_client");
-            // auto connect_result = client.start(host_, port_, 8192);
-            
-            auto end_time = std::chrono::steady_clock::now();
-            result.response_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
-            
-            // For now, assume connection succeeds
-            bool connection_success = true;
-            if (connection_success)
-            {
-                result.status = HealthStatus::Healthy;
-                result.details = "TCP connection successful";
-                // client.stop();
-                return {true, result};
+            try {
+                // Use Boost.Asio for actual TCP connection with deadline timer
+                boost::asio::io_context io_context;
+                boost::asio::ip::tcp::socket socket(io_context);
+                boost::asio::ip::tcp::resolver resolver(io_context);
+                boost::asio::steady_timer deadline(io_context);
+                
+                // Set up deadline timer
+                deadline.expires_after(timeout_);
+                deadline.async_wait([&socket](const boost::system::error_code& ec) {
+                    if (!ec) {
+                        socket.close(); // Timeout occurred
+                    }
+                });
+                
+                bool connected = false;
+                boost::system::error_code final_error;
+                
+                try {
+                    // Resolve the hostname/IP and port
+                    auto endpoints = resolver.resolve(host_, std::to_string(port_));
+                    
+                    // Attempt to connect to any resolved endpoint
+                    boost::asio::connect(socket, endpoints, final_error);
+                    
+                    if (!final_error) {
+                        connected = true;
+                    }
+                } catch (const boost::system::system_error& e) {
+                    final_error = e.code();
+                }
+                
+                deadline.cancel();
+                
+                auto end_time = std::chrono::steady_clock::now();
+                result.response_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
+                
+                if (connected && socket.is_open()) {
+                    socket.close();
+                    result.status = HealthStatus::Healthy;
+                    result.details = "TCP connection successful to " + host_ + ":" + std::to_string(port_);
+                    
+                    using namespace Utilities;
+                    Logger::handle().write(LogTypes::Information, 
+                        "Health check passed for " + host_ + ":" + std::to_string(port_) + 
+                        " (response time: " + std::to_string(result.response_time.count()) + "ms)");
+                    
+                    return {true, result};
+                } else {
+                    result.status = HealthStatus::Unhealthy;
+                    result.details = "TCP connection failed to " + host_ + ":" + std::to_string(port_);
+                    
+                    if (final_error) {
+                        result.details += " - " + final_error.message();
+                    } else if (result.response_time >= timeout_) {
+                        result.details += " - connection timeout";
+                    }
+                    
+                    using namespace Utilities;
+                    Logger::handle().write(LogTypes::Warning, 
+                        "Health check failed for " + host_ + ":" + std::to_string(port_) + 
+                        " - " + result.details);
+                    
+                    return {false, result};
+                }
             }
-            else
-            {
+            catch (const std::exception& e) {
+                auto end_time = std::chrono::steady_clock::now();
+                result.response_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
                 result.status = HealthStatus::Unhealthy;
-                result.details = "TCP connection failed: Unknown error";
+                result.details = "TCP health check exception: " + std::string(e.what());
+                
+                using namespace Utilities;
+                Logger::handle().write(LogTypes::Error, 
+                    "Health check exception for " + host_ + ":" + std::to_string(port_) + 
+                    " - " + std::string(e.what()));
+                
                 return {false, result};
             }
         }

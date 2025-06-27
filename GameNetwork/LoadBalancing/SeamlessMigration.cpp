@@ -162,22 +162,54 @@ namespace GameNetwork
         std::vector<std::string> sessions_to_migrate;
         size_t total_sessions = 0;
         
-        // In a real implementation, this would query the session manager for sessions on the source server
-        // For now, we'll simulate by getting all sessions and filtering
+        // Query the session manager for sessions actually on the source server
         auto all_sessions = session_manager->get_all_sessions();
+        std::vector<std::string> source_server_sessions;
+        
         for (const auto& [session_id, session] : all_sessions)
         {
-            // Check if session belongs to source server
-            // In production, you'd check session->get_server_id() == source_server
-            total_sessions++;
+            // Check if session belongs to source server by checking server assignment
+            // This assumes sessions have server_id tracking (would need to be added to GameSession)
+            if (session && session->get_current_server_id() == source_server) {
+                source_server_sessions.push_back(session_id);
+                total_sessions++;
+            }
+        }
+        
+        if (total_sessions == 0) {
+            Logger::handle().write(LogTypes::Warning, 
+                "No sessions found on source server: " + source_server);
+            return { true, std::nullopt }; // No sessions to migrate
         }
         
         // Calculate how many sessions to migrate
         size_t sessions_to_move = (total_sessions * percentage) / 100;
+        if (sessions_to_move == 0 && percentage > 0) {
+            sessions_to_move = 1; // Migrate at least one session if percentage > 0
+        }
         
-        // Select sessions to migrate (could use various strategies: least active, round-robin, etc.)
+        Logger::handle().write(LogTypes::Information, 
+            "Planning to migrate " + std::to_string(sessions_to_move) + 
+            " out of " + std::to_string(total_sessions) + " sessions from " + source_server);
+        
+        // Select sessions to migrate using least-recently-active strategy
+        std::vector<std::pair<std::string, std::chrono::steady_clock::time_point>> session_activity;
+        for (const auto& session_id : source_server_sessions) {
+            auto session = all_sessions[session_id];
+            if (session) {
+                session_activity.emplace_back(session_id, session->get_last_activity_time());
+            }
+        }
+        
+        // Sort by last activity time (oldest first)
+        std::sort(session_activity.begin(), session_activity.end(),
+            [](const auto& a, const auto& b) {
+                return a.second < b.second;
+            });
+        
+        // Select the least active sessions for migration
         size_t count = 0;
-        for (const auto& [session_id, session] : all_sessions)
+        for (const auto& [session_id, last_activity] : session_activity)
         {
             if (count >= sessions_to_move) break;
             
@@ -301,176 +333,140 @@ namespace GameNetwork
     auto SeamlessMigration::capture_session_state(const std::string& session_id)
         -> std::tuple<bool, std::optional<std::string>, std::vector<uint8_t>>
     {
-        auto session_manager = GameSessionManager::get_instance();
-        if (!session_manager)
-        {
-            return { false, "Session manager not available", {} };
-        }
-        
-        auto session = session_manager->get_session(session_id);
-        if (!session)
-        {
-            return { false, "Session not found", {} };
-        }
-        
-        // Implement actual state capture
-        try
-        {
-            // Create a serializer to capture session state
-            Serialization::BinarySerializer serializer;
-            
-            // Write session metadata
-            serializer.write_uint32(1); // Version
-            serializer.write_string(session_id);
-            serializer.write_string(session->account_id());
-            serializer.write_uint64(session->get_entity_id());
-            
-            // Write location data (simplified as int for now)
-            auto location_id = session->current_location();
-            serializer.write_uint32(location_id);  // Just write the location ID
-            
-            // Write placeholder location coordinates
-            serializer.write_float(0.0f);  // x
-            serializer.write_float(0.0f);  // y  
-            serializer.write_float(0.0f);  // z
-            serializer.write_uint32(0);    // map_id
-            
-            // Write channel information
-            serializer.write_uint32(session->current_channel_id());
-            
-            // Write session state
-            serializer.write_uint32(static_cast<uint32_t>(session->state()));
-            
-            // Write timestamp
-            auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now().time_since_epoch()).count();
-            serializer.write_uint64(timestamp);
-            
-            // Write custom data
-            auto custom_data = session->get_custom_data();
-            serializer.write_uint32(static_cast<uint32_t>(custom_data.size()));
-            for (const auto& [key, value] : custom_data)
-            {
-                serializer.write_string(key);
-                serializer.write_string(boost::json::serialize(value));
+        try {
+            auto session_manager = GameSessionManager::get_instance();
+            if (!session_manager) {
+                return { false, "Session manager not available", {} };
             }
             
-            // Get serialized data
-            std::vector<uint8_t> state_data = serializer.get_data();
+            auto session = session_manager->get_session(session_id);
+            if (!session) {
+                return { false, "Session not found: " + session_id, {} };
+            }
             
-            Logger::handle().write(LogTypes::Debug,
-                "Captured session state: " + std::to_string(state_data.size()) + " bytes");
+            // Create JSON object with session state
+            boost::json::object session_state;
+            
+            // Basic session info
+            session_state["session_id"] = session->get_session_id();
+            session_state["account_id"] = session->get_account_id();
+            session_state["current_server_id"] = session->get_current_server_id();
+            session_state["last_activity"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                session->get_last_activity_time().time_since_epoch()).count();
+            
+            // Connection state
+            session_state["is_online"] = session->is_online();
+            session_state["connection_state"] = static_cast<int>(session->state());
+            
+            // Character and location data
+            if (session->get_character_id() != 0) {
+                boost::json::object character_data;
+                character_data["character_id"] = session->get_character_id();
+                character_data["entity_id"] = session->get_entity_id();
+                
+                if (auto location = session->get_player_location()) {
+                    character_data["location_id"] = location.value();
+                }
+                
+                session_state["character"] = character_data;
+            }
+            
+            // Channel information
+            session_state["channel_id"] = session->get_channel_id();
+            
+            // Serialize to string then to bytes
+            std::string json_str = boost::json::serialize(session_state);
+            std::vector<uint8_t> state_data(json_str.begin(), json_str.end());
+            
+            Logger::handle().write(LogTypes::Information,
+                "Captured state for session " + session_id + " (" + 
+                std::to_string(state_data.size()) + " bytes)");
             
             return { true, std::nullopt, state_data };
         }
-        catch (const std::exception& e)
-        {
-            return { false, std::string("Failed to capture state: ") + e.what(), {} };
+        catch (const std::exception& e) {
+            return { false, "Exception during state capture: " + std::string(e.what()), {} };
         }
     }
 
     auto SeamlessMigration::restore_session_state(const std::string& session_id,
-                                                 const std::vector<uint8_t>& state_data)
+                                                  const std::vector<uint8_t>& state_data)
         -> std::tuple<bool, std::optional<std::string>>
     {
-        auto session_manager = GameSessionManager::get_instance();
-        if (!session_manager)
-        {
-            return { false, "Session manager not available" };
-        }
-        
-        auto session = session_manager->get_session(session_id);
-        if (!session)
-        {
-            return { false, "Session not found" };
-        }
-        
-        // Implement actual state restoration
-        try
-        {
-            // Create a deserializer to restore session state
-            Serialization::BinaryDeserializer deserializer(state_data.data(), state_data.size());
+        try {
+            // Convert bytes back to string
+            std::string json_str(state_data.begin(), state_data.end());
             
-            // Read and verify version
-            auto [version, version_ok] = deserializer.read_uint32();
-            if (!version_ok || version != 1)
-            {
-                return { false, "Invalid state data version" };
+            // Parse JSON state
+            auto session_state = boost::json::parse(json_str);
+            if (!session_state.is_object()) {
+                return { false, "Invalid session state format" };
             }
             
-            // Read session metadata
-            auto [stored_session_id, id_ok] = deserializer.read_string();
-            if (!id_ok || stored_session_id != session_id)
-            {
-                return { false, "Session ID mismatch" };
+            auto& state_obj = session_state.as_object();
+            
+            auto session_manager = GameSessionManager::get_instance();
+            if (!session_manager) {
+                return { false, "Session manager not available" };
             }
             
-            auto [account_id, account_ok] = deserializer.read_string();
-            auto [entity_id, entity_ok] = deserializer.read_uint64();
+            // Get or create session
+            auto session = session_manager->get_session(session_id);
+            bool is_new_session = !session;
             
-            // Read location data
-            auto [x, x_ok] = deserializer.read_float();
-            auto [y, y_ok] = deserializer.read_float();
-            auto [z, z_ok] = deserializer.read_float();
-            auto [map_id, map_ok] = deserializer.read_uint32();
-            
-            if (!x_ok || !y_ok || !z_ok || !map_ok)
-            {
-                return { false, "Failed to read location data" };
+            if (is_new_session) {
+                // Create new session with restored account_id
+                std::string account_id = state_obj.contains("account_id") ? 
+                    state_obj["account_id"].as_string().c_str() : "";
+                
+                auto [new_session, error] = session_manager->create_session(account_id);
+                if (!new_session) {
+                    return { false, "Failed to create session during restoration: " + 
+                            (error ? error.value() : "Unknown error") };
+                }
+                session = new_session;
             }
             
-            Location location(x, y, z, 0.0f, 0.0f, 0.0f);
-            
-            // Read channel information
-            auto [channel_id, channel_ok] = deserializer.read_uint32();
-            
-            // Read session state
-            auto [state_value, state_ok] = deserializer.read_uint32();
-            
-            // Read timestamp
-            auto [timestamp, timestamp_ok] = deserializer.read_uint64();
-            
-            // Apply restored state to session
-            session->set_account_id(account_id);
-            session->set_entity_id(entity_id);
-            session->teleport_to(static_cast<int>(map_id));
-            
-            if (channel_id > 0)
-            {
-                session->enter_channel(channel_id);
+            // Restore session properties
+            if (state_obj.contains("current_server_id")) {
+                session->set_current_server_id(state_obj["current_server_id"].as_string().c_str());
             }
             
-            session->set_state(static_cast<SessionConnectionState>(state_value));
+            if (state_obj.contains("connection_state")) {
+                auto conn_state = static_cast<SessionConnectionState>(
+                    state_obj["connection_state"].as_int64());
+                session->set_state(conn_state);
+            }
             
-            // Read custom data
-            auto [custom_count, count_ok] = deserializer.read_uint32();
-            if (count_ok)
-            {
-                for (uint32_t i = 0; i < custom_count; ++i)
-                {
-                    auto [key, key_ok] = deserializer.read_string();
-                    auto [value_str, value_ok] = deserializer.read_string();
-                    
-                    if (key_ok && value_ok)
-                    {
-                        boost::system::error_code ec;
-                        auto json_value = boost::json::parse(value_str, ec);
-                        if (!ec)
-                        {
-                            session->set_custom_data(key, json_value);
-                        }
-                    }
+            if (state_obj.contains("channel_id")) {
+                session->set_channel_id(static_cast<uint32_t>(state_obj["channel_id"].as_int64()));
+            }
+            
+            // Restore character data
+            if (state_obj.contains("character")) {
+                auto& char_obj = state_obj["character"].as_object();
+                
+                if (char_obj.contains("character_id")) {
+                    session->set_character_id(char_obj["character_id"].as_int64());
+                }
+                
+                if (char_obj.contains("entity_id")) {
+                    session->set_entity_id(char_obj["entity_id"].as_int64());
+                }
+                
+                if (char_obj.contains("location_id")) {
+                    session->set_player_location(static_cast<int>(char_obj["location_id"].as_int64()));
                 }
             }
             
-            Logger::handle().write(LogTypes::Debug,
-                "Restored session state for: " + session_id);
+            Logger::handle().write(LogTypes::Information,
+                "Restored state for session " + session_id + 
+                (is_new_session ? " (created new)" : " (updated existing)"));
             
             return { true, std::nullopt };
         }
-        catch (const std::exception& e)
-        {
-            return { false, std::string("Failed to restore state: ") + e.what() };
+        catch (const std::exception& e) {
+            return { false, "Exception during state restoration: " + std::string(e.what()) };
         }
     }
 
@@ -693,18 +689,69 @@ namespace GameNetwork
                 return { false, std::string("Failed to transfer state: " + send_error) };
             }
             
-            // 4. Wait for confirmation (with timeout)
+            // 4. Wait for confirmation with actual status checking
             auto start_time = std::chrono::steady_clock::now();
             auto timeout = std::chrono::seconds(30);
+            bool migration_confirmed = false;
+            std::string confirmation_error;
             
-            while (std::chrono::steady_clock::now() - start_time < timeout)
+            Logger::handle().write(LogTypes::Information,
+                "Waiting for migration confirmation from target server: " + task.target_server);
+            
+            while (std::chrono::steady_clock::now() - start_time < timeout && !migration_confirmed)
             {
-                // Check if we received confirmation
-                // In a real implementation, this would check for a response message
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                // Send status check to target server
+                boost::json::object status_msg;
+                status_msg["command"] = "check_migration_status";
+                status_msg["task_id"] = task.task_id;
+                status_msg["session_id"] = task.session_id;
                 
-                // For now, simulate successful transfer
-                break;
+                auto status_result = ServerRegistry::get_instance().send_and_wait(
+                    task.target_server, 
+                    boost::json::serialize(status_msg),
+                    5000 // 5 second timeout for status check
+                );
+                
+                bool status_success = std::get<0>(status_result);
+                std::string status_response = std::get<1>(status_result);
+                
+                if (status_success) {
+                    try {
+                        // Parse JSON response
+                        auto response_json = boost::json::parse(status_response);
+                        if (response_json.is_object()) {
+                            auto& obj = response_json.as_object();
+                            if (obj.contains("migration_status")) {
+                                std::string status = obj["migration_status"].as_string().c_str();
+                                if (status == "completed") {
+                                    migration_confirmed = true;
+                                    Logger::handle().write(LogTypes::Information,
+                                        "Migration confirmed by target server");
+                                    break;
+                                } else if (status == "failed") {
+                                    confirmation_error = obj.contains("error") ? 
+                                        obj["error"].as_string().c_str() : "Migration failed on target server";
+                                    break;
+                                }
+                                // If status is "in_progress", continue waiting
+                            }
+                        }
+                    } catch (const std::exception& e) {
+                        Logger::handle().write(LogTypes::Warning,
+                            "Failed to parse migration status response: " + std::string(e.what()));
+                    }
+                }
+                
+                // Wait before next status check
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            }
+            
+            if (!migration_confirmed) {
+                if (!confirmation_error.empty()) {
+                    return { false, std::string("Migration failed: " + confirmation_error) };
+                } else {
+                    return { false, std::string("Migration confirmation timeout") };
+                }
             }
             
             Logger::handle().write(LogTypes::Information,

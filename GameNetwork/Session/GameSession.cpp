@@ -15,6 +15,7 @@ namespace GameNetwork
         , state_(SessionConnectionState::Connected)
         , channel_id_(0)
         , last_activity_(std::chrono::steady_clock::now())
+        , current_server_id_("unassigned")
         , kicked_by_duplicate_login_(false)
     {
         current_location_ = 0;  // Default location ID
@@ -461,73 +462,36 @@ namespace GameNetwork
         return state_ == SessionConnectionState::Connected && connection_ != nullptr;
     }
 
+    auto GameSession::get_character_id() const -> uint64_t
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return character_id_;
+    }
+
+    auto GameSession::set_character_id(uint64_t character_id) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        character_id_ = character_id;
+    }
+
     auto GameSession::get_entity_id() const -> uint64_t
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        /*
-        if (character_)
-        {
-            return character_->id;
-        }
-        */
-        return 0;
+        return entity_id_;
     }
 
-    auto GameSession::send_packet(const std::vector<uint8_t>& packet_data) -> bool
+    auto GameSession::set_entity_id(uint64_t entity_id) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (connection_ && is_online())
-        {
-            return connection_->send_binary(packet_data);
-        }
-        return false;
+        entity_id_ = entity_id;
     }
 
-    // Template instantiations
-    template void GameSession::set_data<int>(const std::string&, const int&);
-    template void GameSession::set_data<uint64_t>(const std::string&, const uint64_t&);
-    template void GameSession::set_data<float>(const std::string&, const float&);
-    template void GameSession::set_data<double>(const std::string&, const double&);
-    template void GameSession::set_data<std::string>(const std::string&, const std::string&);
-    template void GameSession::set_data<bool>(const std::string&, const bool&);
-
-    template std::optional<int> GameSession::get_data<int>(const std::string&) const;
-    template std::optional<uint64_t> GameSession::get_data<uint64_t>(const std::string&) const;
-    template std::optional<float> GameSession::get_data<float>(const std::string&) const;
-    template std::optional<double> GameSession::get_data<double>(const std::string&) const;
-    template std::optional<std::string> GameSession::get_data<std::string>(const std::string&) const;
-    template std::optional<bool> GameSession::get_data<bool>(const std::string&) const;
-    
-    // Security token management
-    auto GameSession::set_session_token(const std::string& token) -> void
+    auto GameSession::set_current_server_id(const std::string& server_id) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        session_token_ = token;
-    }
-    
-    auto GameSession::get_session_token() const -> std::string
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return session_token_;
-    }
-    
-    auto GameSession::clear_session_token() -> void
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        session_token_.clear();
-    }
-    
-    // Session limits
-    auto GameSession::set_kicked_by_duplicate_login(bool kicked) -> void
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        kicked_by_duplicate_login_ = kicked;
-    }
-    
-    auto GameSession::was_kicked_by_duplicate_login() const -> bool
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        return kicked_by_duplicate_login_;
+        current_server_id_ = server_id;
+        Logger::handle().write(LogTypes::Information, 
+            "Session " + session_id_ + " assigned to server: " + server_id);
     }
 
     auto GameSession::get_player_location() const -> std::optional<int>
@@ -538,5 +502,17 @@ namespace GameNetwork
             return current_location_;
         }
         return std::nullopt;
+    }
+
+    auto GameSession::set_player_location(int location_id) -> void
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        current_location_ = location_id;
+    }
+
+    auto GameSession::get_all_custom_data() const -> const std::unordered_map<std::string, std::any>&
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return custom_data_;
     }
 }

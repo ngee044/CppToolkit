@@ -51,7 +51,6 @@ namespace GameNetwork
         auto load_character(uint64_t character_id) -> std::tuple<bool, std::optional<std::string>>;
         auto current_character() const -> std::shared_ptr<Character>;
         auto save_character() -> std::tuple<bool, std::optional<std::string>>;
-        auto get_entity_id() const -> uint64_t;
         
         // Location management
         auto current_location() const -> int;
@@ -63,7 +62,6 @@ namespace GameNetwork
         auto enter_channel(uint32_t channel_id) -> std::tuple<bool, std::optional<std::string>>;
         auto leave_channel() -> void;
         auto current_channel_id() const -> uint32_t;
-        auto get_channel_id() const -> uint32_t;  // Alias for compatibility
         
         // Session persistence
         auto save_state() -> std::tuple<bool, std::optional<std::string>>;
@@ -72,8 +70,14 @@ namespace GameNetwork
         // Timeout management
         auto update_last_activity() -> void;
         auto last_activity_time() const -> std::chrono::steady_clock::time_point;
+        auto get_last_activity_time() const -> std::chrono::steady_clock::time_point { return last_activity_time(); }  // Alias for compatibility
         auto is_timeout() const -> bool;
         auto remaining_grace_period() const -> std::chrono::seconds;
+        
+        // Server assignment (for load balancing and migration)
+        auto get_current_server_id() const -> std::string;
+        auto set_current_server_id(const std::string& server_id) -> void;
+        auto get_assigned_server() const -> std::string { return get_current_server_id(); }  // Alias for compatibility
         
         // Session data
         template<typename T>
@@ -84,6 +88,16 @@ namespace GameNetwork
         
         auto remove_data(const std::string& key) -> void;
         
+        // Custom data access methods (for compatibility)
+        template<typename T>
+        auto set_custom_data(const std::string& key, const T& value) -> void { set_data(key, value); }
+        
+        template<typename T>
+        auto get_custom_data(const std::string& key) const -> std::optional<T> { return get_data<T>(key); }
+        
+        // Get all custom data (for serialization/migration)
+        auto get_all_custom_data() const -> const std::unordered_map<std::string, std::any>&;
+        
         // Security token management
         auto set_session_token(const std::string& token) -> void;
         auto get_session_token() const -> std::string;
@@ -92,6 +106,15 @@ namespace GameNetwork
         // Session limits
         auto set_kicked_by_duplicate_login(bool kicked) -> void;
         auto was_kicked_by_duplicate_login() const -> bool;
+        
+        // Game data management (for migration support)
+        auto get_character_id() const -> uint64_t;
+        auto set_character_id(uint64_t character_id) -> void;
+        auto get_entity_id() const -> uint64_t;
+        auto set_entity_id(uint64_t entity_id) -> void;
+        auto get_channel_id() const -> uint32_t;
+        auto set_channel_id(uint32_t channel_id) -> void;
+        auto set_player_location(int location_id) -> void;
         
         // Connection status
         auto get_player_location() const -> std::optional<int>;
@@ -102,10 +125,6 @@ namespace GameNetwork
         // Additional methods for compatibility
         auto disconnect(const std::string& reason = "") -> void;
         auto set_network_session(std::shared_ptr<GameConnection> connection) -> void;
-        auto set_entity_id(uint64_t entity_id) -> void;
-        auto set_character_id(uint64_t character_id) -> void;
-        auto get_custom_data() const -> boost::json::object;
-        auto set_custom_data(const std::string& key, const boost::json::value& value) -> void;
         
     private:
         auto start_grace_period_timer() -> void;
@@ -140,6 +159,9 @@ namespace GameNetwork
         
         // Session data storage
         std::unordered_map<std::string, std::any> custom_data_;
+        
+        // Server assignment (for load balancing and migration)
+        std::string current_server_id_;
         
         // Security
         std::string session_token_;
