@@ -1,6 +1,8 @@
 #pragma once
 
 #include "../GameNetworkConstants.h"
+// Location을 전방 선언으로 대체
+struct Location;
 #include <memory>
 #include <unordered_map>
 #include <chrono>
@@ -11,25 +13,27 @@
 #include <optional>
 #include <any>
 #include <tuple>
+#include <boost/json.hpp>
 
 namespace GameNetwork
 {
     class GameSession;
     class GameSessionManager;
     class GameConnection;
+    class Location;
     
     struct DisconnectionInfo
     {
         std::string session_id;
         std::string account_id;
         uint64_t entity_id;
-        Location last_location;
+        int last_location;  // Temporarily changed to int to avoid dependency
         uint32_t channel_id;
         std::chrono::steady_clock::time_point disconnect_time;
         DisconnectReason reason;
         
         // 세션 상태 백업
-        std::unordered_map<std::string, std::any> session_data;
+        boost::json::object session_data;
     };
     
     struct ReconnectionConfig
@@ -108,6 +112,7 @@ namespace GameNetwork
         std::atomic<uint64_t> total_disconnections_{0};
         std::atomic<uint64_t> successful_reconnections_{0};
         std::atomic<uint64_t> expired_sessions_{0};
+        std::vector<std::chrono::milliseconds> reconnection_times_;
         
         // 정리 스레드
         std::atomic<bool> running_{false};

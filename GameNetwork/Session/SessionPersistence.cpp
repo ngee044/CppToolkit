@@ -41,14 +41,8 @@ namespace GameNetwork
             json_data["account_id"] = data.account_id;
             json_data["character_id"] = data.character_id;
             
-            // Serialize location
-            boost::json::object location;
-            location["x"] = data.location.x;
-            location["y"] = data.location.y;
-            location["z"] = data.location.z;
-            location["map_id"] = data.location.map_id;
-            location["zone_id"] = data.location.zone_id;
-            json_data["location"] = location;
+            // Serialize location (now just an int)
+            json_data["location"] = data.location;
             
             json_data["channel_id"] = data.channel_id;
             
@@ -112,13 +106,8 @@ namespace GameNetwork
             data.account_id = boost::json::value_to<std::string>(json_data.at("account_id"));
             data.character_id = boost::json::value_to<uint64_t>(json_data.at("character_id"));
             
-            // Deserialize location
-            const auto& location = json_data.at("location").as_object();
-            data.location.x = static_cast<float>(boost::json::value_to<double>(location.at("x")));
-            data.location.y = static_cast<float>(boost::json::value_to<double>(location.at("y")));
-            data.location.z = static_cast<float>(boost::json::value_to<double>(location.at("z")));
-            data.location.map_id = boost::json::value_to<uint32_t>(location.at("map_id"));
-            data.location.zone_id = boost::json::value_to<uint32_t>(location.at("zone_id"));
+            // Deserialize location (now just an int)
+            data.location = boost::json::value_to<int>(json_data.at("location"));
             
             data.channel_id = boost::json::value_to<uint32_t>(json_data.at("channel_id"));
             

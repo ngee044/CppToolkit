@@ -1,6 +1,7 @@
 #pragma once
 
 #include <GameNetworkConstants.h>
+#include "LoadBalancer.h"
 #include <memory>
 #include <vector>
 #include <unordered_map>
@@ -26,6 +27,9 @@ namespace GameNetwork
         StateTransfer,
         ConnectionHandover,
         Verification,
+        Executing,
+        Paused,
+        Completing,
         Completed,
         Failed
     };
@@ -41,6 +45,10 @@ namespace GameNetwork
         std::chrono::steady_clock::time_point last_update;
         float progress_percentage;
         std::string error_message;
+        
+        // State data for migration
+        std::vector<uint8_t> state_data;
+        size_t state_size;
     };
     
     class SeamlessMigration
@@ -113,6 +121,10 @@ namespace GameNetwork
         };
         
         auto get_statistics() const -> MigrationStats;
+        
+        // Migration initiation (internal)
+        auto initiate_migration(const std::string& session_id, const std::string& target_server)
+            -> std::tuple<bool, std::string>;
         
     private:
         auto execute_migration(MigrationTask& task) -> void;

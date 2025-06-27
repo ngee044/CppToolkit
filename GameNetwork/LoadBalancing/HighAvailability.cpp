@@ -2,12 +2,31 @@
 #include "HealthCheck.h"
 #include "LoadBalancer.h"
 #include "CircuitBreaker.h"
+#include "../Core/ServerRegistry.h"  // ServerRegistry
+#include "../Session/GameSessionManager.h"
 #include <Logger.h>
 #include <algorithm>
 #include <random>
+#include <boost/json.hpp>
+#include <boost/system/error_code.hpp>
 
 namespace GameNetwork
 {
+    std::string role_to_string(NodeRole role)
+    {
+        switch (role)
+        {
+        case NodeRole::Primary:
+            return "Primary";
+        case NodeRole::Secondary:
+            return "Secondary";
+        case NodeRole::Standby:
+            return "Standby";
+        default:
+            return "Unknown";
+        }
+    }
+
     HighAvailability::HighAvailability()
         : monitoring_active_(false)
         , stats_{0, 0, std::chrono::steady_clock::now(), 100.0f, 0, 0}
@@ -324,9 +343,67 @@ namespace GameNetwork
             return { false, "No healthy secondary nodes" };
         }
         
-        // TODO: Implement actual state synchronization
+        // Implement actual state synchronization
+        auto& server_registry = ServerRegistry::get_instance();
+        
+        // Collect current state
+        boost::json::object state;
+        state["node_id"] = node_id_;
+        state["role"] = role_to_string(static_cast<NodeRole>(current_role_));
+        state["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        
+        // Add session manager state if primary
+        if (static_cast<int>(current_role_) == static_cast<int>(ServerRole::Primary))
+        {
+            auto session_manager = GameSessionManager::get_instance();
+            if (session_manager)
+            {
+                auto sessions = session_manager->get_all_sessions();
+                boost::json::array session_array;
+                
+                for (const auto& [session_id, session] : sessions)
+                {
+                    boost::json::object session_obj;
+                    session_obj["session_id"] = session_id;
+                    session_obj["account_id"] = session->account_id();
+                    session_obj["state"] = static_cast<int>(session->state());
+                    session_array.push_back(session_obj);
+                }
+                
+                state["sessions"] = session_array;
+                state["session_count"] = sessions.size();
+            }
+        }
+        
+        // Send state to all secondary nodes
+        size_t sync_count = 0;
+        for (const auto& secondary_id : secondary_ids)
+        {
+            boost::json::object sync_msg;
+            sync_msg["command"] = "sync_state";
+            sync_msg["from_node"] = node_id_;
+            sync_msg["state"] = state;
+            
+            auto result = ServerRegistry::get_instance().send_message(secondary_id, boost::json::serialize(sync_msg));
+            bool success = std::get<0>(result);
+            std::string error = std::get<1>(result);
+            if (success)
+            {
+                sync_count++;
+            }
+            else
+            {
+                Utilities::Logger::handle().write(Utilities::LogTypes::Warning,
+                    "Failed to sync to " + secondary_id + ": " + error);
+            }
+        }
+        
+        stats_.state_syncs++;
+        
         Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Syncing state to " + std::to_string(secondary_ids.size()) + " secondary nodes");
+            "Synced state to " + std::to_string(sync_count) + "/" + 
+            std::to_string(secondary_ids.size()) + " secondary nodes");
         
         return { true, std::nullopt };
     }
@@ -346,11 +423,58 @@ namespace GameNetwork
             return { false, "Primary node is not healthy" };
         }
         
-        // TODO: Implement actual state request
+        // Implement actual state request
+        auto& server_registry = ServerRegistry::get_instance();
+        
+        boost::json::object request_msg;
+        request_msg["command"] = "request_state";
+        request_msg["from_node"] = node_id_;
+        request_msg["reason"] = "failover_preparation";
+        
+        auto [success, response] = server_registry.send_and_wait(
+            current_primary_id_,
+            boost::json::serialize(request_msg),
+            30000  // 30 seconds in milliseconds
+        );
+        
+        if (!success)
+        {
+            return std::make_tuple(false, "Failed to request state: " + response);
+        }
+        
+        // Parse and apply received state
+        try
+        {
+            boost::system::error_code ec;
+            auto response_json = boost::json::parse(response, ec);
+            
+            if (ec)
+            {
+                return { false, "Invalid state response" };
+            }
+            
+            auto response_obj = response_json.as_object();
+            if (response_obj.contains("state"))
+            {
+                // Store received state for potential failover
+                last_synced_state_ = response_obj["state"].as_object();
+                last_sync_time_ = std::chrono::steady_clock::now();
+            }
+            
+            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+                "Received state from primary: " + current_primary_id_);
+            
+            return { true, std::nullopt };
+        }
+        catch (const std::exception& e)
+        {
+            return { false, std::string("Failed to process state: ") + e.what() };
+        }
+        
         Utilities::Logger::handle().write(Utilities::LogTypes::Information,
             "Requesting state from primary: " + current_primary_id_);
         
-        return { true, std::nullopt };
+        return std::make_tuple(true, std::nullopt);
     }
 
     auto HighAvailability::elect_new_primary() -> std::tuple<bool, std::optional<std::string>>

@@ -34,6 +34,18 @@ namespace GameNetwork
 
     GamePacket::~GamePacket() = default;
 
+    auto GamePacket::set_timestamp(uint64_t timestamp) -> void
+    {
+        // Temporary stub implementation
+    }
+
+    auto GamePacket::get_timestamp() const -> uint64_t
+    {
+        // Temporary stub implementation
+        return std::chrono::duration_cast<std::chrono::milliseconds>(
+            timestamp_.time_since_epoch()).count();
+    }
+
     auto GamePacket::to_json() const -> std::string
     {
         try

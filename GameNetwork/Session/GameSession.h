@@ -2,6 +2,7 @@
 
 #include "../GameNetworkConstants.h"
 #include "GameConnection.h"
+#include "../../Samples/Location.h"
 
 #include <memory>
 #include <string>
@@ -12,6 +13,7 @@
 #include <unordered_map>
 #include <any>
 #include <future>
+#include <boost/json.hpp>
 
 namespace GameNetwork
 {
@@ -52,10 +54,10 @@ namespace GameNetwork
         auto get_entity_id() const -> uint64_t;
         
         // Location management
-        auto current_location() const -> Location;
-        auto location() const -> Location;  // Alias for compatibility
-        auto move_to(const Location& location) -> void;
-        auto teleport_to(const Location& location) -> void;
+        auto current_location() const -> int;
+        auto location() const -> int;  // Alias for compatibility
+        auto move_to(int location) -> void;
+        auto teleport_to(int location) -> void;
         
         // Channel management
         auto enter_channel(uint32_t channel_id) -> std::tuple<bool, std::optional<std::string>>;
@@ -92,10 +94,18 @@ namespace GameNetwork
         auto was_kicked_by_duplicate_login() const -> bool;
         
         // Connection status
-        auto get_player_location() const -> std::optional<Location>;
+        auto get_player_location() const -> std::optional<int>;
         
         // Packet sending
         auto send_packet(const std::vector<uint8_t>& packet_data) -> bool;
+        
+        // Additional methods for compatibility
+        auto disconnect(const std::string& reason = "") -> void;
+        auto set_network_session(std::shared_ptr<GameConnection> connection) -> void;
+        auto set_entity_id(uint64_t entity_id) -> void;
+        auto set_character_id(uint64_t character_id) -> void;
+        auto get_custom_data() const -> boost::json::object;
+        auto set_custom_data(const std::string& key, const boost::json::value& value) -> void;
         
     private:
         auto start_grace_period_timer() -> void;
@@ -116,7 +126,9 @@ namespace GameNetwork
         
         // Game data
         std::shared_ptr<Character> character_;
-        Location current_location_;
+        int current_location_;  // Temporarily changed to int to avoid Location dependency
+        uint64_t entity_id_;
+        uint64_t character_id_;
         
         // Timing
         std::chrono::steady_clock::time_point created_time_;

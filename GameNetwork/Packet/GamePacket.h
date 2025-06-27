@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../GameNetworkConstants.h"
+#include "../../Samples/Location.h"
 
 #include <vector>
 #include <string>
@@ -68,6 +69,8 @@ namespace GameNetwork
         Authentication = 2,
         Disconnect = 3,
         ServerInfo = 4,
+        GameData = 5,
+        ServerCommand = 6,
         
         // Movement packets (1000-1999)
         MoveTo = 1000,
@@ -155,6 +158,9 @@ namespace GameNetwork
         auto set_type(PacketType type) -> void;
         
         // Compatibility with legacy code
+        auto set_timestamp(uint64_t timestamp) -> void;
+        auto get_timestamp() const -> uint64_t;
+        
         PacketType packet_type;
         std::vector<uint8_t> data;
         
@@ -174,7 +180,7 @@ namespace GameNetwork
         auto set_priority(PacketPriority priority) -> void { priority_ = priority; }
         
         // Clone method for copying packets
-        virtual auto clone() const -> std::unique_ptr<GamePacket> = 0;
+        virtual auto clone() const -> std::unique_ptr<GamePacket>;
         
         // Payload
         auto get_payload() const -> const std::vector<uint8_t>&;
@@ -182,8 +188,8 @@ namespace GameNetwork
         auto set_payload(std::vector<uint8_t>&& data) -> void;
         
         // Serialization
-        virtual auto serialize() const -> std::vector<uint8_t> = 0;
-        virtual auto deserialize(const std::vector<uint8_t>& data) -> bool = 0;
+        virtual auto serialize() const -> std::vector<uint8_t>;
+        virtual auto deserialize(const std::vector<uint8_t>& data) -> bool;
         auto to_json() const -> std::string;
         auto from_json(const std::string& json_str) -> bool;
         
@@ -203,6 +209,10 @@ namespace GameNetwork
             }
             return std::nullopt;
         }
+        
+    public:
+        // Public metadata for easier access
+        std::unordered_map<std::string, std::string> metadata;
         
     protected:
         PacketType type_;

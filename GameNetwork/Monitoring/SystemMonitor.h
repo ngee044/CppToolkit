@@ -37,6 +37,13 @@ namespace GameNetwork
             float bandwidth_usage_mbps;
             float packet_loss_rate;
             std::chrono::milliseconds average_latency;
+            
+            // Additional missing members
+            uint64_t bytes_sent_per_second;
+            uint64_t bytes_received_per_second;
+            uint64_t total_bytes_sent;
+            uint64_t total_bytes_received;
+            uint32_t active_connections;
         };
 
         struct SystemMetrics

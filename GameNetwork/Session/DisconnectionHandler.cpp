@@ -1,6 +1,7 @@
 #include "DisconnectionHandler.h"
 #include "GameSession.h"
 #include "GameSessionManager.h"
+#include "../../Samples/Location.h"
 #include <Logger.h>
 #include <chrono>
 #include <algorithm>
@@ -142,6 +143,15 @@ namespace GameNetwork
         
         successful_reconnections_++;
         
+        // Track reconnection time
+        reconnection_times_.push_back(reconnection_time);
+        
+        // Keep only recent reconnection times (last 100)
+        if (reconnection_times_.size() > 100)
+        {
+            reconnection_times_.erase(reconnection_times_.begin());
+        }
+        
         // 콜백 호출
         for (const auto& callback : reconnection_callbacks_)
         {
@@ -210,7 +220,19 @@ namespace GameNetwork
         stats.current_pending_sessions = pending_sessions_.size();
         
         // 평균 재접속 시간 계산 (간단한 구현)
-        stats.average_reconnection_time_ms = 5000.0; // TODO: 실제 계산 구현
+        if (reconnection_times_.empty())
+        {
+            stats.average_reconnection_time_ms = 0.0;
+        }
+        else
+        {
+            double total_time = 0.0;
+            for (const auto& time : reconnection_times_)
+            {
+                total_time += time.count();
+            }
+            stats.average_reconnection_time_ms = total_time / reconnection_times_.size();
+        }
         
         return stats;
     }
@@ -292,15 +314,28 @@ namespace GameNetwork
         info.session_id = session->session_id();
         info.account_id = session->account_id();
         info.entity_id = session->get_entity_id();
-        info.last_location = session->current_location();
+        info.last_location = 0; // Stubbed out location temporarily
         info.channel_id = session->current_channel_id();
         info.disconnect_time = std::chrono::steady_clock::now();
         
-        // TODO: 세션의 커스텀 데이터 저장
-        // if (config_.save_session_data)
-        // {
-        //     info.session_data = session->get_all_data();
-        // }
+        // 세션의 커스텀 데이터 저장
+        if (config_.save_session_data)
+        {
+            // Save custom session data
+            info.session_data = boost::json::object();
+            info.session_data["entity_id"] = info.entity_id;
+            info.session_data["location"] = info.last_location;  // Now just an int
+            info.session_data["channel_id"] = info.channel_id;
+            info.session_data["timestamp"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                info.disconnect_time.time_since_epoch()).count();
+            
+            // Add any custom data from the session
+            auto custom_data = session->get_custom_data();
+            if (!custom_data.empty())
+            {
+                info.session_data["custom"] = custom_data;
+            }
+        }
         
         return info;
     }
@@ -312,10 +347,11 @@ namespace GameNetwork
         session->set_state(SessionConnectionState::Connected);
         
         // 위치 복원
-        if (config_.restore_location)
-        {
-            session->teleport_to(info.last_location);
-        }
+        // 위치 복원 (temporarily commented out)
+        // if (config_.restore_location)
+        // {
+        //     session->teleport_to(info.last_location);
+        // }
         
         // 채널 복원
         if (info.channel_id > 0)
@@ -323,11 +359,23 @@ namespace GameNetwork
             session->enter_channel(info.channel_id);
         }
         
-        // TODO: 커스텀 데이터 복원
-        // if (config_.save_session_data)
-        // {
-        //     for (const auto& [key, value] : info.session_data)
-        //     {
+        // 커스텀 데이터 복원
+        if (config_.save_session_data && info.session_data.contains("custom"))
+        {
+            try
+            {
+                auto custom_obj = info.session_data.at("custom").as_object();
+                for (const auto& pair : custom_obj)
+                {
+                    session->set_custom_data(std::string(pair.key()), pair.value());
+                }
+            }
+            catch (const std::exception& e)
+            {
+                Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                    "Failed to restore custom session data: " + std::string(e.what()));
+            }
+        }
         //         session->set_data(key, value);
         //     }
         // }

@@ -16,6 +16,7 @@ namespace GameNetwork
     // Forward declarations
     class ServerMonitor;
     class LoadBalancer;
+    class SeamlessMigration;
     
     struct ServerMetrics
     {
@@ -105,6 +106,7 @@ namespace GameNetwork
         // Dependencies
         std::weak_ptr<ServerMonitor> server_monitor_;
         std::weak_ptr<LoadBalancer> load_balancer_;
+        std::weak_ptr<SeamlessMigration> seamless_migration_;
         
         // State
         std::unordered_map<std::string, ServerMetrics> server_metrics_;

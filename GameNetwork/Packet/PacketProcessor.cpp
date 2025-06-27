@@ -4,6 +4,7 @@
 #include "../../Utilities/Converter.h"
 #include "../../Utilities/Logger.h"
 #include <boost/json.hpp>
+#include <boost/system.hpp>
 #include <zlib.h>
 #include <chrono>
 
@@ -123,26 +124,71 @@ namespace GameNetwork
             }
             
             // Parse JSON to packet - Create packet based on type
-            // Since we don't have jsoncpp anymore, we'll need to use boost::json
-            // For now, just return nullptr and log a warning
-            // Utilities::Logger::handle().write(Utilities::LogTypes::Warning, 
-            //     "PacketProcessor: Cannot create abstract GamePacket instance");
-            return nullptr;
+            // For now, use a default packet type - should be determined from metadata or header
+            PacketType default_type = PacketType::GameData;
+            auto packet = std::make_unique<GamePacket>(default_type);
             
-            // TODO: Implement concrete packet types that inherit from GamePacket
-            // Example:
-            // std::unique_ptr<GamePacket> packet = std::make_unique<ConcreteGamePacket>(packet_type);
-            
-            // Set basic properties would be:
-            // boost::json::value json_value = boost::json::parse(json_str);
-            // boost::json::object const& obj = json_value.as_object();
-            // if (obj.contains("sender_id"))
-            // {
-            //     packet->set_sender_id(boost::json::value_to<uint64_t>(obj.at("sender_id")));
-            // }
-            // if (parsed_json.isMember("target_id"))
-            // {
-            //     packet->set_target_id(parsed_json["target_id"].asUInt64());
+            // Parse JSON and set packet properties
+            try
+            {
+                boost::system::error_code ec;
+                boost::json::value json_value = boost::json::parse(json_str, ec);
+                
+                if (ec)
+                {
+                    Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                        "Failed to parse JSON: " + ec.message());
+                    return nullptr;
+                }
+                
+                boost::json::object const& obj = json_value.as_object();
+                
+                // Set basic properties
+                if (obj.contains("sender_id"))
+                {
+                    packet->set_sender_id(static_cast<uint64_t>(obj.at("sender_id").as_int64()));
+                }
+                if (obj.contains("target_id"))
+                {
+                    packet->set_target_id(static_cast<uint64_t>(obj.at("target_id").as_int64()));
+                }
+                if (obj.contains("timestamp"))
+                {
+                    packet->set_timestamp(static_cast<uint64_t>(obj.at("timestamp").as_int64()));
+                }
+                if (obj.contains("priority"))
+                {
+                    packet->set_priority(static_cast<PacketPriority>(obj.at("priority").as_int64()));
+                }
+                if (obj.contains("metadata"))
+                {
+                    boost::json::object const& metadata = obj.at("metadata").as_object();
+                    for (const auto& [key, value] : metadata)
+                    {
+                        packet->metadata[key] = boost::json::serialize(value);
+                    }
+                }
+                if (obj.contains("data"))
+                {
+                    // Convert data array to payload vector
+                    boost::json::array const& data_array = obj.at("data").as_array();
+                    std::vector<uint8_t> payload_data;
+                    payload_data.reserve(data_array.size());
+                    for (const auto& byte_val : data_array)
+                    {
+                        payload_data.push_back(static_cast<uint8_t>(byte_val.as_int64()));
+                    }
+                    packet->set_payload(payload_data);
+                }
+                
+                return packet;
+            }
+            catch (const std::exception& e)
+            {
+                Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                    "Exception creating packet from JSON: " + std::string(e.what()));
+                return nullptr;
+            }
             // }
             // if (parsed_json.isMember("sequence"))
             // {

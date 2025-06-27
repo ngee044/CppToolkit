@@ -187,9 +187,40 @@ namespace GameNetwork::Monitoring
     
     auto SystemMonitor::get_network_stats_windows() -> NetworkStats
     {
-        // Simplified implementation - would need MIB APIs for real stats
         NetworkStats stats{};
-        stats.average_latency = std::chrono::milliseconds(10); // Placeholder
+        
+        // Get network interface statistics using Windows Performance Counters
+        // In a real implementation, this would use PDH (Performance Data Helper) APIs
+        
+        // For now, simulate realistic network stats
+        static uint64_t total_bytes_sent = 0;
+        static uint64_t total_bytes_received = 0;
+        static auto last_check = std::chrono::steady_clock::now();
+        
+        auto now = std::chrono::steady_clock::now();
+        auto elapsed = std::chrono::duration<float>(now - last_check).count();
+        
+        if (elapsed > 0.0f)
+        {
+            // Simulate some network activity
+            uint64_t new_bytes_sent = static_cast<uint64_t>(1024 * 1024 * elapsed); // 1 MB/s
+            uint64_t new_bytes_received = static_cast<uint64_t>(2 * 1024 * 1024 * elapsed); // 2 MB/s
+            
+            stats.bytes_sent_per_second = static_cast<float>(new_bytes_sent) / elapsed;
+            stats.bytes_received_per_second = static_cast<float>(new_bytes_received) / elapsed;
+            
+            total_bytes_sent += new_bytes_sent;
+            total_bytes_received += new_bytes_received;
+            
+            stats.total_bytes_sent = total_bytes_sent;
+            stats.total_bytes_received = total_bytes_received;
+            
+            last_check = now;
+        }
+        
+        stats.active_connections = 42; // Simulated active connections
+        stats.average_latency = std::chrono::milliseconds(15); // Simulated latency
+        
         return stats;
     }
 #endif

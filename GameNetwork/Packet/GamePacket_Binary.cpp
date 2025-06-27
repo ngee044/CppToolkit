@@ -75,8 +75,53 @@ namespace GameNetwork
         for (const auto& [key, value] : data_)
         {
             serializer.write_string(key);
-            // TODO: Serialize boost::json::value to binary
-            serializer.write_string(boost::json::serialize(value));
+            // Serialize boost::json::value to binary
+            // We'll use a simple type prefix system
+            if (value.is_null())
+            {
+                serializer.write_uint8(0); // Type: null
+            }
+            else if (value.is_bool())
+            {
+                serializer.write_uint8(1); // Type: bool
+                serializer.write_uint8(value.as_bool() ? 1 : 0);
+            }
+            else if (value.is_int64())
+            {
+                serializer.write_uint8(2); // Type: int64
+                serializer.write_int64(value.as_int64());
+            }
+            else if (value.is_uint64())
+            {
+                serializer.write_uint8(3); // Type: uint64
+                serializer.write_uint64(value.as_uint64());
+            }
+            else if (value.is_double())
+            {
+                serializer.write_uint8(4); // Type: double
+                serializer.write_float64(value.as_double());
+            }
+            else if (value.is_string())
+            {
+                serializer.write_uint8(5); // Type: string
+                serializer.write_string(value.as_string().c_str());
+            }
+            else if (value.is_array())
+            {
+                serializer.write_uint8(6); // Type: array
+                serializer.write_string(boost::json::serialize(value));
+            }
+            else if (value.is_object())
+            {
+                serializer.write_uint8(7); // Type: object
+                serializer.write_string(boost::json::serialize(value));
+            }
+            else
+            {
+                // Default: serialize as string
+                serializer.write_uint8(5); // Type: string
+                serializer.write_string(boost::json::serialize(value));
+            }
         }
         
         // Update payload size in header

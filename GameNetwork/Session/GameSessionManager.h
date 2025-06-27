@@ -22,6 +22,7 @@
 #include <chrono>
 #include <thread>
 #include <condition_variable>
+#include <queue>
 
 namespace GameNetwork
 {
@@ -122,6 +123,10 @@ namespace GameNetwork
             size_t total_migrations;
             size_t failed_migrations;
             std::chrono::duration<double> average_session_duration;
+            
+            // Additional missing members
+            uint64_t total_connections;
+            uint64_t total_disconnections;
         };
         
         auto get_statistics() const -> SessionStatistics;
@@ -194,6 +199,27 @@ namespace GameNetwork
         
         // Statistics
         SessionStatistics stats_;
+        
+        // Event system
+        enum class SessionEventType : uint8_t
+        {
+            Connected = 0,
+            Disconnected = 1,
+            Authenticated = 2,
+            Migrated = 3
+        };
+        
+        struct SessionEvent
+        {
+            SessionEventType type;
+            std::shared_ptr<GameSession> session;
+            std::chrono::steady_clock::time_point timestamp;
+        };
+        
+        mutable std::mutex event_mutex_;
+        std::queue<SessionEvent> event_queue_;
+        std::condition_variable event_cv_;
+        std::thread event_processor_thread_;
         
         // State management
         std::atomic<bool> is_running_;

@@ -29,9 +29,6 @@ set(SOURCE_FILES
     # Security
     Security/SessionSecurityManager.cpp
     
-    # Placeholders (temporary)
-    placeholders.cpp
-    
     # Packet
     Packet/GamePacket.cpp
     Packet/PacketProcessor.cpp

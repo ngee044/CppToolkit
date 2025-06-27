@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GameNetworkConstants.h"
+#include "../Packet/GamePacket.h"
 #include <NetworkClient.h>
 #include <NetworkSession.h>
 #include <ThreadPool.h>
@@ -85,11 +86,21 @@ namespace GameNetwork
 
 			std::optional<Packet> deserialize_binary(const std::vector<uint8_t>& data)
 			{
-				if (data.size() < 4)
+				if (data.size() < 8) // Minimum header size
 					return std::nullopt;
+				
 				Packet packet;
-				packet.data = data;
-				packet.type = 0; // TODO: parse actual packet type
+				
+				// Read packet header
+				uint32_t packet_type = *reinterpret_cast<const uint32_t*>(data.data());
+				uint32_t payload_size = *reinterpret_cast<const uint32_t*>(data.data() + 4);
+				
+				if (data.size() < 8 + payload_size)
+					return std::nullopt;
+				
+				packet.type = packet_type;
+				packet.data.assign(data.begin() + 8, data.begin() + 8 + payload_size);
+				
 				return packet;
 			}
 		};
@@ -99,7 +110,32 @@ namespace GameNetwork
 		public:
 			void dispatch(PacketProcessor::Packet&& packet)
 			{
-				// TODO: Implement message dispatching
+				// Implement message dispatching based on packet type
+				switch (packet.type)
+				{
+				case static_cast<uint32_t>(PacketType::Heartbeat):
+					// Handle heartbeat
+					Utilities::Logger::handle().write(Utilities::LogTypes::Debug,
+						"Received heartbeat packet");
+					break;
+					
+				case static_cast<uint32_t>(PacketType::GameData):
+					// Handle game data
+					Utilities::Logger::handle().write(Utilities::LogTypes::Debug,
+						"Received game data packet: " + std::to_string(packet.data.size()) + " bytes");
+					break;
+					
+				case static_cast<uint32_t>(PacketType::ServerCommand):
+					// Handle server commands
+					Utilities::Logger::handle().write(Utilities::LogTypes::Debug,
+						"Received server command packet");
+					break;
+					
+				default:
+					Utilities::Logger::handle().write(Utilities::LogTypes::Warning,
+						"Unknown packet type: " + std::to_string(packet.type));
+					break;
+				}
 			}
 		};
 

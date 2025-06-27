@@ -14,7 +14,7 @@ namespace GameNetwork
         std::string session_id;
         std::string account_id;
         uint64_t character_id;
-        Location location;
+        int location;  // Temporarily changed to int to avoid Location dependency
         uint32_t channel_id;
         std::chrono::steady_clock::time_point last_activity;
         std::unordered_map<std::string, std::any> custom_data;

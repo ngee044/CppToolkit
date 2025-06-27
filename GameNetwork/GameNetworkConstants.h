@@ -77,18 +77,7 @@ namespace GameNetwork
         Reconnecting = 3
     };
 
-    // Game structures
-    struct Location
-    {
-        glm::vec3 position{0.0f, 0.0f, 0.0f};
-        float x = 0.0f;
-        float y = 0.0f;
-        float z = 0.0f;
-        uint32_t map_id = 0;
-        uint32_t channel_id = 0;
-        uint32_t zone_id = 0;  // Added missing zone_id
-    };
-    
+    // Game structures - Moved to examples/samples as needed
     struct Vector3
     {
         float x = 0.0f;

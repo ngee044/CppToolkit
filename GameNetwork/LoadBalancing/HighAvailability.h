@@ -13,6 +13,7 @@
 #include <atomic>
 #include <thread>
 #include <future>
+#include <boost/json.hpp>
 
 namespace GameNetwork
 {
@@ -27,6 +28,16 @@ namespace GameNetwork
         Secondary,
         Standby
     };
+    
+    enum class NodeRole
+    {
+        Primary,
+        Secondary,
+        Standby
+    };
+    
+    // Utility function
+    std::string role_to_string(NodeRole role);
     
     enum class FailoverStrategy
     {
@@ -109,6 +120,7 @@ namespace GameNetwork
             float cluster_availability_percentage;
             uint32_t total_nodes;
             uint32_t healthy_nodes;
+            uint64_t state_syncs;
         };
         
         auto get_statistics() const -> HAStats;
@@ -129,6 +141,10 @@ namespace GameNetwork
         // Node registry
         std::unordered_map<std::string, ServerNode> nodes_;
         std::string current_primary_id_;
+        std::string node_id_;
+        ServerRole current_role_ = ServerRole::Secondary;
+        boost::json::object last_synced_state_;
+        std::chrono::steady_clock::time_point last_sync_time_;
         
         // Monitoring
         std::atomic<bool> monitoring_active_;

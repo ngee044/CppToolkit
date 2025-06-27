@@ -66,7 +66,39 @@ namespace GameNetwork
     auto GameSessionManager::shutdown() -> void
     {
         is_running_ = false;
-        // TODO: Implement proper shutdown
+        
+        // Stop worker threads
+        if (event_processor_thread_.joinable())
+        {
+            event_processor_thread_.join();
+        }
+        
+        // Disconnect all sessions
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            for (auto& [session_id, session] : sessions_by_id_)
+            {
+                if (session)
+                {
+                    session->disconnect("Server shutting down");
+                }
+            }
+            
+            // Clear all session containers
+            sessions_by_id_.clear();
+            sessions_by_account_.clear();
+        }
+        
+        // Clear event queue
+        {
+            std::lock_guard<std::mutex> event_lock(event_mutex_);
+            while (!event_queue_.empty())
+            {
+                event_queue_.pop();
+            }
+        }
+        
+        Logger::handle().write(LogTypes::Information, "GameSessionManager shutdown complete");
     }
 
     auto GameSessionManager::create_session(const std::string& account_id) 
@@ -283,7 +315,12 @@ namespace GameNetwork
     // Missing method implementations for GameNetworkServerSample
     auto GameSessionManager::get_session_by_id(const std::string& session_id) const -> std::shared_ptr<GameSession>
     {
-        // TODO: Implement
+        std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
+        auto it = sessions_by_id_.find(session_id);
+        if (it != sessions_by_id_.end())
+        {
+            return it->second;
+        }
         return nullptr;
     }
 
@@ -424,31 +461,162 @@ namespace GameNetwork
                                                  const std::string& account_id) 
         -> std::tuple<bool, std::optional<std::string>>
     {
-        // TODO: Implement
-        return std::make_tuple(true, std::optional<std::string>());
+        if (!network_session)
+        {
+            return std::make_tuple(false, std::string("Invalid network session"));
+        }
+        
+        // Create or restore session for the account
+        auto [session, error] = create_or_restore_session(account_id);
+        if (!session)
+        {
+            return std::make_tuple(false, error.value_or("Failed to create session"));
+        }
+        
+        // Create GameConnection wrapper for NetworkSession
+        auto game_connection = std::make_shared<GameConnection>(network_session);
+        
+        // Bind game connection to game session
+        session->set_network_session(game_connection);
+        
+        // Update session state
+        session->set_state(SessionConnectionState::Connected);
+        
+        // Notify callbacks
+        notify_session_connected(session);
+        
+        Logger::handle().write(LogTypes::Information,
+            "Network session connected for account: " + account_id);
+        
+        return {true, std::nullopt};
     }
 
     auto GameSessionManager::create_or_restore_session(const std::string& account_id) 
         -> std::tuple<std::shared_ptr<GameSession>, std::optional<std::string>>
     {
-        // TODO: Implement
-        return std::make_tuple(nullptr, std::optional<std::string>("Not implemented"));
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        // Check if session already exists
+        auto existing = get_session(account_id);
+        if (existing)
+        {
+            Logger::handle().write(LogTypes::Information,
+                "Restoring existing session for account: " + account_id);
+            return {existing, std::nullopt};
+        }
+        
+        // Try to load session from persistence
+        if (session_persistence_)
+        {
+            auto [loaded_data, load_error] = session_persistence_->load_session(account_id);
+            if (!load_error.has_value() && !loaded_data.session_id.empty())
+            {
+                // Create session from loaded data
+                auto session = std::make_shared<GameSession>(loaded_data.session_id, account_id);
+                session->set_account_id(account_id);
+                
+                // Restore session data
+                if (loaded_data.character_id != 0)
+                {
+                    session->set_character_id(loaded_data.character_id);
+                }
+                
+                // Register session
+                sessions_by_id_[session->session_id()] = session;
+                sessions_by_account_[account_id] = session;
+                
+                Logger::handle().write(LogTypes::Information,
+                    "Session restored from persistence for account: " + account_id);
+                
+                return std::make_tuple(session, std::nullopt);
+            }
+        }
+        
+        // Create new session
+        return create_session(account_id);
     }
 
     auto GameSessionManager::terminate_session(const std::string& session_id) 
         -> std::tuple<bool, std::optional<std::string>>
     {
-        // TODO: Implement
-        return std::make_tuple(false, std::optional<std::string>("Not implemented"));
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        // Find session
+        auto it = sessions_by_id_.find(session_id);
+        if (it == sessions_by_id_.end())
+        {
+            return std::make_tuple(false, std::string("Session not found"));
+        }
+        
+        auto session = it->second;
+        auto account_id = session->account_id();
+        
+        // Disconnect the session
+        session->disconnect("Session terminated");
+        
+        // Remove from containers
+        sessions_by_id_.erase(it);
+        
+        if (!account_id.empty())
+        {
+            sessions_by_account_.erase(account_id);
+        }
+        
+        // Update stats
+        stats_.total_disconnections++;
+        
+        // Notify callbacks
+        for (const auto& callback : session_disconnected_callbacks)
+        {
+            if (callback)
+            {
+                callback(session);
+            }
+        }
+        
+        Logger::handle().write(LogTypes::Information,
+            "Session terminated: " + session_id);
+        
+        return std::make_tuple(true, std::nullopt);
     }
 
     auto GameSessionManager::update_peak_sessions() -> void
     {
-        // TODO: Implement
+        size_t current_sessions = sessions_by_id_.size();
+        if (current_sessions > stats_.peak_concurrent_sessions)
+        {
+            stats_.peak_concurrent_sessions = current_sessions;
+            Logger::handle().write(LogTypes::Information,
+                "New peak concurrent sessions: " + std::to_string(current_sessions));
+        }
     }
 
     auto GameSessionManager::notify_session_connected(std::shared_ptr<GameSession> session) -> void
     {
-        // TODO: Implement
+        if (!session) return;
+        
+        // Update stats
+        stats_.total_connections++;
+        update_peak_sessions();
+        
+        // Call registered callbacks
+        for (const auto& callback : session_connected_callbacks)
+        {
+            if (callback)
+            {
+                callback(session);
+            }
+        }
+        
+        // Queue session connected event
+        {
+            std::lock_guard<std::mutex> event_lock(event_mutex_);
+            SessionEvent event;
+            event.type = GameSessionManager::SessionEventType::Connected;
+            event.session = session;
+            event.timestamp = std::chrono::steady_clock::now();
+            event_queue_.push(std::move(event));
+        }
+        event_cv_.notify_one();
     }
 }

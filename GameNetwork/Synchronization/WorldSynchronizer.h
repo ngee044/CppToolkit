@@ -3,6 +3,7 @@
 #include "../GameNetworkConstants.h"
 #include "../Session/GameSession.h"
 #include "../Packet/GamePacket.h"
+#include "../../Samples/Location.h"
 #include <ThreadPool.h>
 #include <Logger.h>
 
@@ -28,7 +29,7 @@ namespace GameNetwork
     {
         uint64_t entity_id;
         Location position;
-        Location velocity;
+        Velocity velocity;
         float rotation;
         uint32_t health;
         uint32_t max_health;

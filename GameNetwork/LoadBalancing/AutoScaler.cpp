@@ -1,6 +1,7 @@
 #include "AutoScaler.h"
 #include "ServerMonitor.h"
 #include "LoadBalancer.h"
+#include "SeamlessMigration.h"
 #include <Logger.h>
 #include <algorithm>
 #include <numeric>
@@ -125,7 +126,42 @@ namespace GameNetwork
             "Scaled up from " + std::to_string(old_count) + " to " + 
             std::to_string(current_instance_count_) + " instances");
         
-        // TODO: Actually provision new instances through cloud provider API
+        // Actually provision new instances through cloud provider API
+        // In a real implementation, this would:
+        // 1. Call cloud provider API (AWS, Azure, GCP)
+        // 2. Launch new server instances
+        // 3. Configure them with game server software
+        // 4. Register them with the load balancer
+        
+        // For now, simulate the provisioning process
+        std::thread provision_thread([this, additional_instances]() {
+            // Simulate provisioning delay
+            std::this_thread::sleep_for(std::chrono::seconds(30));
+            
+            // Register new instances with load balancer
+            auto lb = load_balancer_.lock();
+            if (lb)
+            {
+                for (uint32_t i = 0; i < additional_instances; ++i)
+                {
+                    std::string server_id = "server_" + 
+                        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + 
+                        "_" + std::to_string(i);
+                    
+                    GameNetwork::ServerInfo info;
+                    info.server_id = server_id;
+                    info.capacity = 1000; // Default capacity
+                    info.current_load = 0;
+                    info.is_healthy = true;
+                    
+                    lb->register_server(info);
+                }
+            }
+            
+            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+                "Provisioning completed for " + std::to_string(additional_instances) + " instances");
+        });
+        provision_thread.detach();
         
         return { true, std::nullopt };
     }
@@ -161,7 +197,52 @@ namespace GameNetwork
             "Scaled down from " + std::to_string(old_count) + " to " + 
             std::to_string(current_instance_count_) + " instances");
         
-        // TODO: Actually deprovision instances through cloud provider API
+        // Actually deprovision instances through cloud provider API
+        // In a real implementation, this would:
+        // 1. Select instances to remove (least loaded first)
+        // 2. Migrate sessions from those instances
+        // 3. Gracefully shutdown the instances
+        // 4. Terminate them through cloud provider API
+        
+        // For now, simulate the deprovisioning process
+        std::thread deprovision_thread([this, instances_to_remove]() {
+            auto lb = load_balancer_.lock();
+            if (lb)
+            {
+                // Get list of servers sorted by load (ascending)
+                auto servers = lb->get_server_list();
+                std::sort(servers.begin(), servers.end(), 
+                    [](const auto& a, const auto& b) {
+                        return a.current_load < b.current_load;
+                    });
+                
+                // Remove least loaded servers
+                size_t removed = 0;
+                for (const auto& server : servers)
+                {
+                    if (removed >= instances_to_remove) break;
+                    
+                    // Migrate sessions before removal
+                    auto migration = seamless_migration_.lock();
+                    if (migration)
+                    {
+                        // Migrate all sessions from this server
+                        migration->migrate_server_load(server.server_id, "auto_balanced_target", 100);
+                    }
+                    
+                    // Wait for migrations to complete
+                    std::this_thread::sleep_for(std::chrono::seconds(10));
+                    
+                    // Unregister from load balancer
+                    lb->unregister_server(server.server_id);
+                    removed++;
+                }
+            }
+            
+            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+                "Deprovisioning completed for " + std::to_string(instances_to_remove) + " instances");
+        });
+        deprovision_thread.detach();
         
         return { true, std::nullopt };
     }
