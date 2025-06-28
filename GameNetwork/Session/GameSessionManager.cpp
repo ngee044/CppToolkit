@@ -324,22 +324,6 @@ namespace GameNetwork
         return nullptr;
     }
 
-    auto GameSessionManager::get_sessions_in_channel(uint32_t channel_id) const -> std::vector<std::shared_ptr<GameSession>>
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        std::vector<std::shared_ptr<GameSession>> result;
-        
-        for (const auto& [id, session] : sessions_by_id_)
-        {
-            if (session && session->get_channel_id() == channel_id)
-            {
-                result.push_back(session);
-            }
-        }
-        
-        return result;
-    }
-
     auto GameSessionManager::active_session_count() const -> size_t
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -642,7 +626,6 @@ namespace GameNetwork
         }
         
         // Update statistics
-        // stats_.current_sessions = sessions_by_id_.size(); // current_sessions 필드가 없으므로 주석 처리
         update_peak_sessions();
         
         Logger::handle().write(LogTypes::Information,
@@ -657,4 +640,37 @@ namespace GameNetwork
         std::lock_guard<std::mutex> lock(mutex_);
         return sessions_by_id_;
     }
-}
+    
+    auto GameSessionManager::get_all_online_sessions() const -> std::vector<std::shared_ptr<GameSession>>
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::vector<std::shared_ptr<GameSession>> online_sessions;
+        
+        for (const auto& [session_id, session] : sessions_by_id_)
+        {
+            if (session && session->is_online())
+            {
+                online_sessions.push_back(session);
+            }
+        }
+        
+        return online_sessions;
+    }
+    
+    auto GameSessionManager::get_sessions_in_channel(uint32_t channel_id) const -> std::vector<std::shared_ptr<GameSession>>
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        std::vector<std::shared_ptr<GameSession>> channel_sessions;
+        
+        for (const auto& [session_id, session] : sessions_by_id_)
+        {
+            if (session && session->is_online() && session->current_channel_id() == channel_id)
+            {
+                channel_sessions.push_back(session);
+            }
+        }
+        
+        return channel_sessions;
+    }
+    
+} // namespace GameNetwork
