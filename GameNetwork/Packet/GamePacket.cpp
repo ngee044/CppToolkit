@@ -1061,4 +1061,70 @@ namespace GameNetwork
         packet->is_moving_ = is_moving_;
         return packet;
     }
+
+    // GamePacket 기본 구현
+    auto GamePacket::clone() const -> std::unique_ptr<GamePacket>
+    {
+        auto packet = std::make_unique<GamePacket>(type_);
+        packet->sequence_number_ = sequence_number_;
+        packet->sender_id_ = sender_id_;
+        packet->target_id_ = target_id_;
+        packet->channel_id_ = channel_id_;
+        packet->priority_ = priority_;
+        packet->timestamp_ = timestamp_;
+        packet->payload_ = payload_;
+        packet->custom_data_ = custom_data_;
+        packet->metadata = metadata;
+        packet->data = data;
+        return packet;
+    }
+
+    auto GamePacket::serialize() const -> std::vector<uint8_t>
+    {
+        std::vector<uint8_t> result;
+        
+        // 패킷 타입 (2 바이트)
+        uint16_t type = static_cast<uint16_t>(type_);
+        result.push_back(static_cast<uint8_t>(type & 0xFF));
+        result.push_back(static_cast<uint8_t>((type >> 8) & 0xFF));
+        
+        // 데이터 크기 (4 바이트)
+        uint32_t size = static_cast<uint32_t>(payload_.size());
+        result.push_back(static_cast<uint8_t>(size & 0xFF));
+        result.push_back(static_cast<uint8_t>((size >> 8) & 0xFF));
+        result.push_back(static_cast<uint8_t>((size >> 16) & 0xFF));
+        result.push_back(static_cast<uint8_t>((size >> 24) & 0xFF));
+        
+        // 페이로드 데이터
+        result.insert(result.end(), payload_.begin(), payload_.end());
+        
+        return result;
+    }
+
+    auto GamePacket::deserialize(const std::vector<uint8_t>& data) -> bool
+    {
+        if (data.size() < 6) // 최소 헤더 크기
+        {
+            return false;
+        }
+        
+        // 패킷 타입 읽기
+        uint16_t type = data[0] | (data[1] << 8);
+        type_ = static_cast<PacketType>(type);
+        packet_type = type_;
+        
+        // 데이터 크기 읽기
+        uint32_t size = data[2] | (data[3] << 8) | (data[4] << 16) | (data[5] << 24);
+        
+        if (data.size() < 6 + size)
+        {
+            return false;
+        }
+        
+        // 페이로드 읽기
+        payload_.clear();
+        payload_.insert(payload_.end(), data.begin() + 6, data.begin() + 6 + size);
+        
+        return true;
+    }
 }

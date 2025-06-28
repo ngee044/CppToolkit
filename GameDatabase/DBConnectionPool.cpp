@@ -151,7 +151,7 @@ namespace GameDatabase
         // Update statistics
         pool_stats_.current_active_connections = active_connections_;
         pool_stats_.current_available_connections = available_connections_.size();
-        pool_stats_.peak_active_connections = std::max(pool_stats_.peak_active_connections, 
+        pool_stats_.peak_active_connections = (std::max)(pool_stats_.peak_active_connections, 
                                                        static_cast<uint64_t>(active_connections_));
         
         if (wait_time > pool_stats_.max_wait_time)
@@ -448,6 +448,41 @@ namespace GameDatabase
                 Utilities::Logger::handle().write(Utilities::LogTypes::Error,
                     "Validation timer error: " + std::string(e.what()));
             }
+        }
+    }
+
+    auto DBConnectionPool::recreate_connection(std::shared_ptr<DBConnection> old_connection)
+        -> std::tuple<std::shared_ptr<DBConnection>, std::optional<std::string>>
+    {
+        try
+        {
+            // Create a new connection
+            auto new_connection = std::make_shared<DBConnection>();
+            
+            // Connect using the stored connection string
+            auto [success, error] = new_connection->connect(environment_, connection_string_);
+            if (!success)
+            {
+                return {nullptr, error};
+            }
+            
+            // Update statistics
+            pool_stats_.total_connections_created++;
+            if (old_connection)
+            {
+                pool_stats_.total_connections_destroyed++;
+            }
+            
+            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+                "Successfully recreated database connection");
+            
+            return {new_connection, std::nullopt};
+        }
+        catch (const std::exception& e)
+        {
+            std::string error_msg = "Failed to recreate connection: " + std::string(e.what());
+            Utilities::Logger::handle().write(Utilities::LogTypes::Error, error_msg);
+            return {nullptr, error_msg};
         }
     }
 }

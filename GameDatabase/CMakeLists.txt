@@ -52,7 +52,7 @@ else()
 	target_link_libraries(${LIBRARY_NAME} PUBLIC unixODBC::unixODBC)
 endif()
 
-target_link_libraries(${LIBRARY_NAME} PUBLIC Utilities Thread)
+target_link_libraries(${LIBRARY_NAME} PUBLIC Utilities Thread Redis)
 target_include_directories(${LIBRARY_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # C++20 기능 활성화

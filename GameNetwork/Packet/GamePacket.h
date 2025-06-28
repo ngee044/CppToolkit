@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../GameNetworkConstants.h"
-#include "../../Samples/Location.h"
+#include "../Core/Location.h"
 
 #include <vector>
 #include <string>

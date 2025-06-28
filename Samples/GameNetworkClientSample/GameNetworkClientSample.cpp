@@ -31,7 +31,7 @@ std::shared_ptr<LatencyCompensator> latency_compensator_ = nullptr;
 // Configuration
 #ifdef _DEBUG
 LogTypes write_file_ = LogTypes::Packet;
-LogTypes write_console_ = LogTypes::All;
+LogTypes write_console_ = LogTypes::Information;
 #else
 LogTypes write_file_ = LogTypes::Error;
 LogTypes write_console_ = LogTypes::Information;

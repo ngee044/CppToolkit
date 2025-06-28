@@ -86,7 +86,6 @@ else()
     message(STATUS "efsw not found, building without file watcher support")
 endif()
 
-target_link_libraries(${LIBRARY_NAME} PUBLIC ${UTILITY_LIBS})
 if(USE_ENCRYPT_LIBS)
 	find_package(cryptopp CONFIG QUIET)
 	if(cryptopp_FOUND)
@@ -96,3 +95,5 @@ if(USE_ENCRYPT_LIBS)
 		message(STATUS "cryptopp not found, building without encryption support")
 	endif()
 endif()
+
+target_link_libraries(${LIBRARY_NAME} PUBLIC ${UTILITY_LIBS})

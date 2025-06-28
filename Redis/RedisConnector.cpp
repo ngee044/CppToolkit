@@ -314,4 +314,40 @@ namespace Redis
     {
         return transaction_;
     }
+
+    auto RedisConnector::flush_db() -> std::tuple<bool, std::optional<std::string>>
+    {
+        try
+        {
+            if (!is_connected())
+            {
+                return { false, "Not connected to Redis" };
+            }
+            
+            redis_->flushdb();
+            return { true, std::nullopt };
+        }
+        catch (const sw::redis::Error& e)
+        {
+            return { false, std::string("FLUSHDB failed: ") + e.what() };
+        }
+    }
+
+    auto RedisConnector::db_size() -> std::tuple<int64_t, std::optional<std::string>>
+    {
+        try
+        {
+            if (!is_connected())
+            {
+                return { 0, "Not connected to Redis" };
+            }
+            
+            auto size = redis_->dbsize();
+            return { static_cast<int64_t>(size), std::nullopt };
+        }
+        catch (const sw::redis::Error& e)
+        {
+            return { 0, std::string("DBSIZE failed: ") + e.what() };
+        }
+    }
 }

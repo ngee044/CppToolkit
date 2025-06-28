@@ -2,7 +2,7 @@
 
 #include "../GameNetworkConstants.h"
 #include "../Packet/GamePacket.h"
-#include "../../Samples/Location.h"
+#include "../Core/Location.h"
 
 #include <memory>
 #include <vector>

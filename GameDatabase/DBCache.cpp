@@ -1,6 +1,7 @@
 #include "DBCache.h"
 #include <Logger.h>
 #include <Converter.h>
+#include "../Redis/RedisClient.h"
 #include <regex>
 #include <algorithm>
 
@@ -406,37 +407,40 @@ namespace GameDatabase
                                          std::int32_t db_index)
         : host_(host), port_(port), password_(password), db_index_(db_index)
     {
-        // Note: Redis client initialization would happen here
-        // For now, we'll use a placeholder since Redis module may not be available
-        // In real implementation, this would be:
-        // redis_client_ = std::make_shared<Redis::RedisClient>();
-        // redis_client_->connect(host, port, password, db_index);
+        // Initialize Redis client
+        redis_client_ = std::make_shared<Redis::RedisClient>(host, static_cast<int>(port), Redis::TLSOptions(), db_index);
+        
+        // Try to connect
+        auto [connected, error] = redis_client_->connect();
+        if (!connected) {
+            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                "Failed to connect to Redis: " + (error ? *error : "Unknown error"));
+        }
     }
 
     auto RedisCacheBackend::get(const std::string& key) 
         -> std::tuple<bool, std::optional<std::string>, std::any>
     {
-#ifdef HAVE_REDIS
         try {
-            auto client = std::static_pointer_cast<Redis::RedisClient>(redis_client_);
-            if (!client || !client->is_connected()) {
+            if (!redis_client_ || !redis_client_->is_connected()) {
                 return {false, "Redis client not connected", std::any{}};
             }
             
-            auto value = client->get(key);
-            if (!value.has_value()) {
+            auto [value, error] = redis_client_->get(key);
+            if (error) {
+                return {false, *error, std::any{}};
+            }
+            
+            if (value.empty()) {
                 return {false, "Key not found", std::any{}};
             }
             
             // Return as string wrapped in std::any
-            return {true, std::nullopt, std::any(value.value())};
+            return {true, std::nullopt, std::any(value)};
         }
         catch (const std::exception& e) {
             return {false, std::string("Redis get error: ") + e.what(), std::any{}};
         }
-#else
-        return {false, "Redis support not compiled", std::any{}};
-#endif
     }
 
     auto RedisCacheBackend::set(const std::string& key, const std::any& value, std::chrono::seconds ttl) 
@@ -458,12 +462,12 @@ namespace GameDatabase
             }
             
             if (ttl.count() > 0) {
-                auto result = redis_client_->setex(key, ttl.count(), str_value);
-                return {std::get<0>(result), std::get<1>(result)};
+                auto [success, error] = redis_client_->set(key, str_value, static_cast<std::uint32_t>(ttl.count()));
+                return {success, error};
             }
             else {
-                auto result = redis_client_->set(key, str_value);
-                return {std::get<0>(result), std::get<1>(result)};
+                auto [success, error] = redis_client_->set(key, str_value);
+                return {success, error};
             }
         }
         catch (const std::exception& e) {
@@ -479,8 +483,8 @@ namespace GameDatabase
                 return {false, "Redis client not connected"};
             }
             
-            auto result = redis_client_->del(key);
-            return {result > 0, std::nullopt};
+            auto [success, error] = redis_client_->del(key);
+            return {success, error};
         }
         catch (const std::exception& e) {
             return {false, std::string("Redis remove error: ") + e.what()};
@@ -494,7 +498,8 @@ namespace GameDatabase
                 return false;
             }
             
-            return redis_client_->exists(key) > 0;
+            auto [exists_result, error] = redis_client_->exists(key);
+            return exists_result;
         }
         catch (const std::exception&) {
             return false;
@@ -508,9 +513,9 @@ namespace GameDatabase
                 return {false, "Redis client not connected"};
             }
             
-            // FLUSHDB clears the current database
-            auto result = redis_client_->flushdb();
-            return {std::get<0>(result), std::get<1>(result)};
+            // flush_db clears the current database
+            auto [success, error] = redis_client_->flush_db();
+            return {success, error};
         }
         catch (const std::exception& e) {
             return {false, std::string("Redis clear error: ") + e.what()};
@@ -526,23 +531,19 @@ namespace GameDatabase
                 return stats;
             }
             
-            // Get Redis server info
-            auto info = redis_client_->info();
-            
-            // Parse basic statistics from Redis info
-            // Note: This is a simplified implementation
-            // Real implementation would parse the info string for detailed stats
-            
+            // Initialize basic statistics
             stats.total_requests = 0;  // Would need to track this separately
-            stats.cache_hits = 0;      // Would need to track this separately
-            stats.cache_misses = 0;    // Would need to track this separately
-            stats.hit_rate = 0.0f;
-            stats.total_bytes = 0;     // Could parse from used_memory in info
-            stats.evictions = 0;       // Could parse from evicted_keys in info
+            stats.total_hits = 0;      // Would need to track this separately  
+            stats.total_misses = 0;    // Would need to track this separately
+            stats.hit_rate = 0.0;
+            stats.current_size_bytes = 0; // Could parse from used_memory if available
+            stats.total_evictions = 0;    // Could parse from evicted_keys if available
             
-            // For now, just get the number of keys
-            auto dbsize = redis_client_->dbsize();
-            stats.total_items = static_cast<std::size_t>(dbsize);
+            // Get the number of keys in the database
+            auto [dbsize, error] = redis_client_->get_db_size();
+            if (!error) {
+                stats.current_entry_count = static_cast<std::size_t>(dbsize);
+            }
         }
         catch (const std::exception&) {
             // Return empty stats on error

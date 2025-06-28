@@ -3,6 +3,7 @@
 #include <Logger.h>
 #include <File.h>
 #include <Converter.h>
+#include <cstdint>
 #ifdef _WIN32
 #include <windows.h>
 #include <bcrypt.h>
@@ -291,7 +292,11 @@ namespace GameDatabase
             {
                 if (!connection->is_null())
                 {
-                    current_version = connection->get_data<uint32_t>(0);
+                    auto [data_success, data_value, data_error] = connection->get_data<std::uint32_t>(0);
+                    if (data_success && data_value.has_value())
+                    {
+                        current_version = data_value.value();
+                    }
                 }
             }
 

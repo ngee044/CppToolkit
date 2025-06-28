@@ -365,7 +365,15 @@ namespace GameNetwork
                 character_data["entity_id"] = session->get_entity_id();
                 
                 if (auto location = session->get_player_location()) {
-                    character_data["location_id"] = location.value();
+                    boost::json::object location_data;
+                    location_data["x"] = location.value().position.x;
+                    location_data["y"] = location.value().position.y;
+                    location_data["z"] = location.value().position.z;
+                    location_data["pitch"] = location.value().pitch;
+                    location_data["yaw"] = location.value().yaw;
+                    location_data["roll"] = location.value().roll;
+                    location_data["map_id"] = location.value().map_id;
+                    character_data["location"] = location_data;
                 }
                 
                 session_state["character"] = character_data;
@@ -454,8 +462,30 @@ namespace GameNetwork
                     session->set_entity_id(char_obj["entity_id"].as_int64());
                 }
                 
-                if (char_obj.contains("location_id")) {
-                    session->set_player_location(static_cast<int>(char_obj["location_id"].as_int64()));
+                if (char_obj.contains("location")) {
+                    auto& location_obj = char_obj["location"].as_object();
+                    GameNetwork::Location location;
+                    
+                    if (location_obj.contains("x") && location_obj.contains("y") && location_obj.contains("z")) {
+                        location.position.x = static_cast<float>(location_obj["x"].as_double());
+                        location.position.y = static_cast<float>(location_obj["y"].as_double());
+                        location.position.z = static_cast<float>(location_obj["z"].as_double());
+                        location.x = location.position.x;
+                        location.y = location.position.y;
+                        location.z = location.position.z;
+                    }
+                    
+                    if (location_obj.contains("pitch") && location_obj.contains("yaw") && location_obj.contains("roll")) {
+                        location.pitch = static_cast<float>(location_obj["pitch"].as_double());
+                        location.yaw = static_cast<float>(location_obj["yaw"].as_double());
+                        location.roll = static_cast<float>(location_obj["roll"].as_double());
+                    }
+                    
+                    if (location_obj.contains("map_id")) {
+                        location.map_id = static_cast<uint32_t>(location_obj["map_id"].as_int64());
+                    }
+                    
+                    session->set_player_location(location);
                 }
             }
             

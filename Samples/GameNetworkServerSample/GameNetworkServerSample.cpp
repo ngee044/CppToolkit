@@ -20,6 +20,7 @@
 #include "../../GameNetwork/Metrics/NetworkMetrics.h"
 #include "../../GameNetwork/Security/RateLimiter.h"
 #include "../../GameNetwork/Session/SessionPersistence.h"
+#include "../../GameNetwork/Core/Location.h"
 
 #include "fmt/format.h"
 #include "fmt/xchar.h"
@@ -378,7 +379,7 @@ auto handle_authentication(std::shared_ptr<GameSession> session, const GamePacke
     }
     
     // Set player to spawn location
-    Location spawn_location = {100.0f, 0.0f, 100.0f, 1, 1};
+    GameNetwork::Location spawn_location = {100.0f, 0.0f, 100.0f};
     session->move_to(spawn_location);
     session->enter_channel(1);
     

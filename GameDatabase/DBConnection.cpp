@@ -172,6 +172,24 @@ namespace GameDatabase
 		::SQLFreeStmt(statement_, SQL_CLOSE);
 	}
 
+	auto DBConnection::get_data(std::int32_t column_index, std::int32_t c_type, void* buffer, std::int32_t buffer_size, SQLLEN* indicator) 
+		-> std::tuple<bool, std::optional<std::string>>
+	{
+		if (statement_ == SQL_NULL_HANDLE)
+		{
+			return { false, "Statement handle is not initialized." };
+		}
+
+		SQLRETURN ret = SQLGetData(statement_, column_index, c_type, buffer, buffer_size, indicator);
+		if (!SQL_SUCCEEDED(ret))
+		{
+			handle_error(ret);
+			return { false, "Failed to get data from column." };
+		}
+
+		return { true, std::nullopt };
+	}
+
 	auto DBConnection::bind_param(std::int32_t param_index, bool* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>
 	{
 		return bind_param(param_index, SQL_C_TINYINT, SQL_TINYINT, sizeof(bool), value, index);
@@ -400,4 +418,58 @@ namespace GameDatabase
 			index++;
 		}
 	}
+
+	// get_data 메소드 구현
+	template<typename T>
+	auto DBConnection::get_data(std::int32_t column_index) -> std::tuple<bool, std::optional<T>, std::optional<std::string>>
+	{
+		T result{};
+		SQLLEN indicator = 0;
+		SQLRETURN ret = SQL_SUCCESS;
+
+		if constexpr (std::is_same_v<T, std::int32_t>)
+		{
+			ret = SQLGetData(statement_, column_index, SQL_C_SLONG, &result, sizeof(result), &indicator);
+		}
+		else if constexpr (std::is_same_v<T, std::uint32_t>)
+		{
+			ret = SQLGetData(statement_, column_index, SQL_C_ULONG, &result, sizeof(result), &indicator);
+		}
+		else if constexpr (std::is_same_v<T, std::int64_t>)
+		{
+			ret = SQLGetData(statement_, column_index, SQL_C_SBIGINT, &result, sizeof(result), &indicator);
+		}
+		else if constexpr (std::is_same_v<T, double>)
+		{
+			ret = SQLGetData(statement_, column_index, SQL_C_DOUBLE, &result, sizeof(result), &indicator);
+		}
+		else if constexpr (std::is_same_v<T, std::string>)
+		{
+			CHAR buffer[4096] = {};
+			ret = SQLGetData(statement_, column_index, SQL_C_CHAR, buffer, sizeof(buffer), &indicator);
+			if (SQL_SUCCEEDED(ret))
+			{
+				result = std::string(buffer);
+			}
+		}
+
+		if (!SQL_SUCCEEDED(ret))
+		{
+			return {false, std::nullopt, "Failed to retrieve data"};
+		}
+
+		if (indicator == SQL_NULL_DATA)
+		{
+			return {true, std::nullopt, std::nullopt};
+		}
+
+		return {true, result, std::nullopt};
+	}
+
+	// 명시적 템플릿 인스턴스화
+	template auto DBConnection::get_data<std::int32_t>(std::int32_t) -> std::tuple<bool, std::optional<std::int32_t>, std::optional<std::string>>;
+	template auto DBConnection::get_data<std::uint32_t>(std::int32_t) -> std::tuple<bool, std::optional<std::uint32_t>, std::optional<std::string>>;
+	template auto DBConnection::get_data<std::int64_t>(std::int32_t) -> std::tuple<bool, std::optional<std::int64_t>, std::optional<std::string>>;
+	template auto DBConnection::get_data<double>(std::int32_t) -> std::tuple<bool, std::optional<double>, std::optional<std::string>>;
+	template auto DBConnection::get_data<std::string>(std::int32_t) -> std::tuple<bool, std::optional<std::string>, std::optional<std::string>>;
 }

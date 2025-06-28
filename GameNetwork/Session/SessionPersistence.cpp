@@ -41,8 +41,16 @@ namespace GameNetwork
             json_data["account_id"] = data.account_id;
             json_data["character_id"] = data.character_id;
             
-            // Serialize location (now just an int)
-            json_data["location"] = data.location;
+            // Serialize location
+            boost::json::object location_data;
+            location_data["x"] = data.location.position.x;
+            location_data["y"] = data.location.position.y;
+            location_data["z"] = data.location.position.z;
+            location_data["pitch"] = data.location.pitch;
+            location_data["yaw"] = data.location.yaw;
+            location_data["roll"] = data.location.roll;
+            location_data["map_id"] = data.location.map_id;
+            json_data["location"] = location_data;
             
             json_data["channel_id"] = data.channel_id;
             
@@ -106,8 +114,36 @@ namespace GameNetwork
             data.account_id = boost::json::value_to<std::string>(json_data.at("account_id"));
             data.character_id = boost::json::value_to<uint64_t>(json_data.at("character_id"));
             
-            // Deserialize location (now just an int)
-            data.location = boost::json::value_to<int>(json_data.at("location"));
+            // Deserialize location
+            if (json_data.contains("location") && json_data.at("location").is_object()) {
+                auto location_obj = json_data.at("location").as_object();
+                
+                if (location_obj.contains("x")) {
+                    data.location.position.x = static_cast<float>(location_obj.at("x").as_double());
+                }
+                if (location_obj.contains("y")) {
+                    data.location.position.y = static_cast<float>(location_obj.at("y").as_double());
+                }
+                if (location_obj.contains("z")) {
+                    data.location.position.z = static_cast<float>(location_obj.at("z").as_double());
+                }
+                data.location.x = data.location.position.x;
+                data.location.y = data.location.position.y;
+                data.location.z = data.location.position.z;
+                
+                if (location_obj.contains("pitch")) {
+                    data.location.pitch = static_cast<float>(location_obj.at("pitch").as_double());
+                }
+                if (location_obj.contains("yaw")) {
+                    data.location.yaw = static_cast<float>(location_obj.at("yaw").as_double());
+                }
+                if (location_obj.contains("roll")) {
+                    data.location.roll = static_cast<float>(location_obj.at("roll").as_double());
+                }
+                if (location_obj.contains("map_id")) {
+                    data.location.map_id = static_cast<uint32_t>(location_obj.at("map_id").as_int64());
+                }
+            }
             
             data.channel_id = boost::json::value_to<uint32_t>(json_data.at("channel_id"));
             

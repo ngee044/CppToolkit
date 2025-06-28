@@ -12,6 +12,10 @@
 #include <vector>
 #include <any>
 
+namespace Redis {
+    class RedisClient;
+}
+
 namespace GameDatabase
 {
 	// 캐시 항목 구조체
@@ -36,10 +40,11 @@ namespace GameDatabase
 	// 캐시 통계
 	struct CacheStatistics
 	{
+		std::size_t total_requests;
 		std::size_t total_hits;
 		std::size_t total_misses;
-		std::size_t total_evictions;
 		std::size_t current_size_bytes;
+		std::size_t total_evictions;
 		std::size_t current_entry_count;
 		double hit_rate;
 	};
@@ -111,8 +116,8 @@ namespace GameDatabase
 		std::optional<std::string> password_;
 		std::int32_t db_index_;
 		
-		// Redis client (forward declaration to avoid dependency)
-		std::shared_ptr<void> redis_client_;
+		// Redis client
+		std::shared_ptr<Redis::RedisClient> redis_client_;
 	};
 
 	// 데이터베이스 캐시 관리자

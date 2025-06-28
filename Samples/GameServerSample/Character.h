@@ -1,6 +1,7 @@
 #pragma once
 
-#include <GameNetworkConstants.h>  // GameNetwork 모듈의 상수 사용
+#include "../../GameNetwork/GameNetworkConstants.h"  // GameNetwork 모듈의 상수 사용
+#include "../../GameNetwork/Core/Location.h"  // GameNetwork::Location 사용
 #include <string>
 #include <optional>
 #include <tuple>

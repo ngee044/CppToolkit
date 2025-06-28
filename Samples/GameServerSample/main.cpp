@@ -25,9 +25,9 @@ int main(int argc, char* argv[])
     std::signal(SIGTERM, signal_handler);
     
     // Initialize logger
-    Logger::handle().set_log_level(LogTypes::Information);
-    Logger::handle().enable_console_output(true);
-    Logger::handle().set_log_path("./logs/");
+    Logger::handle().console_mode(LogTypes::Information);
+    Logger::handle().file_mode(LogTypes::Information);
+    Logger::handle().log_root("./logs/");
     
     // Parse port from command line
     uint16_t port = 8080;

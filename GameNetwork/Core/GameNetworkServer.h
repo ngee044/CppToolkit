@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GameNetworkConstants.h"
+#include "Location.h"
 #include <GameSessionManager.h>
 #include <NetworkServer.h>
 #include <ThreadPool.h>
@@ -23,7 +24,6 @@ namespace GameNetwork
     class LoadBalancer;
     class ServerMonitor;
     class GamePacket;
-    struct Location;
     
     namespace Monitoring { class SystemMonitor; }
     class DisconnectionHandler;

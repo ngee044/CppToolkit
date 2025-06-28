@@ -137,4 +137,96 @@ namespace Redis
             return { false, std::string("Redis EXPIRE failed: ") + e.what() };
         }
     }
+
+    auto RedisClient::del(const std::string& key) -> std::tuple<bool, std::optional<std::string>>
+    {
+        try
+        {
+            if (!is_connected())
+            {
+                return { false, "Redis client not connected" };
+            }
+
+            auto [success, error] = redis_connector_->del(key);
+            if (!success)
+            {
+                return { false, error };
+            }
+
+            return { true, std::nullopt };
+        }
+        catch (const std::exception& e)
+        {
+            return { false, std::string("Redis DEL failed: ") + e.what() };
+        }
+    }
+
+    auto RedisClient::exists(const std::string& key) -> std::tuple<bool, std::optional<std::string>>
+    {
+        try
+        {
+            if (!is_connected())
+            {
+                return { false, "Redis client not connected" };
+            }
+
+            auto [exists_result, error] = redis_connector_->exists(key);
+            if (error.has_value())
+            {
+                return { false, error };
+            }
+
+            return { exists_result, std::nullopt };
+        }
+        catch (const std::exception& e)
+        {
+            return { false, std::string("Redis EXISTS failed: ") + e.what() };
+        }
+    }
+
+    auto RedisClient::flush_db() -> std::tuple<bool, std::optional<std::string>>
+    {
+        try
+        {
+            if (!is_connected())
+            {
+                return { false, "Redis client not connected" };
+            }
+
+            auto [success, error] = redis_connector_->flush_db();
+            if (!success)
+            {
+                return { false, error };
+            }
+
+            return { true, std::nullopt };
+        }
+        catch (const std::exception& e)
+        {
+            return { false, std::string("Redis FLUSHDB failed: ") + e.what() };
+        }
+    }
+
+    auto RedisClient::get_db_size() -> std::tuple<int64_t, std::optional<std::string>>
+    {
+        try
+        {
+            if (!is_connected())
+            {
+                return { 0, "Redis client not connected" };
+            }
+
+            auto [size, error] = redis_connector_->db_size();
+            if (error.has_value())
+            {
+                return { 0, error };
+            }
+
+            return { size, std::nullopt };
+        }
+        catch (const std::exception& e)
+        {
+            return { 0, std::string("Redis DBSIZE failed: ") + e.what() };
+        }
+    }
 }

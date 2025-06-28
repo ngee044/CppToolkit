@@ -2,7 +2,7 @@
 
 #include "../GameNetworkConstants.h"
 #include "GameConnection.h"
-#include "../../Samples/Location.h"
+#include "../Core/Location.h"
 
 #include <memory>
 #include <string>
@@ -53,10 +53,10 @@ namespace GameNetwork
         auto save_character() -> std::tuple<bool, std::optional<std::string>>;
         
         // Location management
-        auto current_location() const -> int;
-        auto location() const -> int;  // Alias for compatibility
-        auto move_to(int location) -> void;
-        auto teleport_to(int location) -> void;
+        auto current_location() const -> const GameNetwork::Location&;
+        auto location() const -> const GameNetwork::Location&;  // Alias for compatibility
+        auto move_to(const GameNetwork::Location& location) -> void;
+        auto teleport_to(const GameNetwork::Location& location) -> void;
         
         // Channel management
         auto enter_channel(uint32_t channel_id) -> std::tuple<bool, std::optional<std::string>>;
@@ -114,10 +114,10 @@ namespace GameNetwork
         auto set_entity_id(uint64_t entity_id) -> void;
         auto get_channel_id() const -> uint32_t;
         auto set_channel_id(uint32_t channel_id) -> void;
-        auto set_player_location(int location_id) -> void;
+        auto set_player_location(const GameNetwork::Location& location) -> void;
         
         // Connection status
-        auto get_player_location() const -> std::optional<int>;
+        auto get_player_location() const -> std::optional<GameNetwork::Location>;
         
         // Packet sending
         auto send_packet(const std::vector<uint8_t>& packet_data) -> bool;
@@ -167,7 +167,7 @@ namespace GameNetwork
         
         // Game data
         std::shared_ptr<Character> character_;
-        int current_location_;  // Temporarily changed to int to avoid Location dependency
+        GameNetwork::Location current_location_;  // Current player location
         uint64_t entity_id_;
         uint64_t character_id_;
         

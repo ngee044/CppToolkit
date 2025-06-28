@@ -619,4 +619,42 @@ namespace GameNetwork
         }
         event_cv_.notify_one();
     }
+
+    auto GameSessionManager::add_session(std::shared_ptr<GameSession> session) -> void
+    {
+        if (!session)
+        {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        const std::string& session_id = session->get_session_id();
+        const std::string& account_id = session->get_account_id();
+        
+        // Add to sessions by ID
+        sessions_by_id_[session_id] = session;
+        
+        // Add to sessions by account if account_id is not empty
+        if (!account_id.empty())
+        {
+            sessions_by_account_[account_id] = session;
+        }
+        
+        // Update statistics
+        // stats_.current_sessions = sessions_by_id_.size(); // current_sessions 필드가 없으므로 주석 처리
+        update_peak_sessions();
+        
+        Logger::handle().write(LogTypes::Information,
+            "Session added: " + session_id + " (Account: " + account_id + ")");
+        
+        // Notify session connected
+        notify_session_connected(session);
+    }
+    
+    auto GameSessionManager::get_all_sessions() const -> std::unordered_map<std::string, std::shared_ptr<GameSession>>
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return sessions_by_id_;
+    }
 }

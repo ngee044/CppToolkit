@@ -22,6 +22,7 @@
 #include <optional>
 #include <vector>
 #include <type_traits>
+#include <cstdint>
 
 #include <mutex>
 
@@ -51,7 +52,12 @@ namespace GameDatabase
 		auto fetch() -> std::tuple<bool, std::optional<std::string>>;
 		auto row_count() -> std::int32_t;
 		auto unbind() -> void;
-				// Additional methods for compatibility
+		
+		// Data retrieval method
+		auto get_data(std::int32_t column_index, std::int32_t c_type, void* buffer, std::int32_t buffer_size, SQLLEN* indicator) 
+			-> std::tuple<bool, std::optional<std::string>>;
+		
+		// Additional methods for compatibility
 		auto is_valid() const -> bool { return connection_ != SQL_NULL_HANDLE && statement_ != SQL_NULL_HANDLE; }
 		auto is_null() const -> bool { return !is_valid(); }
 		auto get_statement_handle() const -> SQLHSTMT { return statement_; }
@@ -120,6 +126,10 @@ namespace GameDatabase
 		auto bind_column(std::int32_t column_index, TIMESTAMP_STRUCT* value, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>;
 		auto bind_column(std::int32_t column_index, WCHAR* str, std::int32_t size, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>;
 		auto bind_column(std::int32_t column_index, BYTE* bin, std::int32_t size, SQLLEN* index) -> std::tuple<bool, std::optional<std::string>>;
+
+		// get_data 메소드 추가
+		template<typename T>
+		auto get_data(std::int32_t column_index) -> std::tuple<bool, std::optional<T>, std::optional<std::string>>;
 
 	protected:
 		auto bind_param(SQLUSMALLINT param_index, SQLSMALLINT c_type, SQLSMALLINT sql_types, SQLULEN length, SQLPOINTER ptr, SQLLEN* index)
