@@ -1,6 +1,12 @@
 #include "CircuitBreaker.h"
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <Logger.h>
 #include <algorithm>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -11,8 +17,7 @@ namespace GameNetwork
             , config_(config)
             , state_change_time_(std::chrono::steady_clock::now())
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "Circuit breaker created: " + name_);
+            Logger::handle().write(LogTypes::Information, fmt::format("Circuit breaker created: {}", name_));
         }
         
         CircuitBreaker::~CircuitBreaker() = default;
@@ -74,8 +79,7 @@ namespace GameNetwork
             update_statistics();
         }
         
-        auto CircuitBreaker::record_failure(std::chrono::milliseconds duration, 
-                                            const std::string& error) -> void
+        auto CircuitBreaker::record_failure(std::chrono::milliseconds duration, const std::string& error) -> void
         {
             std::lock_guard<std::mutex> lock(mutex_);
             
@@ -90,8 +94,7 @@ namespace GameNetwork
             consecutive_successes_ = 0;
             consecutive_failures_++;
             
-            Utilities::Logger::handle().write(Utilities::LogTypes::Warning,
-                "Circuit breaker " + name_ + " recorded failure: " + error);
+            Logger::handle().write(LogTypes::Error, fmt::format("Circuit breaker {} recorded failure: {}", name_, error));
             
             // Check if we should open the circuit
             if (should_trip())
@@ -175,9 +178,7 @@ namespace GameNetwork
                 consecutive_successes_ = 0;
                 consecutive_failures_ = 0;
                 
-                Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                    "Circuit breaker " + name_ + " state changed: " + 
-                    get_state_name() + " -> " + get_state_name());
+                Logger::handle().write(LogTypes::Information, fmt::format("Circuit breaker {} state changed: {} -> {}", name_, get_state_name(), get_state_name()));
                 
                 if (state_change_callback_)
                 {
@@ -278,8 +279,7 @@ namespace GameNetwork
         CircuitBreakerManager::CircuitBreakerManager() = default;
         CircuitBreakerManager::~CircuitBreakerManager() = default;
         
-        auto CircuitBreakerManager::get_circuit_breaker(const std::string& service_name, 
-                                                         const CircuitBreakerConfig& config) 
+        auto CircuitBreakerManager::get_circuit_breaker(const std::string& service_name, const CircuitBreakerConfig& config) 
             -> std::shared_ptr<CircuitBreaker>
         {
             std::lock_guard<std::mutex> lock(mutex_);

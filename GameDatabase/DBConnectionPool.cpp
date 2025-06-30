@@ -234,7 +234,7 @@ namespace GameDatabase
         }
 
         auto job = std::make_shared<Job>(
-            ThreadPriority::Normal,
+            JobPriorities::Normal,
             [this, operation, callback]() -> std::tuple<bool, std::optional<std::string>>
             {
                 auto connection = pop_with_context("async_operation");
@@ -264,7 +264,7 @@ namespace GameDatabase
             "DBConnectionPool async operation"
         );
         
-        thread_pool_->add_job(job);
+        thread_pool_->push(job);
     }
 
     auto DBConnectionPool::get_pool_stats() const -> ConnectionPoolStats

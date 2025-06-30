@@ -1,8 +1,14 @@
 #include "MessageDispatcher.h"
 #include <GameSession.h>
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <ThreadPool.h>
 #include <chrono>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -24,18 +30,18 @@ namespace GameNetwork
     {
         std::lock_guard<std::mutex> lock(handlers_mutex_);
         handlers_[type] = handler;
-        
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Registered handler for packet type: " + std::to_string(static_cast<uint16_t>(type)));
+
+        Logger::handle().write(LogTypes::Information,
+            fmt::format("Registered handler for packet type: {}", static_cast<uint16_t>(type)));
     }
 
     auto MessageDispatcher::unregister_handler(PacketType type) -> void
     {
         std::lock_guard<std::mutex> lock(handlers_mutex_);
         handlers_.erase(type);
-        
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Unregistered handler for packet type: " + std::to_string(static_cast<uint16_t>(type)));
+
+        Logger::handle().write(LogTypes::Information,
+            fmt::format("Unregistered handler for packet type: {}", static_cast<uint16_t>(type)));
     }
 
     auto MessageDispatcher::has_handler(PacketType type) const -> bool
@@ -49,8 +55,7 @@ namespace GameNetwork
     {
         if (!session)
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Warning,
-                "Dispatch called with null session");
+            Logger::handle().write(LogTypes::Error, "Dispatch called with null session");
             stats_.failed_dispatches++;
             return;
         }
@@ -63,8 +68,8 @@ namespace GameNetwork
             if (!check_rate_limit(session->session_id(), type))
             {
                 stats_.rate_limited++;
-                Utilities::Logger::handle().write(Utilities::LogTypes::Warning,
-                    "Rate limit exceeded for session: " + session->session_id());
+                Logger::handle().write(LogTypes::Error,
+                    fmt::format("Rate limit exceeded for session: {}", session->session_id()));
                 return;
             }
         }
@@ -76,8 +81,8 @@ namespace GameNetwork
             auto it = handlers_.find(type);
             if (it == handlers_.end())
             {
-                Utilities::Logger::handle().write(Utilities::LogTypes::Warning,
-                    "No handler found for packet type: " + std::to_string(static_cast<uint16_t>(type)));
+                Logger::handle().write(LogTypes::Error,
+                    fmt::format("No handler found for packet type: {}", static_cast<uint16_t>(type)));
                 stats_.failed_dispatches++;
                 return;
             }
@@ -94,9 +99,8 @@ namespace GameNetwork
             
             if (!success)
             {
-                Utilities::Logger::handle().write(Utilities::LogTypes::Warning,
-                    "Handler failed for packet type " + std::to_string(static_cast<uint16_t>(type)) + 
-                    ": " + error.value_or("Unknown error"));
+                Logger::handle().write(LogTypes::Error,
+                    fmt::format("Handler failed for packet type {}: {}", static_cast<uint16_t>(type), error.value_or("Unknown error")));
                 stats_.failed_dispatches++;
             }
             else
@@ -107,8 +111,8 @@ namespace GameNetwork
         }
         catch (const std::exception& e)
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-                "Exception in packet handler: " + std::string(e.what()));
+            Logger::handle().write(LogTypes::Error,
+                fmt::format("Exception in packet handler: {}", e.what()));
             stats_.failed_dispatches++;
         }
 
@@ -151,8 +155,7 @@ namespace GameNetwork
             workers_.emplace_back(&MessageDispatcher::worker_thread, this);
         }
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "MessageDispatcher started with " + std::to_string(worker_count) + " workers");
+        Logger::handle().write(LogTypes::Information, fmt::format("MessageDispatcher started with {} workers", worker_count));
     }
 
     auto MessageDispatcher::stop() -> void
@@ -176,12 +179,10 @@ namespace GameNetwork
         
         workers_.clear();
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "MessageDispatcher stopped");
+        Logger::handle().write(LogTypes::Information, "MessageDispatcher stopped");
     }
 
-    auto MessageDispatcher::queue_message(std::shared_ptr<GameSession> session, 
-                                         std::unique_ptr<GamePacket> packet) -> void
+    auto MessageDispatcher::queue_message(std::shared_ptr<GameSession> session, std::unique_ptr<GamePacket> packet) -> void
     {
         {
             std::lock_guard<std::mutex> lock(queue_mutex_);
@@ -221,7 +222,6 @@ namespace GameNetwork
                 message_queue_.pop();
                 lock.unlock();
                 
-                // Process message
                 dispatch(msg.session, *msg.packet);
             }
         }
@@ -314,7 +314,6 @@ namespace GameNetwork
                 return std::make_tuple(true, std::nullopt);
             });
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Default handlers registered");
+        Logger::handle().write(LogTypes::Information, "Default handlers registered");
     }
 }

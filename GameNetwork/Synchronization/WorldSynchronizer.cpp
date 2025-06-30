@@ -1,8 +1,13 @@
 #include "WorldSynchronizer.h"
-#include "../Session/GameSessionManager.h"
-#include "../Packet/PacketProcessor.h"
+#include "GameSessionManager.h"
+#include "PacketProcessor.h"
+
 #include <Generator.h>
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <algorithm>
 #include <cmath>
 
@@ -44,8 +49,7 @@ namespace GameNetwork
         
         session_manager_ = session_manager;
         
-        Logger::handle().write(LogTypes::Information,
-            "WorldSynchronizer initialized successfully");
+        Logger::handle().write(LogTypes::Information, "WorldSynchronizer initialized successfully");
         
         return true;
     }
@@ -60,8 +64,7 @@ namespace GameNetwork
         std::lock_guard<std::mutex> snapshot_lock(snapshot_mutex_);
         snapshots_.clear();
         
-        Logger::handle().write(LogTypes::Information,
-            "WorldSynchronizer shutdown completed");
+        Logger::handle().write(LogTypes::Information, "WorldSynchronizer shutdown completed");
     }
 
     auto WorldSynchronizer::set_thread_pool(std::shared_ptr<Thread::ThreadPool> thread_pool) -> void
@@ -78,9 +81,8 @@ namespace GameNetwork
             std::chrono::steady_clock::now().time_since_epoch()).count();
         
         stats_.active_entities = static_cast<uint32_t>(entity_states_.size());
-        
-        Logger::handle().write(LogTypes::Information,
-            "Registered entity " + std::to_string(entity_id) + " for synchronization");
+
+        Logger::handle().write(LogTypes::Information, fmt::format("Registered entity {} for synchronization", entity_id));
     }
 
     auto WorldSynchronizer::unregister_entity(uint64_t entity_id) -> void
@@ -89,9 +91,8 @@ namespace GameNetwork
         entity_states_.erase(entity_id);
         
         stats_.active_entities = static_cast<uint32_t>(entity_states_.size());
-        
-        Logger::handle().write(LogTypes::Information,
-            "Unregistered entity " + std::to_string(entity_id) + " from synchronization");
+
+        Logger::handle().write(LogTypes::Information, fmt::format("Unregistered entity {} from synchronization", entity_id));
     }
 
     auto WorldSynchronizer::update_entity_state(uint64_t entity_id, const WorldEntityState& state) -> void
@@ -152,8 +153,7 @@ namespace GameNetwork
         is_running_ = true;
         sync_thread_ = std::thread(&WorldSynchronizer::sync_loop, this);
         
-        Logger::handle().write(LogTypes::Information,
-            "WorldSynchronizer sync loop started at " + std::to_string(sync_frequency_hz_) + " Hz");
+        Logger::handle().write(LogTypes::Information, fmt::format("WorldSynchronizer sync loop started at {} Hz", sync_frequency_hz_));
     }
 
     auto WorldSynchronizer::stop_sync_loop() -> void
@@ -170,8 +170,7 @@ namespace GameNetwork
             sync_thread_.join();
         }
         
-        Logger::handle().write(LogTypes::Information,
-            "WorldSynchronizer sync loop stopped");
+        Logger::handle().write(LogTypes::Information, "WorldSynchronizer sync loop stopped");
     }
 
     auto WorldSynchronizer::force_sync() -> void
@@ -232,8 +231,8 @@ namespace GameNetwork
     {
         lag_compensation_enabled_ = enable;
         
-        Logger::handle().write(LogTypes::Information,
-            "Lag compensation " + std::string(enable ? "enabled" : "disabled"));
+        Logger::handle().write(LogTypes::Information, fmt::format("Lag compensation {}",
+            enable ? "enabled" : "disabled"));
     }
 
     auto WorldSynchronizer::set_snapshot_history_duration(std::chrono::milliseconds duration) -> void
@@ -286,9 +285,7 @@ namespace GameNetwork
             
             if (distance > max_allowed_distance)
             {
-                Logger::handle().write(LogTypes::Error,
-                    "Movement validation failed for entity " + std::to_string(entity_id) + 
-                    ": distance " + std::to_string(distance) + " exceeds max " + std::to_string(max_allowed_distance));
+                Logger::handle().write(LogTypes::Error, fmt::format("Movement validation failed for entity {}: distance {} exceeds max {}", entity_id, distance, max_allowed_distance));
                 return false;
             }
         }
@@ -414,18 +411,17 @@ namespace GameNetwork
         }
         
         stats_.conflict_resolutions++;
-        
-        Logger::handle().write(LogTypes::Information,
-            "Resolved movement conflict for entity " + std::to_string(entity_id));
-        
+
+        Logger::handle().write(LogTypes::Information, fmt::format("Resolved movement conflict for entity {}", entity_id));
+
         return resolved_state;
     }
 
     auto WorldSynchronizer::is_position_valid(const Location& position) const -> bool
     {
         return position.x >= world_min_.x && position.x <= world_max_.x &&
-               position.y >= world_min_.y && position.y <= world_max_.y &&
-               position.z >= world_min_.z && position.z <= world_max_.z;
+                position.y >= world_min_.y && position.y <= world_max_.y &&
+                position.z >= world_min_.z && position.z <= world_max_.z;
     }
 
     auto WorldSynchronizer::clamp_to_world_bounds(Location& position) const -> void
@@ -668,13 +664,12 @@ namespace GameNetwork
         }
         
         float factor = static_cast<float>(timestamp - earlier.timestamp) / 
-                      static_cast<float>(later.timestamp - earlier.timestamp);
+                        static_cast<float>(later.timestamp - earlier.timestamp);
         factor = std::clamp(factor, 0.0f, 1.0f);
         
         LagCompensationSnapshot result;
         result.timestamp = timestamp;
         
-        // Interpolate positions for common entities
         for (const auto& [entity_id, later_pos] : later.entity_positions)
         {
             auto earlier_it = earlier.entity_positions.find(entity_id);
@@ -723,7 +718,6 @@ namespace GameNetwork
             return false;
         }
         
-        // Get client's entity position
         auto client_entity_id = client->get_entity_id();
         if (client_entity_id == 0) return false; // No entity associated
         
@@ -735,7 +729,6 @@ namespace GameNetwork
             return false;
         }
         
-        // Check if entity is within client's AOI
         float distance = calculate_distance(client_state->position, entity_state->position);
         return distance <= aoi_radius_;
     }

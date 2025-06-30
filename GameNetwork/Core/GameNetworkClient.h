@@ -1,11 +1,15 @@
 #pragma once
 
 #include "GameNetworkConstants.h"
-#include "../Packet/GamePacket.h"
+#include "GamePacket.h"
+
 #include <NetworkClient.h>
 #include <NetworkSession.h>
 #include <ThreadPool.h>
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 
 #include <memory>
 #include <string>
@@ -17,6 +21,8 @@
 #include <mutex>
 #include <cstdint>
 #include <mutex>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -110,30 +116,22 @@ namespace GameNetwork
 		public:
 			void dispatch(PacketProcessor::Packet&& packet)
 			{
-				// Implement message dispatching based on packet type
 				switch (packet.type)
 				{
 				case static_cast<uint32_t>(PacketType::Heartbeat):
-					// Handle heartbeat
-					Utilities::Logger::handle().write(Utilities::LogTypes::Debug,
-						"Received heartbeat packet");
+					Logger::handle().write(LogTypes::Debug, "Received heartbeat packet");
 					break;
 					
 				case static_cast<uint32_t>(PacketType::GameData):
-					// Handle game data
-					Utilities::Logger::handle().write(Utilities::LogTypes::Debug,
-						"Received game data packet: " + std::to_string(packet.data.size()) + " bytes");
+					Logger::handle().write(LogTypes::Debug, fmt::format("Received game data packet: {} bytes", packet.data.size()));
 					break;
 					
 				case static_cast<uint32_t>(PacketType::ServerCommand):
-					// Handle server commands
-					Utilities::Logger::handle().write(Utilities::LogTypes::Debug,
-						"Received server command packet");
+					Logger::handle().write(LogTypes::Debug, "Received server command packet");
 					break;
 					
 				default:
-					Utilities::Logger::handle().write(Utilities::LogTypes::Warning,
-						"Unknown packet type: " + std::to_string(packet.type));
+					Logger::handle().write(LogTypes::Error, fmt::format("Unknown packet type received: {}", packet.type));
 					break;
 				}
 			}

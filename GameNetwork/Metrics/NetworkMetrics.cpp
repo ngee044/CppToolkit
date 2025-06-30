@@ -60,29 +60,23 @@ namespace GameNetwork
             auto rtt_duration = now - it->second.sent_time;
             float rtt_ms = std::chrono::duration<float, std::milli>(rtt_duration).count();
             
-            // Update current RTT
             current_rtt_ = rtt_ms;
             
-            // Add to history
             rtt_history_.push_back(rtt_ms);
             if (rtt_history_.size() > MAX_RTT_HISTORY)
             {
                 rtt_history_.pop_front();
             }
             
-            // Update average
             if (!rtt_history_.empty())
             {
-                average_rtt_ = std::accumulate(rtt_history_.begin(), rtt_history_.end(), 0.0f) 
-                               / rtt_history_.size();
+                average_rtt_ = std::accumulate(rtt_history_.begin(), rtt_history_.end(), 0.0f) / rtt_history_.size();
             }
             
-            // Update stats
             stats_.min_rtt_ms = std::min(stats_.min_rtt_ms, rtt_ms);
             stats_.max_rtt_ms = std::max(stats_.max_rtt_ms, rtt_ms);
             stats_.average_rtt_ms = average_rtt_;
             
-            // Calculate jitter
             if (rtt_history_.size() > 1)
             {
                 float prev_rtt = rtt_history_[rtt_history_.size() - 2];
@@ -176,16 +170,10 @@ namespace GameNetwork
         };
         
         sent_bandwidth_samples_.erase(
-            std::remove_if(sent_bandwidth_samples_.begin(), 
-                           sent_bandwidth_samples_.end(), 
-                           remove_old),
-            sent_bandwidth_samples_.end());
+            std::remove_if(sent_bandwidth_samples_.begin(), sent_bandwidth_samples_.end(), remove_old), sent_bandwidth_samples_.end());
         
         received_bandwidth_samples_.erase(
-            std::remove_if(received_bandwidth_samples_.begin(), 
-                           received_bandwidth_samples_.end(), 
-                           remove_old),
-            received_bandwidth_samples_.end());
+            std::remove_if(received_bandwidth_samples_.begin(), received_bandwidth_samples_.end(), remove_old), received_bandwidth_samples_.end());
         
         // Limit sample count
         while (sent_bandwidth_samples_.size() > MAX_BANDWIDTH_SAMPLES)
@@ -212,7 +200,6 @@ namespace GameNetwork
             total_bytes += sample.bytes;
         }
         
-        // Calculate time span
         auto time_span = samples.back().timestamp - samples.front().timestamp;
         auto seconds = std::chrono::duration<float>(time_span).count();
         
@@ -221,7 +208,6 @@ namespace GameNetwork
             return 0;
         }
         
-        // Convert to bits per second
         return static_cast<uint64_t>((total_bytes * 8) / seconds);
     }
     
@@ -387,6 +373,8 @@ namespace GameNetwork
         auto quality_info = get_quality_info();
         auto stats = get_stats();
         
+        // TODO
+        // using boost json
         std::ostringstream json;
         json << "{\n";
         json << "  \"timestamp\": \"" << std::chrono::duration_cast<std::chrono::seconds>(

@@ -1,9 +1,12 @@
 #include "LagCompensation.h"
+
 #include <Logger.h>
-#include <algorithm>
+
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/intersect.hpp>
+
+#include <algorithm>
 
 using namespace Utilities;
 
@@ -51,7 +54,7 @@ namespace GameNetwork
                 auto oldest = snapshot_history_.front().timestamp;
                 if (timestamp < oldest)
                 {
-                    Logger::handle().write(LogTypes::Warning,
+                    Logger::handle().write(LogTypes::Error,
                         "Requested timestamp is older than available history");
                     return std::nullopt;
                 }
@@ -176,9 +179,9 @@ namespace GameNetwork
         }
 
         auto LagCompensation::validate_shot(uint64_t shooter_id,
-                                          const glm::vec3& origin,
-                                          const glm::vec3& direction,
-                                          std::chrono::steady_clock::time_point timestamp)
+                                            const glm::vec3& origin,
+                                            const glm::vec3& direction,
+                                            std::chrono::steady_clock::time_point timestamp)
             -> std::optional<uint64_t>
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -209,8 +212,7 @@ namespace GameNetwork
                     continue;
                 }
 
-                auto hit_point = check_ray_entity_intersection(origin, direction, 
-                                                              entity_state, hitbox_it->second);
+                auto hit_point = check_ray_entity_intersection(origin, direction, entity_state, hitbox_it->second);
                 if (hit_point.has_value())
                 {
                     float distance = glm::length(hit_point.value() - origin);
@@ -252,16 +254,13 @@ namespace GameNetwork
             return std::nullopt;
         }
 
-        auto LagCompensation::register_ability_validator(uint32_t ability_id,
-                                                       AbilityValidator validator) -> void
+        auto LagCompensation::register_ability_validator(uint32_t ability_id, AbilityValidator validator) -> void
         {
             std::lock_guard<std::mutex> lock(mutex_);
             ability_validators_[ability_id] = validator;
         }
 
-        auto LagCompensation::validate_ability_use(uint32_t ability_id,
-                                                 uint64_t caster_id,
-                                                 std::chrono::steady_clock::time_point timestamp)
+        auto LagCompensation::validate_ability_use(uint32_t ability_id, uint64_t caster_id, std::chrono::steady_clock::time_point timestamp)
             -> std::tuple<bool, std::optional<std::string>>
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -297,8 +296,7 @@ namespace GameNetwork
             return { true, std::nullopt };
         }
 
-        auto LagCompensation::update_client_lag(uint64_t client_id,
-                                              std::chrono::milliseconds lag) -> void
+        auto LagCompensation::update_client_lag(uint64_t client_id, std::chrono::milliseconds lag) -> void
         {
             std::lock_guard<std::mutex> lock(mutex_);
             client_lag_[client_id] = lag;
@@ -323,10 +321,7 @@ namespace GameNetwork
             return stats_;
         }
 
-        auto LagCompensation::check_ray_entity_intersection(const glm::vec3& origin,
-                                                          const glm::vec3& direction,
-                                                          const EntityState& entity,
-                                                          const glm::mat4& hitbox) const
+        auto LagCompensation::check_ray_entity_intersection(const glm::vec3& origin, const glm::vec3& direction, const EntityState& entity, const glm::mat4& hitbox) const
             -> std::optional<glm::vec3>
         {
             // Simple AABB intersection test
@@ -430,9 +425,8 @@ namespace GameNetwork
         }
 
         auto LagCompensation::interpolate_snapshots(const WorldSnapshot& before,
-                                                   const WorldSnapshot& after,
-                                                   std::chrono::steady_clock::time_point target_time) const
-            -> WorldSnapshot
+                                                    const WorldSnapshot& after,
+                                                    std::chrono::steady_clock::time_point target_time) const -> WorldSnapshot
         {
             WorldSnapshot result;
             result.timestamp = target_time;
@@ -440,8 +434,7 @@ namespace GameNetwork
             // Calculate interpolation factor
             auto total_duration = after.timestamp - before.timestamp;
             auto elapsed = target_time - before.timestamp;
-            float alpha = std::chrono::duration<float>(elapsed).count() / 
-                         std::chrono::duration<float>(total_duration).count();
+            float alpha = std::chrono::duration<float>(elapsed).count() / std::chrono::duration<float>(total_duration).count();
             alpha = std::clamp(alpha, 0.0f, 1.0f);
             
             // Interpolate tick

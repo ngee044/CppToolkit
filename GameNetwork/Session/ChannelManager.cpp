@@ -1,6 +1,13 @@
 #include "ChannelManager.h"
+
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <algorithm>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -37,10 +44,10 @@ namespace GameNetwork
         }
         
         channel.push_back(session);
-        
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Session " + session->session_id() + " joined channel " + std::to_string(channel_id));
-        
+
+        Logger::handle().write(LogTypes::Information,
+            fmt::format("Session {} joined channel {}", session->session_id(), channel_id));
+
         return { true, std::nullopt };
     }
 

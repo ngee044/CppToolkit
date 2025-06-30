@@ -1,4 +1,5 @@
 #include "DBStoredProcedure.h"
+
 #include <sstream>
 
 namespace GameDatabase

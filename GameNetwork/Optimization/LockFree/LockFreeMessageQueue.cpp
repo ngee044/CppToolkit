@@ -122,14 +122,12 @@ namespace GameNetwork::Optimization
         {
             cell = &buffer_[wrap_position(pos)];
             size_t seq = cell->sequence.load(std::memory_order_acquire);
-            intptr_t dif = static_cast<intptr_t>(seq) - 
-                           static_cast<intptr_t>(pos + 1);
+            intptr_t dif = static_cast<intptr_t>(seq) - static_cast<intptr_t>(pos + 1);
             
             if (dif == 0)
             {
                 // Cell has data ready
-                if (dequeue_pos_.compare_exchange_weak(
-                    pos, pos + 1, std::memory_order_relaxed))
+                if (dequeue_pos_.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed))
                 {
                     break;
                 }
@@ -159,8 +157,7 @@ namespace GameNetwork::Optimization
         auto start = std::chrono::steady_clock::now();
         auto packet = dequeue();
         
-        while (!packet && 
-               std::chrono::steady_clock::now() - start < timeout)
+        while (!packet && std::chrono::steady_clock::now() - start < timeout)
         {
             std::this_thread::yield();
             packet = dequeue();
@@ -186,4 +183,4 @@ namespace GameNetwork::Optimization
         return size() >= capacity_;
     }
     
-} // namespace GameNetwork::Optimization
+}

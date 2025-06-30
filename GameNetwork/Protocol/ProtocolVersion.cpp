@@ -1,6 +1,13 @@
 #include "ProtocolVersion.h"
-// #include <Logger.h>
+
+#include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <algorithm>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -24,11 +31,9 @@ namespace GameNetwork
                     return {true, client_version, std::nullopt};
                     
                 case CompatibilityLevel::BackwardCompatible:
-                    // Server supports older client
                     return {true, client_version, std::nullopt};
                     
                 case CompatibilityLevel::ForwardCompatible:
-                    // Use server's version (older)
                     return {true, CURRENT_VERSION, std::nullopt};
                     
                 case CompatibilityLevel::MajorMismatch:
@@ -76,8 +81,7 @@ namespace GameNetwork
             return CompatibilityLevel::BackwardCompatible;
         }
         
-        auto ProtocolVersionManager::is_feature_available(const std::string& feature_name, 
-                                                           const ProtocolVersion& version) -> bool
+        auto ProtocolVersionManager::is_feature_available(const std::string& feature_name, const ProtocolVersion& version) -> bool
         {
             auto version_key = version.to_uint32();
             auto it = version_registry_.find(version_key);
@@ -91,8 +95,7 @@ namespace GameNetwork
             return false;
         }
         
-        auto ProtocolVersionManager::register_version_handler(const ProtocolVersion& version, 
-                                                               VersionHandler handler) -> void
+        auto ProtocolVersionManager::register_version_handler(const ProtocolVersion& version, VersionHandler handler) -> void
         {
             auto version_key = version.to_uint32();
             version_registry_[version_key].handler = handler;
@@ -155,12 +158,12 @@ namespace GameNetwork
             };
             
             version_registry_[v1_0_0.version.to_uint32()] = v1_0_0;
-            
-            // Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            //     "Protocol version manager initialized with version " +
-            //     std::to_string(CURRENT_VERSION.major) + "." +
-            //     std::to_string(CURRENT_VERSION.minor) + "." +
-            //     std::to_string(CURRENT_VERSION.patch));
+
+            Logger::handle().write(LogTypes::Information,
+                fmt::format("Protocol version manager initialized with version {}.{}.{}",
+                            CURRENT_VERSION.major,
+                            CURRENT_VERSION.minor,
+                            CURRENT_VERSION.patch));
         }
         
     } // namespace Protocol

@@ -1,8 +1,10 @@
 #pragma once
 
 #include "DBConnection.h"
+
 #include <ThreadPool.h>
 #include <Job.h>
+
 #include <functional>
 #include <future>
 #include <chrono>
@@ -176,6 +178,6 @@ namespace GameDatabase
             }
         );
 
-        thread_pool_->add_job(Thread::ThreadPriority::Normal, job);
+        thread_pool_->push(Thread::JobPriorities::Normal, job);
     }
 }

@@ -7,8 +7,7 @@ namespace GameNetwork
     RegionManager::RegionManager() = default;
     RegionManager::~RegionManager() = default;
     
-    auto RegionManager::create_region(const std::string& name, const glm::vec3& center, 
-                                      const glm::vec3& size, uint32_t max_entities) 
+    auto RegionManager::create_region(const std::string& name, const glm::vec3& center, const glm::vec3& size, uint32_t max_entities)
         -> std::tuple<bool, uint32_t, std::optional<std::string>>
     {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -26,7 +25,6 @@ namespace GameNetwork
         regions_[region.region_id] = region;
         update_spatial_grid(region.region_id);
         
-        // Notify callbacks
         for (const auto& callback : region_activated_callbacks_)
         {
             callback(region);
@@ -424,7 +422,8 @@ namespace GameNetwork
     }
     
     auto RegionManager::balance_regions() -> void
-    {        std::lock_guard<std::mutex> lock(mutex_);
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
         
         // Simple load balancing: move entities from overloaded regions to underloaded ones
         std::vector<std::pair<uint32_t, float>> region_loads;
@@ -439,7 +438,7 @@ namespace GameNetwork
         
         // Sort by load
         std::sort(region_loads.begin(), region_loads.end(),
-                  [](const auto& a, const auto& b) { return a.second > b.second; });
+                [](const auto& a, const auto& b) { return a.second > b.second; });
         
         // Implement entity migration logic
         const float HIGH_LOAD_THRESHOLD = 0.8f;
@@ -461,7 +460,6 @@ namespace GameNetwork
             }
         }
         
-        // Migrate entities from overloaded to underloaded regions
         for (uint32_t overloaded_id : overloaded_regions)
         {
             if (underloaded_regions.empty())
@@ -472,33 +470,28 @@ namespace GameNetwork
             
             for (uint64_t entity_id : entities_to_migrate)
             {
-                // Check if entity is at region boundary
                 auto entity_it = entity_positions_.find(entity_id);
                 if (entity_it == entity_positions_.end())
                     continue;
                     
                 const auto& entity_pos = entity_it->second.position;
                 
-                // Find best neighboring region for migration
                 auto neighbors = get_neighboring_regions(overloaded_id);
                 for (uint32_t neighbor_id : neighbors)
                 {
                     auto neighbor_it = std::find(underloaded_regions.begin(), 
-                                                  underloaded_regions.end(), 
-                                                  neighbor_id);
+                                                underloaded_regions.end(), 
+                                                neighbor_id);
                     if (neighbor_it != underloaded_regions.end())
                     {
-                        // Check if entity is close to this neighbor
                         if (is_position_in_region(entity_pos, regions_[neighbor_id]))
                         {
-                            // Trigger entity migration
                             notify_region_change(entity_id, overloaded_id, neighbor_id);
                             break;
                         }
                     }
                 }
                 
-                // Stop if we've balanced enough
                 if (get_region_load(overloaded_id) < HIGH_LOAD_THRESHOLD)
                     break;
             }
@@ -516,7 +509,7 @@ namespace GameNetwork
         std::lock_guard<std::mutex> lock(mutex_);
         
         return std::count_if(regions_.begin(), regions_.end(),
-                             [](const auto& pair) { return pair.second.is_active; });
+                            [](const auto& pair) { return pair.second.is_active; });
     }
     
     auto RegionManager::find_region_for_position(const glm::vec3& position) const -> std::optional<uint32_t>
@@ -537,8 +530,8 @@ namespace GameNetwork
         glm::vec3 max = region.center + region.size * 0.5f;
         
         return position.x >= min.x && position.x <= max.x &&
-               position.y >= min.y && position.y <= max.y &&
-               position.z >= min.z && position.z <= max.z;
+                position.y >= min.y && position.y <= max.y &&
+                position.z >= min.z && position.z <= max.z;
     }
     
     auto RegionManager::get_grid_key(const glm::vec3& position) const -> int32_t
@@ -547,7 +540,6 @@ namespace GameNetwork
         int32_t grid_y = static_cast<int32_t>(std::floor(position.y / GRID_SIZE));
         int32_t grid_z = static_cast<int32_t>(std::floor(position.z / GRID_SIZE));
         
-        // Simple hash combining grid coordinates
         return (grid_x * 73856093) ^ (grid_y * 19349663) ^ (grid_z * 83492791);
     }
     
@@ -559,7 +551,6 @@ namespace GameNetwork
             
         const Region& region = it->second;
         
-        // Calculate grid cells covered by this region        
         glm::vec3 min_bounds = region.center - region.size * 0.5f;
         glm::vec3 max_bounds = region.center + region.size * 0.5f;
         

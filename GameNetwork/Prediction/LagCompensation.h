@@ -64,10 +64,7 @@ namespace GameNetwork
             auto verify_hit_at_timestamp(const HitData& hit_data) 
                 -> std::tuple<bool, std::optional<std::string>>;
             
-            auto validate_shot(uint64_t shooter_id,
-                             const glm::vec3& origin,
-                             const glm::vec3& direction,
-                             std::chrono::steady_clock::time_point timestamp)
+            auto validate_shot(uint64_t shooter_id, const glm::vec3& origin, const glm::vec3& direction, std::chrono::steady_clock::time_point timestamp)
                 -> std::optional<uint64_t>; // Returns hit entity ID
 
             // Server reconciliation
@@ -77,16 +74,14 @@ namespace GameNetwork
 
             // Lag compensation for abilities
             using AbilityValidator = std::function<bool(const WorldSnapshot&)>;
-            auto register_ability_validator(uint32_t ability_id, 
-                                          AbilityValidator validator) -> void;
+            auto register_ability_validator(uint32_t ability_id, AbilityValidator validator) -> void;
             auto validate_ability_use(uint32_t ability_id,
-                                    uint64_t caster_id,
-                                    std::chrono::steady_clock::time_point timestamp)
+                                      uint64_t caster_id,
+                                      std::chrono::steady_clock::time_point timestamp)
                 -> std::tuple<bool, std::optional<std::string>>;
 
             // Client lag estimation
-            auto update_client_lag(uint64_t client_id, 
-                                 std::chrono::milliseconds lag) -> void;
+            auto update_client_lag(uint64_t client_id, std::chrono::milliseconds lag) -> void;
             auto get_client_lag(uint64_t client_id) const 
                 -> std::chrono::milliseconds;
             // Statistics
@@ -105,9 +100,9 @@ namespace GameNetwork
         private:
             // Collision detection helpers
             auto check_ray_entity_intersection(const glm::vec3& origin,
-                                              const glm::vec3& direction,
-                                              const EntityState& entity,
-                                              const glm::mat4& hitbox) const
+                                                const glm::vec3& direction,
+                                                const EntityState& entity,
+                                                const glm::mat4& hitbox) const
                 -> std::optional<glm::vec3>;
 
             // Snapshot management
@@ -115,8 +110,8 @@ namespace GameNetwork
             auto find_snapshot_at_time(std::chrono::steady_clock::time_point time) const
                 -> std::optional<WorldSnapshot>;
             auto interpolate_snapshots(const WorldSnapshot& before,
-                                     const WorldSnapshot& after,
-                                     std::chrono::steady_clock::time_point target_time) const
+                                        const WorldSnapshot& after,
+                                        std::chrono::steady_clock::time_point target_time) const
                 -> WorldSnapshot;
 
         private:

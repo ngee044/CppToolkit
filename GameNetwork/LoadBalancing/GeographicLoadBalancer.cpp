@@ -1,5 +1,10 @@
 #include "GeographicLoadBalancer.h"
+
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <algorithm>
 #include <limits>
 
@@ -20,18 +25,18 @@ namespace GameNetwork
     {
         std::lock_guard<std::mutex> lock(mutex_);
         servers_[server_info.server_id] = server_info;
-        
+
         Logger::handle().write(LogTypes::Information,
-            "Registered server " + server_info.server_id + " in " + 
-            server_info.location.region + ", " + server_info.location.country);
+            fmt::format("Registered server {} in {}, {}", server_info.server_id,
+            server_info.location.region, server_info.location.country));
     }
 
     auto GeographicLoadBalancer::unregister_server(const std::string& server_id) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
         servers_.erase(server_id);
-        
-        Logger::handle().write(LogTypes::Information, "Unregistered server " + server_id);
+
+        Logger::handle().write(LogTypes::Information, fmt::format("Unregistered server {}", server_id));
     }
 
     auto GeographicLoadBalancer::update_server_load(const std::string& server_id, float load) -> void
@@ -80,9 +85,7 @@ namespace GameNetwork
         return best_server.empty() ? std::nullopt : std::make_optional(best_server);
     }
 
-    auto GeographicLoadBalancer::select_optimal_server(const ClientGeoInfo& client_info, 
-                                                       float distance_weight,
-                                                       float load_weight) -> std::optional<std::string>
+    auto GeographicLoadBalancer::select_optimal_server(const ClientGeoInfo& client_info, float distance_weight, float load_weight) -> std::optional<std::string>
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
@@ -104,8 +107,7 @@ namespace GameNetwork
         
         if (!best_server.empty())
         {
-            Logger::handle().write(LogTypes::Debug,
-                "Selected server " + best_server + " with score: " + std::to_string(best_score));
+            Logger::handle().write(LogTypes::Debug, fmt::format("Selected server {} with score: {}", best_server, best_score));
         }
         
         return best_server.empty() ? std::nullopt : std::make_optional(best_server);
@@ -127,8 +129,7 @@ namespace GameNetwork
         return region_servers;
     }
 
-    auto GeographicLoadBalancer::set_region_preference(const std::string& client_region, 
-                                                      const std::vector<std::string>& preferred_regions) -> void
+    auto GeographicLoadBalancer::set_region_preference(const std::string& client_region, const std::vector<std::string>& preferred_regions) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
         region_preferences_[client_region] = preferred_regions;

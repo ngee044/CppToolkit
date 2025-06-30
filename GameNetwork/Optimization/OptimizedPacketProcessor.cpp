@@ -15,22 +15,19 @@ namespace GameNetwork::Optimization
         stop();
     }
     
-    auto OptimizedPacketProcessor::register_handler(
-        PacketType type, PacketHandler handler) -> void
+    auto OptimizedPacketProcessor::register_handler(PacketType type, PacketHandler handler) -> void
     {
         std::unique_lock lock(handlers_mutex_);
         handlers_[type] = std::move(handler);
     }
     
-    auto OptimizedPacketProcessor::register_factory(
-        PacketType type, PacketFactory factory) -> void
+    auto OptimizedPacketProcessor::register_factory(PacketType type, PacketFactory factory) -> void
     {
         std::unique_lock lock(factories_mutex_);
         factories_[type] = std::move(factory);
     }
     
-    auto OptimizedPacketProcessor::process_raw_packet(
-        const PacketView& packet_view) -> bool
+    auto OptimizedPacketProcessor::process_raw_packet(const PacketView& packet_view) -> bool
     {
         if (!packet_view.is_valid() || packet_view.size < sizeof(uint16_t))
         {
@@ -73,8 +70,7 @@ namespace GameNetwork::Optimization
         return process_packet(std::move(packet));
     }
     
-    auto OptimizedPacketProcessor::process_packet(
-        std::unique_ptr<GamePacket> packet) -> bool
+    auto OptimizedPacketProcessor::process_packet(std::unique_ptr<GamePacket> packet) -> bool
     {
         if (!packet)
         {
@@ -105,8 +101,7 @@ namespace GameNetwork::Optimization
         for (size_t i = 0; i < worker_count; ++i)
         {
             workers_.push_back(
-                std::async(std::launch::async, 
-                          &OptimizedPacketProcessor::worker_thread, this));
+                std::async(std::launch::async, &OptimizedPacketProcessor::worker_thread, this));
         }
     }
     
@@ -147,8 +142,7 @@ namespace GameNetwork::Optimization
                 std::shared_lock lock(handlers_mutex_);
                 auto it = handlers_.find(packet->get_type());
                 if (it == handlers_.end())
-                {
-                    // LOG_WARNING("No handler registered for packet type: {}", static_cast<int>(packet->get_type()));
+                {                    
                     std::cerr << "No handler registered for packet type: " << static_cast<int>(packet->get_type()) << std::endl;
                     continue;
                 }
@@ -179,7 +173,7 @@ namespace GameNetwork::Optimization
                 },
                 "PacketHandler");
             
-            thread_pool_->add_job(job);
+            thread_pool_->push(job);
             
             processed_count_.fetch_add(1, std::memory_order_relaxed);
         }

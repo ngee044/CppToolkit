@@ -1,10 +1,17 @@
 #include "StickySession.h"
-// #include <Logger.h>
+
+#include <Logger.h>
 #include <Generator.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 #include <boost/json.hpp>
+
 #include <algorithm>
 #include <random>
 #include <chrono>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -23,31 +30,24 @@ namespace GameNetwork
             config_ = config;
         }
         
-        auto StickySessionManager::get_server_for_session(const std::string& client_identifier, 
-                                                           const std::vector<std::string>& available_servers) 
+        auto StickySessionManager::get_server_for_session(const std::string& client_identifier, const std::vector<std::string>& available_servers) 
             -> std::optional<std::string>
         {
             std::lock_guard<std::mutex> lock(mutex_);
             
-            // Extract actual identifier based on affinity type
             auto identifier = extract_client_identifier(client_identifier);
             
-            // Check if we have existing session
             auto client_it = client_to_session_.find(identifier);
             if (client_it != client_to_session_.end())
             {
                 auto session_it = sessions_by_id_.find(client_it->second);
                 if (session_it != sessions_by_id_.end())
                 {
-                    // Check if session is expired
                     if (!is_session_expired(session_it->second))
                     {
-                        // Check if server is still available
                         auto& mapping = session_it->second;
-                        if (std::find(available_servers.begin(), available_servers.end(), 
-                                      mapping.server_id) != available_servers.end())
+                        if (std::find(available_servers.begin(), available_servers.end(), mapping.server_id) != available_servers.end())
                         {
-                            // Update last access time
                             mapping.last_access_time = std::chrono::steady_clock::now();
                             mapping.request_count++;
                             
@@ -55,7 +55,6 @@ namespace GameNetwork
                         }
                         else if (!config_.enable_fallback)
                         {
-                            // Sticky server is down and fallback is disabled
                             return std::nullopt;
                         }
                     }
@@ -75,9 +74,8 @@ namespace GameNetwork
             
             return std::nullopt;  // No existing session
         }
-        
-        auto StickySessionManager::create_session_mapping(const std::string& client_identifier,
-                                                           const std::string& server_id) 
+
+        auto StickySessionManager::create_session_mapping(const std::string& client_identifier, const std::string& server_id) 
             -> std::string
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -105,11 +103,9 @@ namespace GameNetwork
             {
                 session_created_callback_(session_id, server_id);
             }
-            
-            // Utilities::Logger::handle().write(Utilities::LogTypes::Debug,
-            //     "Created sticky session " + session_id + " for client " + identifier + 
-            //     " on server " + server_id);
-            
+
+            Logger::handle().write(LogTypes::Information, fmt::format("Created sticky session {} for client {} on server {}", session_id, identifier, server_id));
+
             return session_id;
         }
         
@@ -134,10 +130,8 @@ namespace GameNetwork
             {
                 auto& mapping = it->second;
                 
-                // Remove from client mapping
                 client_to_session_.erase(mapping.client_identifier);
                 
-                // Remove from server sessions
                 auto server_it = server_sessions_.find(mapping.server_id);
                 if (server_it != server_sessions_.end())
                 {
@@ -148,7 +142,6 @@ namespace GameNetwork
                     }
                 }
                 
-                // Remove session
                 sessions_by_id_.erase(it);
             }
         }
@@ -162,7 +155,7 @@ namespace GameNetwork
             auto server_it = server_sessions_.find(server_id);
             if (server_it != server_sessions_.end())
             {
-                auto sessions_to_remove = server_it->second;  // Copy session IDs
+                auto sessions_to_remove = server_it->second;
                 
                 for (const auto& session_id : sessions_to_remove)
                 {
@@ -183,7 +176,6 @@ namespace GameNetwork
             uint32_t removed_count = 0;
             std::vector<std::string> expired_sessions;
             
-            // Find expired sessions
             for (const auto& [session_id, mapping] : sessions_by_id_)
             {
                 if (is_session_expired(mapping))
@@ -192,7 +184,6 @@ namespace GameNetwork
                 }
             }
             
-            // Remove expired sessions
             for (const auto& session_id : expired_sessions)
             {
                 remove_session(session_id);
@@ -206,8 +197,8 @@ namespace GameNetwork
             
             if (removed_count > 0)
             {
-                // Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                //     "Cleaned up " + std::to_string(removed_count) + " expired sessions");
+                Logger::handle().write(LogTypes::Information,
+                    fmt::format("Cleaned up {} expired sessions", removed_count));
             }
             
             return removed_count;
@@ -215,14 +206,12 @@ namespace GameNetwork
         
         auto StickySessionManager::generate_session_id() const -> std::string
         {
-            return "session_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+            return "[Session]" + Generator::guid();
         }
         
         auto StickySessionManager::extract_client_identifier(const std::string& raw_identifier) const 
             -> std::string
         {
-            // In real implementation, would parse based on affinity type
-            // For now, just return the raw identifier
             return raw_identifier;
         }
         
@@ -233,7 +222,6 @@ namespace GameNetwork
             return age > config_.session_timeout;
         }
         
-        // StickyLoadBalancer Implementation
         StickyLoadBalancer::StickyLoadBalancer() = default;
         StickyLoadBalancer::~StickyLoadBalancer() = default;
         
@@ -275,9 +263,8 @@ namespace GameNetwork
             
             return selected_server;
         }
-        
-        auto StickyLoadBalancer::select_fallback_server(const std::vector<std::string>& available_servers,
-                                                         const std::unordered_map<std::string, float>& server_loads) 
+
+        auto StickyLoadBalancer::select_fallback_server(const std::vector<std::string>& available_servers, const std::unordered_map<std::string, float>& server_loads)
             -> std::optional<std::string>
         {
             if (available_servers.empty())
@@ -331,5 +318,5 @@ namespace GameNetwork
             return best_server;
         }
         
-    } // namespace LoadBalancing
-} // namespace GameNetwork
+    }
+}

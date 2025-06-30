@@ -1,7 +1,8 @@
 #pragma once
 
-#include <GameNetworkConstants.h>
-#include <NetworkPrediction.h>
+#include "GameNetworkConstants.h"
+#include "NetworkPrediction.h"
+
 #include <memory>
 #include <vector>
 #include <unordered_map>
@@ -38,28 +39,22 @@ namespace GameNetwork
             DeltaCompression();
             virtual ~DeltaCompression() = default;
 
-            // State management
             template<typename T>
             auto register_state_type() -> void;
 
-            // Delta creation
             template<typename T>
             auto create_delta_snapshot(const T& old_state, const T& new_state) 
                 -> DeltaPacket;
-            // Delta application
-            template<typename T>
+
+                template<typename T>
             auto apply_delta(const T& base_state, const DeltaPacket& delta) -> T;
 
-            // Specialized methods for common types
-            auto create_delta_snapshot(const Prediction::EntityState& old_state, 
-                                     const Prediction::EntityState& new_state) 
+            auto create_delta_snapshot(const Prediction::EntityState& old_state, const Prediction::EntityState& new_state) 
                 -> DeltaPacket;
             
-            auto apply_delta(const Prediction::EntityState& base, 
-                           const DeltaPacket& delta) 
+            auto apply_delta(const Prediction::EntityState& base, const DeltaPacket& delta) 
                 -> Prediction::EntityState;
 
-            // Compression settings
             struct CompressionSettings
             {
                 float position_precision = 0.01f; // 1cm precision
@@ -90,8 +85,7 @@ namespace GameNetwork
             // Compression helpers
             auto compress_float(float value, float precision) -> uint32_t;
             auto decompress_float(uint32_t compressed, float precision) -> float;
-            auto calculate_field_delta(const void* old_data, const void* new_data, 
-                                     const FieldDescriptor& field) -> std::vector<uint8_t>;
+            auto calculate_field_delta(const void* old_data, const void* new_data, const FieldDescriptor& field) -> std::vector<uint8_t>;
 
             // Vector3 and quaternion helpers
             bool position_equals(const glm::vec3& a, const glm::vec3& b, float precision);

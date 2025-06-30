@@ -230,8 +230,7 @@ namespace GameNetwork
             return {false, std::vector<uint8_t>()};
         }
         
-        std::vector<uint8_t> result(buffer_.begin() + read_position_, 
-                                   buffer_.begin() + read_position_ + length);
+        std::vector<uint8_t> result(buffer_.begin() + read_position_, buffer_.begin() + read_position_ + length);
         read_position_ += length;
         return {true, result};
     }

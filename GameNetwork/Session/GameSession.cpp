@@ -1,8 +1,12 @@
 #include "GameSession.h"
-// Character.h는 필요시에만 include하도록 제거
 #include "SessionPersistence.h"
-#include "../../Utilities/Logger.h"
-#include "../../Utilities/Converter.h"
+
+#include <Logger.h>
+#include <Converter.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <functional>
 
 using namespace Utilities;
@@ -149,8 +153,8 @@ namespace GameNetwork
             return { true, std::nullopt };
             
             Logger::handle().write(LogTypes::Information,
-                "Character loaded for session " + session_id_ + ", character ID: " + std::to_string(character_id));
-            
+                fmt::format("Character loaded for session {}, character ID: {}", session_id_, character_id));
+
             return { true, std::nullopt };
         }
         catch (const std::exception& e)
@@ -219,10 +223,10 @@ namespace GameNetwork
         }
         
         channel_id_ = channel_id;
-        
+
         Logger::handle().write(LogTypes::Information,
-            "Session " + session_id_ + " entered channel " + std::to_string(channel_id));
-        
+            fmt::format("Session {} entered channel {}", session_id_, channel_id));
+
         return { true, std::nullopt };
     }
 
@@ -233,7 +237,7 @@ namespace GameNetwork
         if (channel_id_ != 0)
         {
             Logger::handle().write(LogTypes::Information,
-                "Session " + session_id_ + " left channel " + std::to_string(channel_id_));
+                fmt::format("Session {} left channel {}", session_id_, channel_id_));
             channel_id_ = 0;
         }
     }
@@ -319,7 +323,7 @@ namespace GameNetwork
         }
         catch (const std::exception& e)
         {
-            return { false, std::string("Failed to save session state: ") + e.what() };
+            return { false, fmt::format("Failed to save session state: {}", e.what()) };
         }
     }
 
@@ -358,7 +362,7 @@ namespace GameNetwork
         }
         catch (const std::exception& e)
         {
-            return { false, std::string("Failed to restore session state: ") + e.what() };
+            return { false, fmt::format("Failed to restore session state: {}", e.what()) };
         }
     }
 
@@ -386,7 +390,7 @@ namespace GameNetwork
                 state_ = SessionConnectionState::Expired;
                 
                 Logger::handle().write(LogTypes::Information,
-                    "Session " + session_id_ + " expired after grace period");
+                    fmt::format("Session {} expired after grace period", session_id_));
             }
         });
     }
@@ -449,8 +453,8 @@ namespace GameNetwork
     {
         std::lock_guard<std::mutex> lock(mutex_);
         current_server_id_ = server_id;
-        Logger::handle().write(LogTypes::Information, 
-            "Session " + session_id_ + " assigned to server: " + server_id);
+        Logger::handle().write(LogTypes::Information,
+            fmt::format("Session {} assigned to server: {}", session_id_, server_id));
     }
 
     auto GameSession::get_player_location() const -> std::optional<GameNetwork::Location>
@@ -503,7 +507,7 @@ namespace GameNetwork
         
         if (session_recording_enabled_)
         {
-            add_activity_log("Metadata updated with " + std::to_string(metadata.size()) + " entries");
+            add_activity_log(fmt::format("Metadata updated with {} entries", metadata.size()));
         }
     }
 
@@ -541,8 +545,8 @@ namespace GameNetwork
         auto now = std::chrono::steady_clock::now();
         auto timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
             now.time_since_epoch()).count();
-        
-        std::string log_entry = "[" + std::to_string(timestamp) + "] " + activity;
+
+        std::string log_entry = fmt::format("[{}] {}", timestamp, activity);
         activity_log_.push_back(log_entry);
         
         // Maintain max log size
@@ -614,7 +618,7 @@ namespace GameNetwork
         }
         
         Logger::handle().write(LogTypes::Information,
-            "Session " + session_id_ + " disconnected: " + reason);
+            fmt::format("Session {} disconnected: {}", session_id_, reason));
     }
 
     auto GameSession::set_network_session(std::shared_ptr<GameConnection> connection) -> void

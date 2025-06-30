@@ -59,19 +59,19 @@ namespace GameNetwork
         
         // Property management
         auto register_property(uint64_t entity_id, 
-                               const std::string& property_name,
-                               PropertyType type,
-                               ReplicationMode mode = ReplicationMode::Reliable,
-                               uint32_t priority = 100) -> void;
+                                const std::string& property_name,
+                                PropertyType type,
+                                ReplicationMode mode = ReplicationMode::Reliable,
+                                uint32_t priority = 100) -> void;
         
         template<typename T>
         auto update_property(uint64_t entity_id, 
-                             const std::string& property_name, 
-                             const T& value) -> void;
+                            const std::string& property_name, 
+                            const T& value) -> void;
         
         template<typename T>
         auto get_property(uint64_t entity_id, 
-                          const std::string& property_name) const -> std::optional<T>;
+                        const std::string& property_name) const -> std::optional<T>;
         
         // Replication control
         auto set_replication_rate(uint64_t entity_id, uint32_t updates_per_second) -> void;

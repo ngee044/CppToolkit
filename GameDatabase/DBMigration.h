@@ -4,6 +4,7 @@
 #include "DBTransaction.h"
 #include "DBConnectionPool.h"
 #include "DBBind.h"
+
 #include <memory>
 #include <string>
 #include <vector>

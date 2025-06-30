@@ -1,7 +1,8 @@
 #pragma once
 
-#include "../GameNetworkConstants.h"
-#include "../Packet/GamePacket.h"
+#include "GameNetworkConstants.h"
+
+#include <GamePacket.h>
 
 #include <memory>
 #include <queue>
@@ -42,8 +43,8 @@ namespace GameNetwork
         
         // Message sending
         auto send_message(std::unique_ptr<GamePacket> packet,
-                          MessageReliability reliability = MessageReliability::Reliable,
-                          uint32_t channel = 0) -> uint32_t;
+                        MessageReliability reliability = MessageReliability::Reliable,
+                        uint32_t channel = 0) -> uint32_t;
         
         // Acknowledgment handling
         auto acknowledge_message(uint32_t sequence) -> void;
@@ -51,18 +52,13 @@ namespace GameNetwork
         auto handle_nack(uint32_t sequence) -> void;
         
         // Receiving
-        auto receive_message(uint32_t sequence,
-                             std::unique_ptr<GamePacket> packet,
-                             MessageReliability reliability,
-                             uint32_t channel) -> bool;
+        auto receive_message(uint32_t sequence, std::unique_ptr<GamePacket> packet, MessageReliability reliability, uint32_t channel) -> bool;
         
         auto get_deliverable_messages() -> std::vector<std::unique_ptr<GamePacket>>;
         
         // Retransmission
         auto process_retransmissions() -> std::vector<std::unique_ptr<GamePacket>>;
-        auto set_retry_policy(uint32_t max_retries,
-                              std::chrono::milliseconds base_delay,
-                              float backoff_multiplier) -> void;
+        auto set_retry_policy(uint32_t max_retries, std::chrono::milliseconds base_delay, float backoff_multiplier) -> void;
         
         // Channel management
         auto reset_channel(uint32_t channel) -> void;

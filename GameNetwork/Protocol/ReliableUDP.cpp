@@ -1,5 +1,11 @@
 #include "ReliableUDP.h"
+
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -40,21 +46,17 @@ namespace GameNetwork
 
             std::lock_guard<std::mutex> lock(mutex_);
 
-            // Check if window is full
             uint32_t outstanding_packets = sent_packets_.size();
             if (outstanding_packets >= send_window_size_)
             {
                 return {false, "Send window full"};
             }
 
-            // Get sequence number
             uint32_t sequence = get_next_sequence();
             
-            // Add sequence number to packet metadata
             packet->metadata["sequence"] = std::to_string(sequence);
             packet->metadata["reliable"] = "true";
             
-            // Create packet info
             PacketInfo info;
             info.sequence = sequence;
             info.packet = packet->clone();
@@ -64,15 +66,13 @@ namespace GameNetwork
             info.is_acknowledged = false;
             info.is_fast_retransmitted = false;
             
-            // Store packet for potential retransmission
             sent_packets_[sequence] = std::move(info);
             
-            // Update statistics
             stats_.packets_sent++;
-            
-            Utilities::Logger::handle().write(Utilities::LogTypes::Debug, 
-                "ReliableUDP: Sent packet with sequence " + std::to_string(sequence));
-            
+
+            Logger::handle().write(LogTypes::Debug,
+                fmt::format("ReliableUDP: Sent packet with sequence {}", sequence));
+
             return {true, std::nullopt};
         }
 

@@ -1,4 +1,5 @@
 #include "BitPacker.h"
+
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>

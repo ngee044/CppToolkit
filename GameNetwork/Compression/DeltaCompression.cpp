@@ -1,5 +1,7 @@
 #include "DeltaCompression.h"
+
 #include <Logger.h>
+
 #include <algorithm>
 #include <cstring>
 #include <unordered_map>
@@ -22,8 +24,7 @@ namespace GameNetwork
             settings_ = settings;
         }
 
-        auto DeltaCompression::create_delta_snapshot(const Prediction::EntityState& old_state,
-                                                     const Prediction::EntityState& new_state)
+        auto DeltaCompression::create_delta_snapshot(const Prediction::EntityState& old_state, const Prediction::EntityState& new_state)
             -> DeltaPacket
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -91,14 +92,12 @@ namespace GameNetwork
                 stats_.total_bytes_saved += (original_size - delta_size);
             }
             stats_.average_compression_ratio = 
-                (stats_.average_compression_ratio * (stats_.deltas_created - 1) + 
-                 static_cast<float>(delta_size) / original_size) / stats_.deltas_created;
+                (stats_.average_compression_ratio * (stats_.deltas_created - 1) + static_cast<float>(delta_size) / original_size) / stats_.deltas_created;
 
             return packet;
         }
 
-        auto DeltaCompression::apply_delta(const Prediction::EntityState& base_state,
-                                          const DeltaPacket& delta)
+        auto DeltaCompression::apply_delta(const Prediction::EntityState& base_state, const DeltaPacket& delta)
             -> Prediction::EntityState
         {
             std::lock_guard<std::mutex> lock(mutex_);

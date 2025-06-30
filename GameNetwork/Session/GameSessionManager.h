@@ -60,9 +60,7 @@ namespace GameNetwork
             -> std::tuple<bool, std::optional<std::string>>;
         
         // Connection management with security
-        auto on_network_connected(std::shared_ptr<Network::NetworkSession> network_session, 
-                                 const std::string& account_id) 
-            -> std::tuple<bool, std::optional<std::string>>;
+        auto on_network_connected(std::shared_ptr<Network::NetworkSession> network_session, const std::string& account_id) -> std::tuple<bool, std::optional<std::string>>;
         auto on_network_connected_secure(std::shared_ptr<Network::NetworkSession> network_session, 
                                         const std::string& account_id,
                                         const std::string& client_ip,
@@ -93,12 +91,11 @@ namespace GameNetwork
         
         // Security management
         auto validate_session_token(const std::string& session_id,
-                                   const std::string& token,
-                                   const std::string& client_ip,
-                                   const std::string& device_id) 
+                                    const std::string& token,
+                                    const std::string& client_ip,
+                                    const std::string& device_id) 
             -> std::tuple<bool, std::optional<std::string>>;
-        auto refresh_session_token(const std::string& session_id,
-                                  const std::string& old_token) 
+        auto refresh_session_token(const std::string& session_id, const std::string& old_token) 
             -> std::tuple<std::string, std::optional<std::string>>;
         auto check_session_security(const std::string& session_id) 
             -> std::tuple<bool, std::optional<std::string>>;

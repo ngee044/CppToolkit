@@ -8,15 +8,11 @@
 
 namespace GameNetwork::Optimization
 {
-    /**
-     * High-performance lock-free message queue for packet processing
-     * Uses MPMC (Multi-Producer Multi-Consumer) design
-     */
     class LockFreeMessageQueue
     {
     public:
         static constexpr size_t CACHE_LINE_SIZE = 64;
-        static constexpr size_t DEFAULT_QUEUE_SIZE = 65536; // Must be power of 2
+        static constexpr size_t DEFAULT_QUEUE_SIZE = 65536;
         
         explicit LockFreeMessageQueue(size_t queue_size = DEFAULT_QUEUE_SIZE);
         ~LockFreeMessageQueue();

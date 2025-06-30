@@ -140,18 +140,11 @@ namespace GameNetwork
         auto stop_monitoring() -> void;
         auto perform_server_maintenance() -> void;
         
-        auto on_client_connected(const std::string& client_id, 
-                                 const std::string& sub_id, 
-                                 const bool& condition) 
+        auto on_client_connected(const std::string& client_id, const std::string& sub_id, const bool& condition) 
             -> std::tuple<bool, std::optional<std::string>>;
-        auto on_message_received(const std::string& client_id, 
-                                 const std::string& sub_id, 
-                                 const std::string& message) 
+        auto on_message_received(const std::string& client_id, const std::string& sub_id, const std::string& message) 
             -> std::tuple<bool, std::optional<std::string>>;
-        auto on_binary_received(const std::string& client_id, 
-                                const std::string& sub_id, 
-                                const std::string& message, 
-                                const std::vector<uint8_t>& data) 
+        auto on_binary_received(const std::string& client_id, const std::string& sub_id, const std::string& message, const std::vector<uint8_t>& data) 
             -> std::tuple<bool, std::optional<std::string>>;
         auto on_client_disconnected_internal(const std::string& client_id) -> void;
         

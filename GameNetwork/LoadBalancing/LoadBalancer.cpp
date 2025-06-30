@@ -1,5 +1,9 @@
 #include "LoadBalancer.h"
+
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 
 using namespace Utilities;
 
@@ -27,11 +31,11 @@ namespace GameNetwork
     {
         try {
             servers_[server.server_id] = server;
-            Logger::handle().write(Utilities::LogTypes::Information, "Server registered: " + server.server_id);
+            Logger::handle().write(Utilities::LogTypes::Information, fmt::format("Server registered: {}", server.server_id));
             return true;
         }
         catch (const std::exception& e) {
-            Logger::handle().write(Utilities::LogTypes::Error, "Failed to register server: " + std::string(e.what()));
+            Logger::handle().write(Utilities::LogTypes::Error, fmt::format("Failed to register server: {}", e.what()));
             return false;
         }
     }
@@ -42,13 +46,13 @@ namespace GameNetwork
             auto it = servers_.find(server_id);
             if (it != servers_.end()) {
                 servers_.erase(it);
-                Logger::handle().write(Utilities::LogTypes::Information, "Server unregistered: " + server_id);
+                Logger::handle().write(Utilities::LogTypes::Information, fmt::format("Server unregistered: {}", server_id));
                 return true;
             }
             return false;
         }
         catch (const std::exception& e) {
-            Logger::handle().write(LogTypes::Error, "Failed to unregister server: " + std::string(e.what()));
+            Logger::handle().write(LogTypes::Error, fmt::format("Failed to unregister server: {}", e.what()));
             return false;
         }
     }

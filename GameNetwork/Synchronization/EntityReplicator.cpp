@@ -1,6 +1,11 @@
 #include "EntityReplicator.h"
-#include "../Packet/BinaryGamePacket.h"
+#include "BinaryGamePacket.h"
+
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <algorithm>
 #include <cstring>
 #include <glm/glm.hpp>
@@ -29,8 +34,7 @@ namespace GameNetwork
         
         entities_[entity_id] = state;
         
-        Logger::handle().write(LogTypes::Information,
-            "Registered entity " + std::to_string(entity_id) + " for replication");
+        Logger::handle().write(LogTypes::Information, fmt::format("Registered entity {} for replication", entity_id));
     }
 
     auto EntityReplicator::unregister_entity(uint64_t entity_id) -> void
@@ -46,18 +50,17 @@ namespace GameNetwork
     }
 
     auto EntityReplicator::register_property(uint64_t entity_id,
-                                           const std::string& property_name,
-                                           PropertyType type,
-                                           ReplicationMode mode,
-                                           uint32_t priority) -> void
+                                            const std::string& property_name,
+                                            PropertyType type,
+                                            ReplicationMode mode,
+                                            uint32_t priority) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
         auto entity_it = entities_.find(entity_id);
         if (entity_it == entities_.end())
         {
-            Logger::handle().write(LogTypes::Error,
-                "Cannot register property for unregistered entity " + std::to_string(entity_id));
+            Logger::handle().write(LogTypes::Error, fmt::format("Cannot register property for unregistered entity {}", entity_id));
             return;
         }
         
@@ -95,9 +98,7 @@ namespace GameNetwork
     }
 
     template<typename T>
-    auto EntityReplicator::update_property(uint64_t entity_id,
-                                         const std::string& property_name,
-                                         const T& value) -> void
+    auto EntityReplicator::update_property(uint64_t entity_id, const std::string& property_name, const T& value) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
@@ -128,8 +129,7 @@ namespace GameNetwork
     template auto EntityReplicator::update_property<std::string>(uint64_t, const std::string&, const std::string&) -> void;
 
     template<typename T>
-    auto EntityReplicator::get_property(uint64_t entity_id,
-                                      const std::string& property_name) const -> std::optional<T>
+    auto EntityReplicator::get_property(uint64_t entity_id, const std::string& property_name) const -> std::optional<T>
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
@@ -283,8 +283,7 @@ namespace GameNetwork
         
         if (snapshot_entity_id != entity_id)
         {
-            Logger::handle().write(LogTypes::Error,
-                "Entity ID mismatch in delta snapshot");
+            Logger::handle().write(LogTypes::Error,"Entity ID mismatch in delta snapshot");
             return;
         }
         

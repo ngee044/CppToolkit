@@ -51,40 +51,29 @@ namespace GameNetwork
             StickySessionManager(const StickySessionConfig& config = {});
             ~StickySessionManager();
             
-            // Configure sticky sessions
             auto set_config(const StickySessionConfig& config) -> void;
             auto get_config() const -> const StickySessionConfig& { return config_; }
             
-            // Get server for session
-            auto get_server_for_session(const std::string& client_identifier, 
-                                         const std::vector<std::string>& available_servers) 
+            auto get_server_for_session(const std::string& client_identifier, const std::vector<std::string>& available_servers) 
                 -> std::optional<std::string>;
             
-            // Create new session mapping
-            auto create_session_mapping(const std::string& client_identifier,
-                                        const std::string& server_id) 
-                -> std::string;  // Returns session ID
+            auto create_session_mapping(const std::string& client_identifier, const std::string& server_id) 
+                -> std::string;
             
-            // Update session access time
             auto touch_session(const std::string& session_id) -> void;
             
-            // Remove session mapping
             auto remove_session(const std::string& session_id) -> void;
             auto remove_sessions_for_server(const std::string& server_id) -> uint32_t;
             
-            // Session queries
             auto get_session_count() const -> size_t;
             auto get_session_count_for_server(const std::string& server_id) const -> uint32_t;
             auto get_session_info(const std::string& session_id) const -> std::optional<SessionMapping>;
             
-            // Cleanup expired sessions
             auto cleanup_expired_sessions() -> uint32_t;
             
-            // Session persistence
-            auto export_sessions() const -> std::string;  // JSON format
+            auto export_sessions() const -> std::string; // Export to JSON format
             auto import_sessions(const std::string& json_data) -> std::tuple<bool, std::optional<std::string>>;
             
-            // Callbacks
             using SessionCreatedCallback = std::function<void(const std::string&, const std::string&)>;
             using SessionExpiredCallback = std::function<void(const std::string&)>;
             
@@ -96,7 +85,6 @@ namespace GameNetwork
         private:
             StickySessionConfig config_;
             
-            // Session mappings by different keys
             std::unordered_map<std::string, SessionMapping> sessions_by_id_;
             std::unordered_map<std::string, std::string> client_to_session_;  // client_id -> session_id
             std::unordered_map<std::string, std::unordered_set<std::string>> server_sessions_;  // server_id -> session_ids
@@ -147,9 +135,9 @@ namespace GameNetwork
             
             // Fallback server selection (when sticky server is down)
             auto select_fallback_server(const std::vector<std::string>& available_servers,
-                                         const std::unordered_map<std::string, float>& server_loads) 
+                                        const std::unordered_map<std::string, float>& server_loads) 
                 -> std::optional<std::string>;
         };
         
-    } // namespace LoadBalancing
-} // namespace GameNetwork
+    }
+}

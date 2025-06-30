@@ -1,6 +1,7 @@
 #pragma once
 
 #include <GameNetworkConstants.h>
+
 #include <chrono>
 #include <deque>
 #include <unordered_map>
@@ -8,6 +9,7 @@
 #include <tuple>
 #include <optional>
 #include <mutex>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
 

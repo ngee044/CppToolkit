@@ -2,6 +2,7 @@
 
 #include <GameNetworkConstants.h>
 #include <GamePacket.h>
+
 #include <memory>
 #include <tuple>
 #include <optional>

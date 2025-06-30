@@ -5,6 +5,9 @@
 #include <File.h>
 #include <Converter.h>
 
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <cstdint>
 
 #ifdef _WIN32

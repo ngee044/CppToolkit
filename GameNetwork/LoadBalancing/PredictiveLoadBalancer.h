@@ -35,13 +35,10 @@ namespace GameNetwork
         // Load prediction methods
         auto predict_server_load(const std::string& server_id, 
                                 std::chrono::seconds future_time) -> PredictionMetrics;
-        auto update_server_metrics(const std::string& server_id, 
-                                  float current_load, float response_time) -> void;
+        auto update_server_metrics(const std::string& server_id, float current_load, float response_time) -> void;
         
         // Best server selection with prediction
-        auto select_best_server_predictive(const std::vector<std::string>& available_servers,
-                                          std::chrono::seconds look_ahead = std::chrono::seconds(30)) 
-                                          -> std::string;
+        auto select_best_server_predictive(const std::vector<std::string>& available_servers, std::chrono::seconds look_ahead = std::chrono::seconds(30)) -> std::string;
 
         // Configuration
         auto set_history_window_size(size_t window_size) -> void;
@@ -52,8 +49,7 @@ namespace GameNetwork
         auto get_server_trends() -> std::unordered_map<std::string, float>;
 
     private:
-        auto calculate_linear_trend(const std::deque<float>& values,
-                                   const std::deque<std::chrono::steady_clock::time_point>& times) -> float;
+        auto calculate_linear_trend(const std::deque<float>& values, const std::deque<std::chrono::steady_clock::time_point>& times) -> float;
         auto apply_exponential_smoothing(const std::deque<float>& values, float alpha = 0.3f) -> float;
 
     private:

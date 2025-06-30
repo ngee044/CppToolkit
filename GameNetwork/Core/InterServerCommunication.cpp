@@ -1,8 +1,14 @@
 #include "InterServerCommunication.h"
-#include "../../Utilities/Logger.h"
+
+#include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 #include <boost/json.hpp>
 #include <boost/json/error.hpp>
 #include <boost/system/error_code.hpp>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -37,10 +43,10 @@ namespace GameNetwork
         
         server_ = std::make_shared<Network::NetworkServer>(server_id_);
         
-        server_->received_connection_callback([this](const std::string& id, const std::string& sub_id, const bool& is_connected) {
+        server_->received_connection_callback([this](const std::string& id, const std::string& sub_id, const bool& is_connected) -> std::tuple<bool, std::optional<std::string>> {
             if (is_connected)
             {
-                // Utilities::Logger::instance().info("New server connected: {} ({})", id, sub_id);
+                Logger::handle().write(LogTypes::Information, fmt::format("Server connected: {}", id));
                 auto it = known_servers_.find(id);
                 if (it != known_servers_.end())
                 {
@@ -55,7 +61,7 @@ namespace GameNetwork
             }
             else
             {
-                // Utilities::Logger::instance().info("Server disconnected: {} ({})", id, sub_id);
+                Logger::handle().write(LogTypes::Information, fmt::format("Server disconnected: {}", id));
                 auto it = known_servers_.find(id);
                 if (it != known_servers_.end())
                 {
@@ -69,12 +75,12 @@ namespace GameNetwork
                     }
                 }
             }
-            return std::make_tuple(true, std::nullopt);
+            return { true, std::nullopt };
         });
         
-        server_->received_binary_callback([this](const std::string& id, const std::string& sub_id, const std::string& message, const std::vector<uint8_t>& data) {
+        server_->received_binary_callback([this](const std::string& id, const std::string& sub_id, const std::string& message, const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>> {
             handle_incoming_message(id, message, data);
-            return std::make_tuple(true, std::nullopt);
+            return { true, std::nullopt };
         });
         
         auto result = server_->start(listen_port, 8192);
@@ -164,7 +170,7 @@ namespace GameNetwork
         auto send_result = client->send_message(message);
         if (!std::get<0>(send_result))
         {
-            return {false, "Failed to send registration: " + std::get<1>(send_result).value_or("Unknown error")};
+            return {false, fmt::format("Failed to send registration: {}", std::get<1>(send_result).value_or("Unknown error"))};
         }
         
         cluster_connection_ = client;
@@ -246,22 +252,19 @@ namespace GameNetwork
         return result;
     }
     
-    auto InterServerCommunication::send_message(const std::string& target_server_id,
-                      const std::string& message_type,
-                      const std::vector<uint8_t>& payload,
-                      bool requires_response) 
+    auto InterServerCommunication::send_message(const std::string& target_server_id, const std::string& message_type, const std::vector<uint8_t>& payload, bool requires_response)
         -> std::tuple<bool, std::optional<std::string>>
     {
         auto client = get_or_create_connection(target_server_id);
         if (!client)
         {
-            return {false, "Could not establish connection to " + target_server_id};
+            return {false, fmt::format("Could not establish connection to {}", target_server_id)};
         }
 
         boost::json::object msg_json;
         msg_json["message_type"] = message_type;
         msg_json["source_server_id"] = server_id_;
-        msg_json["requires_response"] = false; // Not used for one-way messages
+        msg_json["requires_response"] = false;
 
         std::string message_str = boost::json::serialize(msg_json);
         auto send_result = client->send_binary(payload, message_str);
@@ -269,7 +272,7 @@ namespace GameNetwork
         if (!std::get<0>(send_result))
         {
             stats_.failed_sends++;
-            return {false, "Failed to send message: " + std::get<1>(send_result).value_or("Unknown error")};
+            return {false, fmt::format("Failed to send message: {}", std::get<1>(send_result).value_or("Unknown error"))};
         }
 
         stats_.messages_sent++;
@@ -309,16 +312,13 @@ namespace GameNetwork
         return {true, std::nullopt};
     }
 
-    auto InterServerCommunication::send_request(const std::string& target_server_id,
-                                              const std::string& message_type,
-                                              const std::vector<uint8_t>& payload,
-                                              std::chrono::milliseconds timeout)
+    auto InterServerCommunication::send_request(const std::string& target_server_id, const std::string& message_type, const std::vector<uint8_t>& payload, std::chrono::milliseconds timeout)
         -> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>
     {
         auto client = get_or_create_connection(target_server_id);
         if (!client)
         {
-            return {std::nullopt, "Could not establish connection to " + target_server_id};
+            return {std::nullopt, fmt::format("Could not establish connection to {}", target_server_id)};
         }
 
         uint32_t correlation_id;
@@ -350,7 +350,7 @@ namespace GameNetwork
             std::lock_guard<std::mutex> lock(mutex_);
             pending_requests_.erase(correlation_id);
             stats_.failed_sends++;
-            return {std::nullopt, "Failed to send request: " + std::get<1>(send_result).value_or("Unknown error")};
+            return {std::nullopt, fmt::format("Failed to send request: {}", std::get<1>(send_result).value_or("Unknown error"))};
         }
 
         stats_.messages_sent++;
@@ -371,7 +371,7 @@ namespace GameNetwork
         }
         catch (const std::future_error& e)
         {
-            return {std::nullopt, "Future error: " + std::string(e.what())};
+            return {std::nullopt, fmt::format("Future error: {}", e.what())};
         }
     }
     
@@ -472,9 +472,7 @@ namespace GameNetwork
         stats_ = {};
     }
     
-    auto InterServerCommunication::handle_incoming_message(const std::string& source_server_id,
-                                 const std::string& message_str,
-                                 const std::vector<uint8_t>& payload) 
+    auto InterServerCommunication::handle_incoming_message(const std::string& source_server_id, const std::string& message_str, const std::vector<uint8_t>& payload) 
         -> void
     {
         stats_.messages_received++;
@@ -486,7 +484,7 @@ namespace GameNetwork
 
         if (ec)
         {
-            // Utilities::Logger::instance().error("Failed to parse incoming JSON from {}: {}", source_server_id, ec.message());
+            Logger::handle().write(LogTypes::Error, fmt::format("Failed to parse incoming message from {}: {}", source_server_id, ec.message()));
             return;
         }
 
@@ -530,13 +528,13 @@ namespace GameNetwork
                 }
                 else
                 {
-                    // Utilities::Logger::instance().warn("No handler for message type '{}' from server {}", message_type, source_server_id);
+                    Logger::handle().write(LogTypes::Error, fmt::format("No handler for message type '{}' from server {}", message_type, source_server_id));
                 }
             }
         }
         catch (const std::exception& e)
         {
-            // Utilities::Logger::instance().error("Error processing message from {}: {}", source_server_id, e.what());
+            Logger::handle().write(LogTypes::Error, fmt::format("Error processing message from {}: {}", source_server_id, e.what()));
         }
     }
     
@@ -546,21 +544,24 @@ namespace GameNetwork
         {
             std::lock_guard<std::mutex> lock(mutex_);
             auto it = connections_.find(target_server_id);
-            if (it != connections_.end() && it->second.is_connected && it->second.client) {
+            if (it != connections_.end() && it->second.is_connected && it->second.client) 
+            {
                 return it->second.client;
             }
         }
 
         auto server_info_opt = find_server(target_server_id);
         if (!server_info_opt) {
-            // Utilities::Logger::instance().error("Cannot find server {} to establish connection.", target_server_id);
+            Logger::handle().write(LogTypes::Error, fmt::format("Cannot find server {} to establish connection.", target_server_id));
             return nullptr;
         }
 
-        if (establish_connection(*server_info_opt)) {
-             std::lock_guard<std::mutex> lock(mutex_);
+        if (establish_connection(*server_info_opt)) 
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
             auto it = connections_.find(target_server_id);
-            if (it != connections_.end() && it->second.is_connected && it->second.client) {
+            if (it != connections_.end() && it->second.is_connected && it->second.client) 
+            {
                 return it->second.client;
             }
         }
@@ -572,35 +573,39 @@ namespace GameNetwork
     {
         std::lock_guard<std::mutex> lock(mutex_);
 
-        if (connections_.count(server_info.server_id) && connections_.at(server_info.server_id).is_connected) {
+        if (connections_.count(server_info.server_id) && connections_.at(server_info.server_id).is_connected) 
+        {
             return true;
         }
 
-        // Utilities::Logger::instance().info("Establishing connection to server {} at {}:{}", server_info.server_id, server_info.ip_address, server_info.port);
+        Logger::handle().write(LogTypes::Information, fmt::format("Establishing connection to server {} at {}:{}", 
+            server_info.server_id, server_info.ip_address, server_info.port));
 
         auto client = std::make_shared<Network::NetworkClient>(server_id_ + "_to_" + server_info.server_id);
 
-        client->received_connection_callback([this, server_id = server_info.server_id](const bool& is_connected, const bool& by_itself) {
+        client->received_connection_callback([this, server_id = server_info.server_id](const bool& is_connected, const bool& by_itself) -> std::tuple<bool, std::optional<std::string>> 
+        {
             std::lock_guard<std::mutex> lock(mutex_);
             auto it = connections_.find(server_id);
             if (it != connections_.end()) {
                 it->second.is_connected = is_connected;
                 if (is_connected) {
-                    // Utilities::Logger::instance().info("Connection to {} established.", server_id);
+                    Logger::handle().write(LogTypes::Information, fmt::format("Connection to {} established.", server_id));
                 } else {
-                    // Utilities::Logger::instance().warn("Connection to {} lost.", server_id);
+                    Logger::handle().write(LogTypes::Error, fmt::format("Connection to {} lost.", server_id));
                 }
             }
-            return std::make_tuple(true, std::nullopt);
+            return { true, std::nullopt };
         });
 
-        client->received_binary_callback([this, source_id = server_info.server_id](const std::string& msg, const std::vector<uint8_t>& data) {
+        client->received_binary_callback([this, source_id = server_info.server_id](const std::string& msg, const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>> 
+        {
             handle_incoming_message(source_id, msg, data);
-            return std::make_tuple(true, std::nullopt);
+            return { true, std::nullopt };
         });
 
         if (!client->start(server_info.ip_address, server_info.port, 8192)) {
-            // Utilities::Logger::instance().error("Failed to start connection to {}", server_info.server_id);
+            Logger::handle().write(LogTypes::Error, fmt::format("Failed to start connection to {}", server_info.server_id));
             return false;
         }
 
@@ -644,7 +649,7 @@ namespace GameNetwork
                 continue;
             }
             if (it->second.is_online && (now - it->second.last_heartbeat) > timeout) {
-                // Utilities::Logger::instance().warn("Server {} timed out. Marking as offline.", it->first);
+                Logger::handle().write(LogTypes::Error, fmt::format("Server {} timed out. Marking as offline.", it->first));
                 it->second.is_online = false;
                 for (const auto& cb : on_server_disconnected_callbacks_) {
                     cb(it->second);
@@ -662,7 +667,7 @@ namespace GameNetwork
             it->second.last_heartbeat = std::chrono::steady_clock::now();
             if (!it->second.is_online) {
                 it->second.is_online = true;
-                // Utilities::Logger::instance().info("Server {} is back online.", source_server_id);
+                Logger::handle().write(LogTypes::Information, fmt::format("Server {} is back online.", source_server_id));
                 for (const auto& cb : on_server_connected_callbacks_) {
                     cb(it->second);
                 }
@@ -681,7 +686,7 @@ namespace GameNetwork
         }
         else
         {
-            // Utilities::Logger::instance().warn("Received response for unknown or timed-out correlation ID {}", correlation_id);
+            Logger::handle().write(LogTypes::Error, fmt::format("Received response for unknown or timed-out correlation ID {}", correlation_id));
         }
     }
 
@@ -689,7 +694,7 @@ namespace GameNetwork
     {
         auto client = get_or_create_connection(target_server_id);
         if (!client) {
-            // Utilities::Logger::instance().error("Could not establish connection to {} to send response.", target_server_id);
+            Logger::handle().write(LogTypes::Error, fmt::format("Could not establish connection to {} to send response.", target_server_id));
             return;
         }
 
@@ -704,7 +709,7 @@ namespace GameNetwork
         if (!std::get<0>(send_result))
         {
             stats_.failed_sends++;
-            // Utilities::Logger::instance().error("Failed to send response to {}: {}", target_server_id, std::get<1>(send_result).value_or("Unknown error"));
+            Logger::handle().write(LogTypes::Error, fmt::format("Failed to send response to {}: {}", target_server_id, std::get<1>(send_result).value_or("Unknown error")));
         }
     }
 }

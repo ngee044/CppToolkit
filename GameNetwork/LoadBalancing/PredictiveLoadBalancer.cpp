@@ -1,5 +1,10 @@
 #include "PredictiveLoadBalancer.h"
+
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <algorithm>
 #include <numeric>
 #include <cmath>
@@ -49,8 +54,7 @@ namespace GameNetwork
         return metrics;
     }
 
-    auto PredictiveLoadBalancer::update_server_metrics(const std::string& server_id, 
-                                                      float current_load, float response_time) -> void
+    auto PredictiveLoadBalancer::update_server_metrics(const std::string& server_id, float current_load, float response_time) -> void
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
@@ -77,8 +81,7 @@ namespace GameNetwork
         }
     }
 
-    auto PredictiveLoadBalancer::select_best_server_predictive(const std::vector<std::string>& available_servers,
-                                                              std::chrono::seconds look_ahead) -> std::string
+    auto PredictiveLoadBalancer::select_best_server_predictive(const std::vector<std::string>& available_servers, std::chrono::seconds look_ahead) -> std::string
     {
         if (available_servers.empty())
         {
@@ -102,8 +105,8 @@ namespace GameNetwork
             }
         }
         
-        Logger::handle().write(LogTypes::Debug, 
-            "Selected server " + best_server + " with predicted load: " + std::to_string(best_predicted_load));
+        Logger::handle().write(LogTypes::Debug, fmt::format(
+            "Selected server {} with predicted load: {}", best_server, best_predicted_load));
         
         return best_server;
     }
@@ -138,8 +141,7 @@ namespace GameNetwork
         return trends;
     }
 
-    auto PredictiveLoadBalancer::calculate_linear_trend(const std::deque<float>& values,
-                                                       const std::deque<std::chrono::steady_clock::time_point>& times) -> float
+    auto PredictiveLoadBalancer::calculate_linear_trend(const std::deque<float>& values, const std::deque<std::chrono::steady_clock::time_point>& times) -> float
     {
         if (values.size() < 2) return 0.0f;
         

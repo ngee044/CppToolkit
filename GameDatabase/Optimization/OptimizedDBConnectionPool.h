@@ -1,8 +1,10 @@
 #pragma once
 
-#include "../DBConnection.h"
 #include "LockFreePool.h"
+#include "DBConnection.h"
+
 #include <ThreadPool.h>
+
 #include <chrono>
 #include <functional>
 #include <future>
@@ -42,7 +44,7 @@ namespace GameDatabase::Optimization
             auto promise = std::make_shared<std::promise<std::tuple<ResultType, std::optional<std::string>>>>();
             auto future = promise->get_future();
             
-            thread_pool_->add_job(ThreadPriority::Normal, 
+            thread_pool_->push(JobPriorities::Normal, 
                 [this, operation, promise]()
             {
                 auto connection = acquire();

@@ -45,32 +45,25 @@ namespace GameNetwork
         virtual ~NetworkOptimizer() = default;
         
         // Packet batching
-        auto batch_packet(std::unique_ptr<GamePacket> packet, 
-                          const std::string& session_id) -> void;
-        auto flush_batch(const std::string& session_id) 
-            -> std::vector<std::unique_ptr<GamePacket>>;
+        auto batch_packet(std::unique_ptr<GamePacket> packet, const std::string& session_id) -> void;
+        auto flush_batch(const std::string& session_id) -> std::vector<std::unique_ptr<GamePacket>>;
         auto flush_all_batches() -> void;
         
         // Packet merging
-        auto can_merge_packets(const GamePacket& packet1, 
-                               const GamePacket& packet2) const -> bool;
-        auto merge_packets(std::vector<std::unique_ptr<GamePacket>> packets) 
-            -> std::unique_ptr<GamePacket>;
+        auto can_merge_packets(const GamePacket& packet1, const GamePacket& packet2) const -> bool;
+        auto merge_packets(std::vector<std::unique_ptr<GamePacket>> packets) -> std::unique_ptr<GamePacket>;
         
         // Compression optimization
         auto should_compress(const std::vector<uint8_t>& data) const -> bool;
-        auto select_compression_algorithm(const std::vector<uint8_t>& data) 
-            -> std::string;
+        auto select_compression_algorithm(const std::vector<uint8_t>& data) -> std::string;
         
         // Bandwidth optimization
         auto optimize_send_rate(const std::string& session_id) -> uint32_t;
         auto calculate_optimal_packet_size(NetworkQuality quality) const -> size_t;
-        auto should_drop_packet(const GamePacket& packet, 
-                                NetworkQuality quality) const -> bool;
+        auto should_drop_packet(const GamePacket& packet, NetworkQuality quality) const -> bool;
         
         // Priority management
-        auto adjust_packet_priority(std::unique_ptr<GamePacket> packet,
-                                    NetworkQuality quality) -> void;
+        auto adjust_packet_priority(std::unique_ptr<GamePacket> packet, NetworkQuality quality) -> void;
         auto reorder_packet_queue(std::vector<std::unique_ptr<GamePacket>>& packets) -> void;
         
         // Adaptive optimization
@@ -80,12 +73,10 @@ namespace GameNetwork
         
         // LOD optimization
         auto calculate_lod_level(float distance, NetworkQuality quality) const -> uint8_t;
-        auto optimize_entity_update_rate(float distance, 
-                                         NetworkQuality quality) const -> float;
+        auto optimize_entity_update_rate(float distance, NetworkQuality quality) const -> float;
         
         // Delta optimization
-        auto should_send_full_update(uint64_t entity_id, 
-                                     const std::string& session_id) const -> bool;
+        auto should_send_full_update(uint64_t entity_id, const std::string& session_id) const -> bool;
         auto optimize_delta_threshold(NetworkQuality quality) const -> float;
         
         // Statistics
@@ -124,8 +115,7 @@ namespace GameNetwork
         };
         
         auto apply_quality_settings(NetworkQuality quality) -> void;
-        auto calculate_compression_ratio(const std::vector<uint8_t>& original,
-                                         const std::vector<uint8_t>& compressed) const -> float;
+        auto calculate_compression_ratio(const std::vector<uint8_t>& original, const std::vector<uint8_t>& compressed) const -> float;
         
     private:
         mutable std::mutex mutex_;
@@ -143,8 +133,7 @@ namespace GameNetwork
         std::unordered_map<std::string, std::priority_queue<PacketQueueEntry>> priority_queues_;
         
         // Delta tracking
-        std::unordered_map<std::string, std::unordered_map<uint64_t, 
-                           std::chrono::steady_clock::time_point>> last_full_updates_;
+        std::unordered_map<std::string, std::unordered_map<uint64_t, std::chrono::steady_clock::time_point>> last_full_updates_;
         
         // Statistics
         OptimizationStats stats_;

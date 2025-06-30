@@ -1,15 +1,21 @@
 #include "GameNetworkServer.h"
-#include "../GameNetworkConstants.h"
-#include "../Monitoring/SystemMonitor.h"
-#include "../Session/DisconnectionHandler.h"
-#include "../Session/GameSessionManager.h"
-#include "../Packet/PacketProcessor.h"
-#include "../Packet/MessageDispatcher.h"
-#include "../Synchronization/WorldSynchronizer.h"
-#include "../LoadBalancing/LoadBalancer.h"
-#include "../LoadBalancing/ServerMonitor.h"
-#include "../Packet/GamePacket.h"
+#include "GameNetworkConstants.h"
+#include "SystemMonitor.h"
+#include "DisconnectionHandler.h"
+#include "GameSessionManager.h"
+#include "PacketProcessor.h"
+#include "MessageDispatcher.h"
+#include "WorldSynchronizer.h"
+#include "LoadBalancer.h"
+#include "ServerMonitor.h"
+#include "GamePacket.h"
+
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -19,21 +25,18 @@ namespace GameNetwork
         , is_monitoring_(false)
         , stats_{}
     {
-        // Initialize core components
         thread_pool_ = std::make_shared<Thread::ThreadPool>("GameNetworkServer");
         
         session_manager_ = std::make_shared<GameSessionManager>();
         system_monitor_ = std::make_shared<Monitoring::SystemMonitor>();
         disconnection_handler_ = std::make_shared<DisconnectionHandler>();
         
-        // Initialize other components
         packet_processor_ = std::make_shared<PacketProcessor>();
         message_dispatcher_ = std::make_shared<MessageDispatcher>();
         world_synchronizer_ = std::make_shared<WorldSynchronizer>();
         load_balancer_ = std::make_shared<LoadBalancer>();
         server_monitor_ = std::make_shared<ServerMonitor>();
         
-        // Initialize network server
         network_server_ = std::make_shared<Network::NetworkServer>(
             config_.server_id,
             config_.high_priority_threads,
@@ -41,7 +44,6 @@ namespace GameNetwork
             config_.low_priority_threads
         );
         
-        // Setup network callbacks
         setup_network_callbacks();
         
         stats_.start_time = std::chrono::steady_clock::now();
@@ -66,39 +68,34 @@ namespace GameNetwork
         
         try
         {
-            // Initialize components
             auto [init_success, init_error] = initialize_components();
             if (!init_success)
             {
-                return { false, "Failed to initialize components: " + init_error.value_or("unknown error") };
+                return { false, fmt::format("Failed to initialize components: {}", init_error.value_or("unknown error")) };
             }
             
-            // Start network server
             auto [success, error] = network_server_->start(config_.port, config_.socket_buffer_size);
             if (!success)
             {
-                return { false, "Failed to start network server: " + error.value_or("unknown error") };
+                return { false, fmt::format("Failed to start network server: {}", error.value_or("unknown error")) };
             }
             
-            // Start monitoring
             start_monitoring();
             
             is_running_ = true;
             
-            // Trigger callbacks
             for (const auto& callback : server_started_callbacks_)
             {
                 callback();
             }
             
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "GameNetworkServer started on port " + std::to_string(config_.port));
+            Logger::handle().write(LogTypes::Information, fmt::format("GameNetworkServer started on port {}", config_.port));
             
             return { true, std::nullopt };
         }
         catch (const std::exception& e)
         {
-            return { false, "Exception during start: " + std::string(e.what()) };
+            return { false, fmt::format("Exception during start: {}", e.what()) };
         }
     }
     
@@ -122,8 +119,7 @@ namespace GameNetwork
                 auto [success, error] = network_server_->stop();
                 if (!success)
                 {
-                    Utilities::Logger::handle().write(Utilities::LogTypes::Warning,
-                        "Warning: Network server stop failed: " + error.value_or("unknown error"));
+                    Logger::handle().write(LogTypes::Error, fmt::format("Network server stop failed: {}", error.value_or("unknown error")));
                 }
             }
             
@@ -135,8 +131,7 @@ namespace GameNetwork
                 callback();
             }
             
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "GameNetworkServer stopped");
+            Logger::handle().write(LogTypes::Information, "GameNetworkServer stopped");
             
             return { true, std::nullopt };
         }
@@ -179,8 +174,7 @@ namespace GameNetwork
             // This would require ThreadPool to support resizing
         }
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Server configuration updated");
+        Logger::handle().write(LogTypes::Information, "Server configuration updated");
         
         return { true, std::nullopt };
     }
@@ -403,29 +397,18 @@ namespace GameNetwork
         auto stats = get_stats();
         auto uptime = std::chrono::steady_clock::now() - stats.start_time;
         auto uptime_seconds = std::chrono::duration_cast<std::chrono::seconds>(uptime).count();
-        
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "=== Server Status ===");
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Server ID: " + config_.server_id);
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Uptime: " + std::to_string(uptime_seconds) + " seconds");
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Current Connections: " + std::to_string(stats.current_connections));
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Total Connections: " + std::to_string(stats.total_connections));
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Packets Sent: " + std::to_string(stats.packets_sent));
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Packets Received: " + std::to_string(stats.packets_received));
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Bytes Sent: " + std::to_string(stats.bytes_sent));
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Bytes Received: " + std::to_string(stats.bytes_received));
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Jobs Processed: " + std::to_string(stats.jobs_processed));
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Jobs Failed: " + std::to_string(stats.jobs_failed));
+
+        Logger::handle().write(LogTypes::Information, "=== Server Status ===");
+        Logger::handle().write(LogTypes::Information, fmt::format("Server ID: {}", config_.server_id));
+        Logger::handle().write(LogTypes::Information, fmt::format("Uptime: {} seconds", uptime_seconds));
+        Logger::handle().write(LogTypes::Information, fmt::format("Current Connections: {}", stats.current_connections));
+        Logger::handle().write(LogTypes::Information, fmt::format("Total Connections: {}", stats.total_connections));
+        Logger::handle().write(LogTypes::Information, fmt::format("Packets Sent: {}", stats.packets_sent));
+        Logger::handle().write(LogTypes::Information, fmt::format("Packets Received: {}", stats.packets_received));
+        Logger::handle().write(LogTypes::Information, fmt::format("Bytes Sent: {}", stats.bytes_sent));
+        Logger::handle().write(LogTypes::Information, fmt::format("Bytes Received: {}", stats.bytes_received));
+        Logger::handle().write(LogTypes::Information, fmt::format("Jobs Processed: {}", stats.jobs_processed));
+        Logger::handle().write(LogTypes::Information, fmt::format("Jobs Failed: {}", stats.jobs_failed));
     }
     
     auto GameNetworkServer::get_active_connections() const -> std::vector<std::string>
@@ -463,15 +446,14 @@ namespace GameNetwork
             
             // Remove from session manager
             session_manager_->terminate_session(client_id);
-            
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "Client kicked: " + client_id);
-            
+
+            Logger::handle().write(LogTypes::Information, fmt::format("Client kicked: {}", client_id));
+
             return { true, std::nullopt };
         }
         catch (const std::exception& e)
         {
-            return { false, "Failed to kick client: " + std::string(e.what()) };
+            return { false, fmt::format("Failed to kick client: {}", e.what()) };
         }
     }
     
@@ -525,7 +507,7 @@ namespace GameNetwork
         }
         catch (const std::exception& e)
         {
-            return { false, "Component initialization failed: " + std::string(e.what()) };
+            return { false, fmt::format("Component initialization failed: {}", e.what()) };
         }
     }
     
@@ -584,73 +566,58 @@ namespace GameNetwork
             {
                 callback(client_id);
             }
-            
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "Client connected: " + client_id);
-            
+
+            Logger::handle().write(LogTypes::Information, fmt::format("Client connected: {}", client_id));
             return { true, std::nullopt };
         }
         catch (const std::exception& e)
         {
-            return { false, "Connection handling failed: " + std::string(e.what()) };
+            return { false, fmt::format("Connection handling failed: {}", e.what()) };
         }
     }
     
-    auto GameNetworkServer::on_message_received(const std::string& client_id, 
-                                                const std::string& sub_id, 
-                                                const std::string& message) 
+    auto GameNetworkServer::on_message_received(const std::string& client_id, const std::string& sub_id, const std::string& message)
         -> std::tuple<bool, std::optional<std::string>>
     {
         try
         {
-            // Update stats
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 stats_.packets_received++;
                 stats_.bytes_received += message.size();
             }
             
-            // Process as text message if needed
-            // Most game messages will be binary, so this might be for chat or commands
-            
             return { true, std::nullopt };
         }
         catch (const std::exception& e)
         {
-            return { false, "Message processing failed: " + std::string(e.what()) };
+            return { false, fmt::format("Message processing failed: {}", e.what()) };
         }
     }
     
-    auto GameNetworkServer::on_binary_received(const std::string& client_id, 
-                                              const std::string& sub_id, 
-                                              const std::string& message, 
-                                              const std::vector<uint8_t>& data) 
+    auto GameNetworkServer::on_binary_received(const std::string& client_id, const std::string& sub_id, const std::string& message, const std::vector<uint8_t>& data) 
         -> std::tuple<bool, std::optional<std::string>>
     {
         try
         {
-            // Update stats
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 stats_.packets_received++;
                 stats_.bytes_received += data.size();
             }
             
-            // Find session
             auto session = session_manager_->get_session_by_id(client_id);
             if (!session)
             {
                 return { false, "Session not found" };
             }
             
-            // Deserialize packet
             auto packet = packet_processor_->deserialize_binary(data);
             if (!packet)
             {
                 return { false, "Failed to deserialize packet" };
             }
             
-            // Dispatch to appropriate handler
             if (message_dispatcher_)
             {
                 message_dispatcher_->dispatch(session, *packet);
@@ -668,7 +635,8 @@ namespace GameNetwork
                 std::lock_guard<std::mutex> lock(mutex_);
                 stats_.jobs_failed++;
             }
-            return { false, "Binary message processing failed: " + std::string(e.what()) };
+
+            return { false, fmt::format("Binary message processing failed: {}", e.what()) };
         }
     }
     
@@ -676,34 +644,28 @@ namespace GameNetwork
     {
         try
         {
-            // Get session first
             auto session = session_manager_->get_session_by_id(client_id);
             
-            // Handle disconnection through disconnection handler
             if (disconnection_handler_ && session)
             {
                 disconnection_handler_->handle_disconnection(session, DisconnectReason::NetworkError);
             }
             
-            // Update stats
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 stats_.current_connections = session_manager_->online_session_count();
             }
             
-            // Trigger callbacks
             for (const auto& callback : client_disconnected_callbacks_)
             {
                 callback(client_id);
             }
             
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "Client disconnected: " + client_id);
+            Logger::handle().write(LogTypes::Information, fmt::format("Client disconnected: {}", client_id));
         }
         catch (const std::exception& e)
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-                "Error handling disconnection: " + std::string(e.what()));
+            Logger::handle().write(LogTypes::Error, fmt::format("Error handling disconnection: {}", e.what()));
         }
     }
     
@@ -717,13 +679,9 @@ namespace GameNetwork
         if (system_monitor_)
         {
             system_monitor_->start_recording(std::chrono::seconds(5));
-            
-            // Log monitoring started
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "System monitoring started");
+
+            Logger::handle().write(LogTypes::Information, fmt::format("System monitoring started"));
         }
-        
-        // Periodic maintenance is handled separately
     }
     
     auto GameNetworkServer::stop_monitoring() -> void
@@ -737,9 +695,7 @@ namespace GameNetwork
         {
             system_monitor_->stop_recording();
             
-            // Log monitoring stopped
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "System monitoring stopped");
+            Logger::handle().write(LogTypes::Information, fmt::format("System monitoring stopped"));
         }
     }
     
@@ -752,37 +708,29 @@ namespace GameNetwork
         
         try
         {
-            // Perform session cleanup
             if (session_manager_)
             {
                 session_manager_->perform_maintenance();
                 
-                // Log cleanup results separately
                 auto active_count = session_manager_->active_session_count();
-                Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                    "Active sessions: " + std::to_string(active_count));
+                Logger::handle().write(LogTypes::Information, fmt::format("Active sessions: {}", active_count));
             }
             
-            // Check system resources
             if (system_monitor_)
             {
                 auto metrics = system_monitor_->get_current_metrics();
                 
-                // Log warnings if resources are high
                 if (metrics.cpu_usage_percent > 80.0f)
                 {
-                    Utilities::Logger::handle().write(Utilities::LogTypes::Warning,
-                        "High CPU usage: " + std::to_string(metrics.cpu_usage_percent) + "%");
+                    Logger::handle().write(LogTypes::Error, fmt::format("High CPU usage: {}%", metrics.cpu_usage_percent));
                 }
                 
                 if (metrics.memory_usage_percent > 80.0f)
                 {
-                    Utilities::Logger::handle().write(Utilities::LogTypes::Warning,
-                        "High memory usage: " + std::to_string(metrics.memory_usage_percent) + "%");
+                    Logger::handle().write(LogTypes::Error, fmt::format("High memory usage: {}%", metrics.memory_usage_percent));
                 }
             }
             
-            // Log server status periodically
             static auto last_status_log = std::chrono::steady_clock::now();
             auto now = std::chrono::steady_clock::now();
             if (std::chrono::duration_cast<std::chrono::minutes>(now - last_status_log).count() >= 5)
@@ -793,8 +741,7 @@ namespace GameNetwork
         }
         catch (const std::exception& e)
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-                "Server maintenance error: " + std::string(e.what()));
+            Logger::handle().write(LogTypes::Error, fmt::format("Server maintenance error: {}", e.what()));
         }
     }
     

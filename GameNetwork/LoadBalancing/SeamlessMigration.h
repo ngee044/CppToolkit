@@ -75,13 +75,10 @@ namespace GameNetwork
                             const std::string& target_server)
             -> std::tuple<bool, std::optional<std::string>>;
         
-        auto migrate_sessions_batch(const std::vector<std::string>& session_ids,
-                                   const std::string& target_server)
+        auto migrate_sessions_batch(const std::vector<std::string>& session_ids, const std::string& target_server)
             -> std::tuple<bool, std::optional<std::string>>;
         
-        auto migrate_server_load(const std::string& source_server,
-                                const std::string& target_server,
-                                float percentage = 50.0f)
+        auto migrate_server_load(const std::string& source_server, const std::string& target_server, float percentage = 50.0f)
             -> std::tuple<bool, std::optional<std::string>>;
         
         // Migration control
@@ -93,8 +90,7 @@ namespace GameNetwork
         auto capture_session_state(const std::string& session_id) 
             -> std::tuple<bool, std::optional<std::string>, std::vector<uint8_t>>;
         
-        auto restore_session_state(const std::string& session_id,
-                                  const std::vector<uint8_t>& state_data)
+        auto restore_session_state(const std::string& session_id, const std::vector<uint8_t>& state_data)
             -> std::tuple<bool, std::optional<std::string>>;
         
         // Progress tracking

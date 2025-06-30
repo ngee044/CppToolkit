@@ -29,12 +29,10 @@ namespace GameNetwork
     {
         BinaryBuffer buffer;
         
-        // Write header
         buffer.write_uint8(static_cast<uint8_t>(serialization_type_));
         buffer.write_uint16(static_cast<uint16_t>(get_type()));
         buffer.write_uint64(timestamp_.count());
         
-        // Write packet-specific data
         write_to_buffer(buffer);
         
         return buffer.get_data();
@@ -46,7 +44,6 @@ namespace GameNetwork
         buffer.write_bytes(data.data(), data.size());
         buffer.reset_read_position();
         
-        // Read header
         auto [type_success, type_value] = buffer.read_uint8();
         auto [packet_type_success, packet_type_value] = buffer.read_uint16();
         auto [timestamp_success, timestamp_value] = buffer.read_uint64();
@@ -61,7 +58,6 @@ namespace GameNetwork
         set_type(static_cast<PacketType>(packet_type_value));
         timestamp_ = std::chrono::microseconds(timestamp_value);
         
-        // Read packet-specific data
         return read_from_buffer(buffer);
     }
     

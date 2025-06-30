@@ -64,27 +64,27 @@ namespace GameNetwork
         
         // Event broadcasting
         auto broadcast_global(const std::string& event_name,
-                              std::unique_ptr<GamePacket> packet,
-                              EventPriority priority = EventPriority::Normal) 
+                                std::unique_ptr<GamePacket> packet,
+                                EventPriority priority = EventPriority::Normal)
             -> std::tuple<bool, std::optional<std::string>>;
         
         auto broadcast_to_channel(const std::string& event_name,
-                                  uint32_t channel_id,
-                                  std::unique_ptr<GamePacket> packet,
-                                  EventPriority priority = EventPriority::Normal) 
+                                    uint32_t channel_id,
+                                    std::unique_ptr<GamePacket> packet,
+                                    EventPriority priority = EventPriority::Normal) 
             -> std::tuple<bool, std::optional<std::string>>;
         
         auto broadcast_to_area(const std::string& event_name,
-                               const Location& center,
-                               float radius,
-                               std::unique_ptr<GamePacket> packet,
-                               EventPriority priority = EventPriority::Normal) 
+                                const Location& center,
+                                float radius,
+                                std::unique_ptr<GamePacket> packet,
+                                EventPriority priority = EventPriority::Normal) 
             -> std::tuple<bool, std::optional<std::string>>;
         
         auto broadcast_custom(const std::string& event_name,
-                              std::unique_ptr<GamePacket> packet,
-                              std::function<bool(std::shared_ptr<GameSession>)> filter,
-                              EventPriority priority = EventPriority::Normal) 
+                                std::unique_ptr<GamePacket> packet,
+                                std::function<bool(std::shared_ptr<GameSession>)> filter,
+                                EventPriority priority = EventPriority::Normal) 
             -> std::tuple<bool, std::optional<std::string>>;
         
         // Batch broadcasting
@@ -94,12 +94,9 @@ namespace GameNetwork
         auto cancel_batch() -> void;
         
         // Event subscription (for filtering)
-        auto subscribe_to_event(const std::string& event_name,
-                                std::shared_ptr<GameSession> session) -> void;
-        auto unsubscribe_from_event(const std::string& event_name,
-                                    std::shared_ptr<GameSession> session) -> void;
-        auto is_subscribed(const std::string& event_name,
-                           std::shared_ptr<GameSession> session) const -> bool;
+        auto subscribe_to_event(const std::string& event_name, std::shared_ptr<GameSession> session) -> void;
+        auto unsubscribe_from_event(const std::string& event_name, std::shared_ptr<GameSession> session) -> void;
+        auto is_subscribed(const std::string& event_name, std::shared_ptr<GameSession> session) const -> bool;
         
         // Processing
         auto start_processing() -> void;

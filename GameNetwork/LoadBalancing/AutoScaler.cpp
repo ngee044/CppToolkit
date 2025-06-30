@@ -2,9 +2,16 @@
 #include "ServerMonitor.h"
 #include "LoadBalancer.h"
 #include "SeamlessMigration.h"
+
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <algorithm>
 #include <numeric>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -22,10 +29,8 @@ namespace GameNetwork
     {
         std::lock_guard<std::mutex> lock(mutex_);
         policy_ = policy;
-        
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "AutoScaler configured with min=" + std::to_string(policy.min_instances) +
-            ", max=" + std::to_string(policy.max_instances));
+
+        Logger::handle().write(LogTypes::Information, fmt::format("AutoScaler configured with min={} , max={}", policy.min_instances, policy.max_instances));
     }
 
     auto AutoScaler::set_server_monitor(std::shared_ptr<ServerMonitor> monitor) -> void
@@ -67,8 +72,7 @@ namespace GameNetwork
         // Check if we should scale up
         if (should_scale_up(metrics))
         {
-            uint32_t target_instances = static_cast<uint32_t>(
-                std::ceil(current_instance_count_ * policy_.scale_up_factor));
+            uint32_t target_instances = static_cast<uint32_t>(std::ceil(current_instance_count_ * policy_.scale_up_factor));
             target_instances = std::min(target_instances, policy_.max_instances);
             
             if (target_instances > current_instance_count_)
@@ -81,8 +85,7 @@ namespace GameNetwork
         // Check if we should scale down
         if (should_scale_down(metrics))
         {
-            uint32_t target_instances = static_cast<uint32_t>(
-                std::floor(current_instance_count_ * policy_.scale_down_factor));
+            uint32_t target_instances = static_cast<uint32_t>(std::floor(current_instance_count_ * policy_.scale_down_factor));
             target_instances = std::max(target_instances, policy_.min_instances);
             
             if (target_instances < current_instance_count_)
@@ -122,9 +125,7 @@ namespace GameNetwork
             scaling_callback_(old_count, current_instance_count_);
         }
 
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Scaled up from " + std::to_string(old_count) + " to " + 
-            std::to_string(current_instance_count_) + " instances");
+        Logger::handle().write(LogTypes::Information, fmt::format("Scaled up from {} to {} instances", old_count, current_instance_count_));
         
         // Actually provision new instances through cloud provider API
         // In a real implementation, this would:
@@ -158,8 +159,7 @@ namespace GameNetwork
                 }
             }
             
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "Provisioning completed for " + std::to_string(additional_instances) + " instances");
+            Logger::handle().write(LogTypes::Information, fmt::format("Provisioned {} new instances", additional_instances));
         });
         provision_thread.detach();
         
@@ -193,10 +193,8 @@ namespace GameNetwork
             scaling_callback_(old_count, current_instance_count_);
         }
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Scaled down from " + std::to_string(old_count) + " to " + 
-            std::to_string(current_instance_count_) + " instances");
-        
+        Logger::handle().write(LogTypes::Information, fmt::format("Scaled down from {} to {} instances", old_count, current_instance_count_));
+
         // Actually deprovision instances through cloud provider API
         // In a real implementation, this would:
         // 1. Select instances to remove (least loaded first)
@@ -209,38 +207,31 @@ namespace GameNetwork
             auto lb = load_balancer_.lock();
             if (lb)
             {
-                // Get list of servers sorted by load (ascending)
                 auto servers = lb->get_server_list();
                 std::sort(servers.begin(), servers.end(), 
                     [](const auto& a, const auto& b) {
                         return a.current_load < b.current_load;
                     });
                 
-                // Remove least loaded servers
                 size_t removed = 0;
                 for (const auto& server : servers)
                 {
                     if (removed >= instances_to_remove) break;
                     
-                    // Migrate sessions before removal
                     auto migration = seamless_migration_.lock();
                     if (migration)
                     {
-                        // Migrate all sessions from this server
                         migration->migrate_server_load(server.server_id, "auto_balanced_target", 100);
                     }
                     
-                    // Wait for migrations to complete
                     std::this_thread::sleep_for(std::chrono::seconds(10));
                     
-                    // Unregister from load balancer
                     lb->unregister_server(server.server_id);
                     removed++;
                 }
             }
             
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "Deprovisioning completed for " + std::to_string(instances_to_remove) + " instances");
+            Logger::handle().write(LogTypes::Information, fmt::format("Deprovisioned {} instances", instances_to_remove));
         });
         deprovision_thread.detach();
         
@@ -251,8 +242,7 @@ namespace GameNetwork
     {
         auto_scaling_enabled_ = enable;
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            std::string("Auto-scaling ") + (enable ? "enabled" : "disabled"));
+        Logger::handle().write(LogTypes::Information, fmt::format("Auto-scaling {}", enable ? "enabled" : "disabled"));
     }
 
     auto AutoScaler::force_scale_to_instances(uint32_t target_instances) 

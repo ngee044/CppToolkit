@@ -1,15 +1,19 @@
 #include "GameSessionManagerSecurity.h"
 #include "GameSessionManager.h"
-#include "../Security/SessionSecurityManager.h"
-#include "../../Utilities/Logger.h"
-#include "../../Utilities/Generator.h"
+#include "SessionSecurityManager.h"
+
+#include <Logger.h>
+#include <Generator.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 
 using namespace Utilities;
 
 namespace GameNetwork
 {
     auto GameSessionManager::initialize_with_security(std::shared_ptr<Thread::ThreadPool> thread_pool,
-                                                     const Security::SessionSecurityPolicy& security_policy) 
+                                                        const Security::SessionSecurityPolicy& security_policy) 
         -> std::tuple<bool, std::optional<std::string>>
     {
         // First perform basic initialization
@@ -35,7 +39,7 @@ namespace GameNetwork
         catch (const std::exception& e)
         {
             shutdown();
-            return {false, std::string("Failed to initialize security: ") + e.what()};
+            return {false, fmt::format("Failed to initialize security: {}", e.what())};
         }
     }
 
@@ -75,7 +79,7 @@ namespace GameNetwork
                             session->set_kicked_by_duplicate_login(true);
                             terminate_session(session_id);
                             Logger::handle().write(LogTypes::Information, 
-                                "Kicked previous session for duplicate login: " + session_id);
+                                fmt::format("Kicked previous session for duplicate login: {}", session_id));
                         }
                     }
                 }
@@ -94,7 +98,7 @@ namespace GameNetwork
             if (token.empty())
             {
                 terminate_session(session->session_id());
-                return {false, "Failed to generate security token: " + token_error.value_or("Unknown error")};
+                return {false, fmt::format("Failed to generate security token: {}", token_error.value_or("Unknown error"))};
             }
             
             // Register active session
@@ -122,9 +126,9 @@ namespace GameNetwork
             
             // Notify callbacks
             notify_session_connected(session);
-            
-            Logger::handle().write(LogTypes::Information, 
-                "Secure connection established for account: " + account_id);
+
+            Logger::handle().write(LogTypes::Information,
+                fmt::format("Secure connection established for account: {}", account_id));
             return {true, std::nullopt};
         }
         catch (const std::exception& e)
@@ -134,9 +138,9 @@ namespace GameNetwork
     }
 
     auto GameSessionManager::validate_session_token(const std::string& session_id,
-                                                   const std::string& token,
-                                                   const std::string& client_ip,
-                                                   const std::string& device_id) 
+                                                    const std::string& token,
+                                                    const std::string& client_ip,
+                                                    const std::string& device_id) 
         -> std::tuple<bool, std::optional<std::string>>
     {
         if (!security_manager_)
@@ -148,7 +152,7 @@ namespace GameNetwork
     }
 
     auto GameSessionManager::refresh_session_token(const std::string& session_id,
-                                                  const std::string& old_token) 
+                                                    const std::string& old_token) 
         -> std::tuple<std::string, std::optional<std::string>>
     {
         if (!security_manager_)
@@ -197,7 +201,6 @@ namespace GameNetwork
     {
         if (!security_manager_)
         {
-            // Fallback to basic session lookup
             std::lock_guard<std::mutex> lock(mutex_);
             auto it = sessions_by_account_.find(account_id);
             if (it != sessions_by_account_.end())

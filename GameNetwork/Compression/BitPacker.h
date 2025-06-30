@@ -1,6 +1,7 @@
 #pragma once
 
-#include <GameNetworkConstants.h>
+#include "GameNetworkConstants.h"
+
 #include <cstdint>
 #include <vector>
 #include <glm/glm.hpp>

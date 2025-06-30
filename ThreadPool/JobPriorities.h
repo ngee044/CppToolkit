@@ -15,9 +15,6 @@ namespace Thread
 		LongTerm,
 	};
 	
-	// Alias for compatibility
-	using ThreadPriority = JobPriorities;
-
 	auto priority_string(const JobPriorities& priority) -> const std::string;
 	auto priority_string(const std::vector<JobPriorities>& priorities) -> const std::string;
 }

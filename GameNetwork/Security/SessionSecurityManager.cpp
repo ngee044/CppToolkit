@@ -1,6 +1,11 @@
 #include "SessionSecurityManager.h"
-#include "../../Utilities/Logger.h"
-#include "../../Utilities/Generator.h"
+
+#include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
+#include <Generator.h>
 
 using namespace Utilities;
 
@@ -259,7 +264,7 @@ namespace GameNetwork::Security
         }
         catch (const std::exception& e)
         {
-            return {"", std::string("Failed to refresh token: ") + e.what()};
+            return {"", fmt::format("Failed to refresh token: {}", e.what())};
         }
     }
 
@@ -302,8 +307,8 @@ namespace GameNetwork::Security
         {
             it->second.is_locked = true;
             it->second.lock_reason = reason;
-            
-            Logger::handle().write(LogTypes::Warning, "Session locked: " + session_id + " - " + reason);
+
+            Logger::handle().write(LogTypes::Error, fmt::format("Session locked: {} - {}", session_id, reason));
         }
     }
 
@@ -317,8 +322,8 @@ namespace GameNetwork::Security
             it->second.is_locked = false;
             it->second.lock_reason.clear();
             it->second.failed_attempts = 0;
-            
-            Logger::handle().write(LogTypes::Information, "Session unlocked: " + session_id);
+
+            Logger::handle().write(LogTypes::Information, fmt::format("Session unlocked: {}", session_id));
         }
     }
 
@@ -331,8 +336,8 @@ namespace GameNetwork::Security
     {
         std::lock_guard<std::mutex> lock(mutex_);
         policy_ = policy;
-        
-        Logger::handle().write(LogTypes::Information, "Security policy updated");
+
+        Logger::handle().write(LogTypes::Information, fmt::format("Security policy updated"));
     }
 
     auto SessionSecurityManager::generate_token() -> std::string
@@ -374,7 +379,7 @@ namespace GameNetwork::Security
         for (const auto& session_id : expired_sessions)
         {
             unregister_session(session_id);
-            Logger::handle().write(LogTypes::Information, "Cleaned up expired session: " + session_id);
+            Logger::handle().write(LogTypes::Information, fmt::format("Cleaned up expired session: {}", session_id));
         }
     }
 

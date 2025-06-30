@@ -75,27 +75,18 @@ namespace GameNetwork
             -> std::optional<ServerInfo>;
         
         // Message sending
-        auto send_message(const std::string& target_server_id,
-                          const std::string& message_type,
-                          const std::vector<uint8_t>& payload,
-                          bool requires_response = false) 
+        auto send_message(const std::string& target_server_id, const std::string& message_type, const std::vector<uint8_t>& payload, bool requires_response = false) 
             -> std::tuple<bool, std::optional<std::string>>;
         
-        auto send_broadcast(ServerType target_type,
-                            const std::string& message_type,
-                            const std::vector<uint8_t>& payload) 
+        auto send_broadcast(ServerType target_type, const std::string& message_type, const std::vector<uint8_t>& payload) 
             -> std::tuple<bool, std::optional<std::string>>;
         
-        auto send_request(const std::string& target_server_id,
-                          const std::string& message_type,
-                          const std::vector<uint8_t>& payload,
-                          std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) 
+        auto send_request(const std::string& target_server_id, const std::string& message_type, const std::vector<uint8_t>& payload, std::chrono::milliseconds timeout = std::chrono::milliseconds(5000)) 
             -> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>;
         
         // Message handling
         using MessageHandler = std::function<std::vector<uint8_t>(const InterServerMessage&)>;
-        auto register_message_handler(const std::string& message_type,
-                                      MessageHandler handler) -> void;
+        auto register_message_handler(const std::string& message_type, MessageHandler handler) -> void;
         auto unregister_message_handler(const std::string& message_type) -> void;
         
         // Load balancing
@@ -104,13 +95,10 @@ namespace GameNetwork
         auto set_max_capacity(uint32_t max_capacity) -> void;
         
         // Session migration
-        auto migrate_session(const std::string& session_id,
-                             const std::string& target_server_id,
-                             const std::vector<uint8_t>& session_data) 
+        auto migrate_session(const std::string& session_id, const std::string& target_server_id, const std::vector<uint8_t>& session_data) 
             -> std::tuple<bool, std::optional<std::string>>;
         
-        auto accept_session_migration(const std::string& session_id,
-                                      const std::vector<uint8_t>& session_data) 
+        auto accept_session_migration(const std::string& session_id, const std::vector<uint8_t>& session_data) 
             -> std::tuple<bool, std::optional<std::string>>;
         
         // Heartbeat & monitoring
@@ -157,7 +145,6 @@ namespace GameNetwork
             std::chrono::steady_clock::time_point timeout_time;
         };
 
-        // Private methods
         auto handle_incoming_message(const std::string& source_server_id, const std::string& message, const std::vector<uint8_t>& data) -> void;
         auto get_or_create_connection(const std::string& target_server_id) -> std::shared_ptr<Network::NetworkClient>;
         auto establish_connection(const ServerInfo& server_info) -> bool;
@@ -167,7 +154,6 @@ namespace GameNetwork
         auto handle_response(uint32_t correlation_id, const std::vector<uint8_t>& payload) -> void;
         auto send_response(const std::string& target_server_id, uint32_t correlation_id, const std::vector<uint8_t>& payload) -> void;
 
-        // Member variables
         mutable std::mutex mutex_;
         std::string server_id_;
         ServerType server_type_;
@@ -184,22 +170,18 @@ namespace GameNetwork
         
         std::atomic<bool> is_running_;
         
-        // Message handling
         std::unordered_map<std::string, MessageHandler> message_handlers_;
         std::unordered_map<uint32_t, PendingRequest> pending_requests_;
         std::atomic<uint32_t> next_correlation_id_;
         
-        // Heartbeat
         std::atomic<bool> heartbeat_enabled_;
         std::chrono::seconds heartbeat_interval_;
         std::future<void> heartbeat_thread_;
         
-        // Callbacks
         std::vector<ServerEventCallback> on_server_connected_callbacks_;
         std::vector<ServerEventCallback> on_server_disconnected_callbacks_;
         std::vector<ServerEventCallback> on_server_load_changed_callbacks_;
         
-        // Stats
         InterServerStats stats_;
     };
 }

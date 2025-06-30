@@ -63,8 +63,7 @@ namespace GameNetwork
                                 DisconnectReason reason) -> void;
         
         // 재접속 처리
-        auto handle_reconnection(const std::string& session_id, 
-                               std::shared_ptr<GameConnection> connection) 
+        auto handle_reconnection(const std::string& session_id, std::shared_ptr<GameConnection> connection) 
             -> std::tuple<bool, std::optional<std::string>>;
         
         // 재접속 가능 확인
@@ -95,8 +94,7 @@ namespace GameNetwork
     private:
         auto cleanup_thread() -> void;
         auto save_session_state(std::shared_ptr<GameSession> session) -> DisconnectionInfo;
-        auto restore_session_state(std::shared_ptr<GameSession> session, 
-                                 const DisconnectionInfo& info) -> void;
+        auto restore_session_state(std::shared_ptr<GameSession> session, const DisconnectionInfo& info) -> void;
         
     private:
         std::weak_ptr<GameSessionManager> session_manager_;

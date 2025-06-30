@@ -1,16 +1,23 @@
 #include "SeamlessMigration.h"
-#include "../Session/GameSession.h"
-#include "../Session/GameSessionManager.h"
-#include "../Serialization/BinarySerializer.h"
-#include "../Core/ServerRegistry.h"  // ServerRegistry
-#include "../Packet/GamePacket.h"
 #include "LoadBalancer.h"
+
+#include <GameSession.h>
+#include <GameSessionManager.h>
+#include <BinarySerializer.h>
+#include <ServerRegistry.h>
+#include <GamePacket.h>
+
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
+#include <boost/json.hpp>
+#include <boost/system/error_code.hpp>
+
 #include <algorithm>
 #include <thread>
 #include <future>
-#include <boost/json.hpp>
-#include <boost/system/error_code.hpp>
 
 using namespace Utilities;
 using LogTypes = Utilities::LogTypes;
@@ -44,14 +51,10 @@ namespace GameNetwork
         std::lock_guard<std::mutex> lock(mutex_);
         config_ = config;
         
-        Logger::handle().write(LogTypes::Information,
-            "SeamlessMigration configured with max concurrent: " + 
-            std::to_string(config.max_concurrent_migrations));
+        Logger::handle().write(LogTypes::Information, fmt::format("SeamlessMigration configured with max concurrent : {}", config.max_concurrent_migrations));
     }
 
-    auto SeamlessMigration::migrate_session(const std::string& session_id,
-                                           const std::string& target_server)
-        -> std::tuple<bool, std::optional<std::string>>
+    auto SeamlessMigration::migrate_session(const std::string& session_id, const std::string& target_server) -> std::tuple<bool, std::optional<std::string>>
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
@@ -118,8 +121,7 @@ namespace GameNetwork
         return { true, task.task_id };
     }
 
-    auto SeamlessMigration::migrate_sessions_batch(const std::vector<std::string>& session_ids,
-                                                  const std::string& target_server)
+    auto SeamlessMigration::migrate_sessions_batch(const std::vector<std::string>& session_ids, const std::string& target_server)
         -> std::tuple<bool, std::optional<std::string>>
     {
         std::vector<std::string> task_ids;
@@ -138,12 +140,10 @@ namespace GameNetwork
             return { false, "No migrations started" };
         }
         
-        return { true, "Started " + std::to_string(task_ids.size()) + " migrations" };
+        return { true, fmt::format("Started {} migrations: {}", task_ids.size(), fmt::join(task_ids, ", ")) };
     }
 
-    auto SeamlessMigration::migrate_server_load(const std::string& source_server,
-                                               const std::string& target_server,
-                                               float percentage)
+    auto SeamlessMigration::migrate_server_load(const std::string& source_server, const std::string& target_server, float percentage)
         -> std::tuple<bool, std::optional<std::string>>
     {
         if (percentage <= 0.0f || percentage > 100.0f)
@@ -177,7 +177,7 @@ namespace GameNetwork
         }
         
         if (total_sessions == 0) {
-            Logger::handle().write(LogTypes::Warning, 
+            Logger::handle().write(LogTypes::Error, 
                 "No sessions found on source server: " + source_server);
             return { true, std::nullopt }; // No sessions to migrate
         }
@@ -187,11 +187,10 @@ namespace GameNetwork
         if (sessions_to_move == 0 && percentage > 0) {
             sessions_to_move = 1; // Migrate at least one session if percentage > 0
         }
-        
-        Logger::handle().write(LogTypes::Information, 
-            "Planning to migrate " + std::to_string(sessions_to_move) + 
-            " out of " + std::to_string(total_sessions) + " sessions from " + source_server);
-        
+
+        Logger::handle().write(LogTypes::Information,
+            fmt::format("Planning to migrate {} sessions out of {} from {}", sessions_to_move, total_sessions, source_server));
+
         // Select sessions to migrate using least-recently-active strategy
         std::vector<std::pair<std::string, std::chrono::steady_clock::time_point>> session_activity;
         for (const auto& session_id : source_server_sessions) {
@@ -224,14 +223,11 @@ namespace GameNetwork
             if (!success)
             {
                 Logger::handle().write(LogTypes::Error,
-                    "Failed to migrate session " + session_id + ": " + 
-                    (error ? *error : "Unknown error"));
+                    fmt::format("Failed to migrate session {}: {}", session_id, error ? *error : "Unknown error"));
             }
         }
         
-        Logger::handle().write(LogTypes::Information,
-            "Migrating " + std::to_string(percentage) + "% load from " + 
-            source_server + " to " + target_server);
+        Logger::handle().write(LogTypes::Information, fmt::format("Migrating {}% load from {} to {}", percentage, source_server, target_server));
         
         return { true, "Load migration initiated" };
     }
@@ -252,9 +248,8 @@ namespace GameNetwork
         {
             it->second.phase = MigrationPhase::Paused;
             it->second.last_update = std::chrono::steady_clock::now();
-            
-            Logger::handle().write(LogTypes::Information,
-                "Migration task paused: " + task_id);
+
+            Logger::handle().write(LogTypes::Information, fmt::format("Migration task paused: {}", task_id));
         }
         else
         {
@@ -290,9 +285,8 @@ namespace GameNetwork
                 }
             });
             resume_thread.detach();
-            
-            Logger::handle().write(LogTypes::Information,
-                "Migration task resumed: " + task_id);
+
+            Logger::handle().write(LogTypes::Information, fmt::format("Migration task resumed: {}", task_id));
         }
         else
         {
@@ -341,7 +335,7 @@ namespace GameNetwork
             
             auto session = session_manager->get_session(session_id);
             if (!session) {
-                return { false, "Session not found: " + session_id, {} };
+                return { false, fmt::format("Session not found: {}", session_id), {} };
             }
             
             // Create JSON object with session state
@@ -385,20 +379,18 @@ namespace GameNetwork
             // Serialize to string then to bytes
             std::string json_str = boost::json::serialize(session_state);
             std::vector<uint8_t> state_data(json_str.begin(), json_str.end());
-            
-            Logger::handle().write(LogTypes::Information,
-                "Captured state for session " + session_id + " (" + 
-                std::to_string(state_data.size()) + " bytes)");
-            
+
+            Logger::handle().write(LogTypes::Information, fmt::format(
+                "Captured state for session {} ({} bytes)", session_id, state_data.size()));
+
             return { true, std::nullopt, state_data };
         }
         catch (const std::exception& e) {
-            return { false, "Exception during state capture: " + std::string(e.what()), {} };
+            return { false, fmt::format("Exception during state capture: {}", e.what()), {} };
         }
     }
 
-    auto SeamlessMigration::restore_session_state(const std::string& session_id,
-                                                  const std::vector<uint8_t>& state_data)
+    auto SeamlessMigration::restore_session_state(const std::string& session_id, const std::vector<uint8_t>& state_data)
         -> std::tuple<bool, std::optional<std::string>>
     {
         try {
@@ -414,23 +406,24 @@ namespace GameNetwork
             auto& state_obj = session_state.as_object();
             
             auto session_manager = GameSessionManager::get_instance();
-            if (!session_manager) {
+            if (!session_manager) 
+            {
                 return { false, "Session manager not available" };
             }
             
             // Get or create session
             auto session = session_manager->get_session(session_id);
             bool is_new_session = !session;
-            
-            if (is_new_session) {
-                // Create new session with restored account_id
+
+            if (is_new_session) 
+            {
                 std::string account_id = state_obj.contains("account_id") ? 
                     state_obj["account_id"].as_string().c_str() : "";
                 
                 auto [new_session, error] = session_manager->create_session(account_id);
-                if (!new_session) {
-                    return { false, "Failed to create session during restoration: " + 
-                            (error ? error.value() : "Unknown error") };
+                if (!new_session) 
+                {
+                    return { false, fmt::format("Failed to create session during restoration: {}", error.value_or("unknown error")) };
                 }
                 session = new_session;
             }
@@ -488,15 +481,14 @@ namespace GameNetwork
                     session->set_player_location(location);
                 }
             }
-            
-            Logger::handle().write(LogTypes::Information,
-                "Restored state for session " + session_id + 
-                (is_new_session ? " (created new)" : " (updated existing)"));
-            
+
+            Logger::handle().write(LogTypes::Information, fmt::format("Restored state for session {} ({} session)", 
+                session_id, is_new_session ? "created new" : "updated existing"));
+
             return { true, std::nullopt };
         }
         catch (const std::exception& e) {
-            return { false, "Exception during state restoration: " + std::string(e.what()) };
+            return { false, fmt::format("Exception during state restoration: {}", e.what()) };
         }
     }
 
@@ -634,10 +626,9 @@ namespace GameNetwork
         {
             completed_callback_(task);
         }
-        
-        Logger::handle().write(LogTypes::Information,
-            "Migration " + task.task_id + " completed in " + 
-            std::to_string(duration_ms.count()) + "ms");
+
+        Logger::handle().write(LogTypes::Information, fmt::format(
+            "Migration {} completed in {}ms", task.task_id, duration_ms.count()));
     }
 
     auto SeamlessMigration::update_task_phase(MigrationTask& task, MigrationPhase phase) -> void
@@ -726,7 +717,7 @@ namespace GameNetwork
             std::string confirmation_error;
             
             Logger::handle().write(LogTypes::Information,
-                "Waiting for migration confirmation from target server: " + task.target_server);
+                fmt::format("Waiting for migration confirmation from target server: {}", task.target_server));
             
             while (std::chrono::steady_clock::now() - start_time < timeout && !migration_confirmed)
             {
@@ -767,8 +758,8 @@ namespace GameNetwork
                             }
                         }
                     } catch (const std::exception& e) {
-                        Logger::handle().write(LogTypes::Warning,
-                            "Failed to parse migration status response: " + std::string(e.what()));
+                        Logger::handle().write(LogTypes::Error,
+                            fmt::format("Failed to parse migration status response: {}", e.what()));
                     }
                 }
                 
@@ -778,20 +769,20 @@ namespace GameNetwork
             
             if (!migration_confirmed) {
                 if (!confirmation_error.empty()) {
-                    return { false, std::string("Migration failed: " + confirmation_error) };
+                    return { false, fmt::format("Migration failed: {}", confirmation_error) };
                 } else {
-                    return { false, std::string("Migration confirmation timeout") };
+                    return { false, "Migration confirmation timeout" };
                 }
             }
             
             Logger::handle().write(LogTypes::Information,
-                "State transferred for session: " + task.session_id);
+                fmt::format("State transferred for session: {}", task.session_id));
             
             return { true, std::nullopt };
         }
         catch (const std::exception& e)
         {
-            return { false, std::string("Exception during state transfer: ") + e.what() };
+            return { false, fmt::format("Exception during state transfer: {}", e.what()) };
         }
     }
 
@@ -841,13 +832,12 @@ namespace GameNetwork
             cleanup_thread.detach();
             
             Logger::handle().write(LogTypes::Information,
-                "Connection handover completed for session: " + task.session_id);
-            
+                fmt::format("Connection handover completed for session: {}", task.session_id));
             return { true, std::nullopt };
         }
         catch (const std::exception& e)
         {
-            return { false, std::string("Exception during handover: ") + e.what() };
+            return { false, fmt::format("Exception during handover: {}", e.what()) };
         }
     }
 
@@ -873,7 +863,7 @@ namespace GameNetwork
             
             if (!send_success)
             {
-                return { false, "Failed to verify migration: " + send_error };
+                return { false, fmt::format("Failed to verify migration: {}", send_error) };
             }
             
             // 2. Parse response
@@ -895,12 +885,11 @@ namespace GameNetwork
                 
                 if (!session_active)
                 {
-                    return { false, "Session not active on target server" };
+                    return { false, fmt::format("Session not active on target server: {}", task.target_server) };
                 }
                 
                 // 4. Check state integrity
-                bool state_valid = response_obj.contains("state_valid") && 
-                                 response_obj["state_valid"].as_bool();
+                bool state_valid = response_obj.contains("state_valid") && response_obj["state_valid"].as_bool();
                 
                 if (!state_valid)
                 {
@@ -908,8 +897,7 @@ namespace GameNetwork
                 }
                 
                 // 5. Check client connectivity
-                bool client_connected = response_obj.contains("client_connected") && 
-                                      response_obj["client_connected"].as_bool();
+                bool client_connected = response_obj.contains("client_connected") && response_obj["client_connected"].as_bool();
                 
                 if (!client_connected)
                 {
@@ -918,26 +906,27 @@ namespace GameNetwork
                 }
                 
                 Logger::handle().write(LogTypes::Information,
-                    "Migration verified for session: " + task.session_id);
+                    fmt::format("Migration verified for session: {}", task.session_id));
                 
                 return { true, std::nullopt };
             }
             catch (const std::exception& e)
             {
-                return { false, std::string("Failed to parse verification response: ") + e.what() };
+                return { false, fmt::format("Failed to parse verification response: {}", e.what()) };
             }
         }
         catch (const std::exception& e)
         {
-            return { false, std::string("Exception during verification: ") + e.what() };
+            return { false, fmt::format("Exception during verification: {}", e.what()) };
         }
     }
 
     auto SeamlessMigration::initiate_migration(const std::string& session_id, const std::string& target_server) -> std::tuple<bool, std::string>
     {
-        try {
+        try 
+        {
             // Create migration task
-            std::string task_id = "migration_" + std::to_string(++task_counter_) + "_" + session_id;
+            std::string task_id = fmt::format("migration_{}_{}", ++task_counter_, session_id);
             
             MigrationTask task;
             task.task_id = task_id;
@@ -953,17 +942,20 @@ namespace GameNetwork
             active_tasks_[task_id] = task;
             
             // Start migration execution
-            std::thread([this, task_id]() {
+            std::thread([this, task_id]() 
+            {
                 auto it = active_tasks_.find(task_id);
-                if (it != active_tasks_.end()) {
+                if (it != active_tasks_.end()) 
+                {
                     execute_migration(it->second);
                 }
             }).detach();
             
             return std::make_tuple(true, task_id);
         }
-        catch (const std::exception& e) {
-            return std::make_tuple(false, "Failed to initiate migration: " + std::string(e.what()));
+        catch (const std::exception& e) 
+        {
+            return std::make_tuple(false, fmt::format("Failed to initiate migration: {}", e.what()));
         }
     }
 }

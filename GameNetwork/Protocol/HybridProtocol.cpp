@@ -1,5 +1,9 @@
 #include "HybridProtocol.h"
+
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 
 using namespace Utilities;
 
@@ -156,35 +160,29 @@ namespace GameNetwork
             switch (priority)
             {
                 case PacketPriority::Critical:
-                    // Critical packets always use TCP for guaranteed delivery
                     protocol = ProtocolType::TCP;
                     stats_.tcp_packets++;
                     break;
                     
                 case PacketPriority::High:
-                    // High priority packets use ReliableUDP for lower latency with reliability
                     protocol = ProtocolType::ReliableUDP;
                     stats_.reliable_udp_packets++;
                     break;
                     
                 case PacketPriority::Low:
-                    // Low priority packets use UDP for minimum latency
                     protocol = ProtocolType::UDP;
                     stats_.udp_packets++;
                     break;
                     
                 case PacketPriority::Normal:
                 default:
-                    // Normal packets use ReliableUDP as a balance
                     protocol = ProtocolType::ReliableUDP;
                     stats_.reliable_udp_packets++;
                     break;
             }
             
-            Logger::handle().write(LogTypes::Debug,
-                "Routing packet type " + std::to_string(static_cast<uint16_t>(packet.packet_type)) + 
-                " via " + std::to_string(static_cast<int>(protocol)));
-            
+            Logger::handle().write(LogTypes::Debug, fmt::format("Default routing for packet type {}: {}", static_cast<uint16_t>(packet.packet_type), static_cast<uint8_t>(protocol)));
+
             return protocol;
         }
     }

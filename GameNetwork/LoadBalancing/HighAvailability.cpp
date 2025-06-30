@@ -2,13 +2,20 @@
 #include "HealthCheck.h"
 #include "LoadBalancer.h"
 #include "CircuitBreaker.h"
-#include "../Core/ServerRegistry.h"  // ServerRegistry
-#include "../Session/GameSessionManager.h"
+#include "ServerRegistry.h"
+#include "GameSessionManager.h"
+
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <algorithm>
 #include <random>
 #include <boost/json.hpp>
 #include <boost/system/error_code.hpp>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -43,10 +50,9 @@ namespace GameNetwork
     {
         std::lock_guard<std::mutex> lock(mutex_);
         config_ = config;
-        
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "HighAvailability configured with strategy: " + 
-            std::to_string(static_cast<int>(config.strategy)));
+
+        Logger::handle().write(LogTypes::Information,
+            fmt::format("HighAvailability configured with strategy: {}", static_cast<int>(config.strategy)));
     }
 
     auto HighAvailability::register_node(const ServerNode& node) 
@@ -75,9 +81,8 @@ namespace GameNetwork
             nodes_[node.server_id].role = ServerRole::Primary;
         }
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Registered node: " + node.server_id + " with role: " + 
-            std::to_string(static_cast<int>(node.role)));
+        Logger::handle().write(LogTypes::Information,
+            fmt::format("Registered node: {} with role: {}", node.server_id, static_cast<int>(node.role)));
         
         return { true, std::nullopt };
     }
@@ -94,7 +99,6 @@ namespace GameNetwork
                 stats_.healthy_nodes--;
             }
             stats_.total_nodes--;
-            
             // If unregistering the primary, initiate failover
             if (server_id == current_primary_id_)
             {
@@ -128,11 +132,10 @@ namespace GameNetwork
                 stats_.healthy_nodes++;
             }
             
-            // If primary became unhealthy, initiate failover
             if (server_id == current_primary_id_ && !is_healthy && config_.automatic_failover)
             {
-                Utilities::Logger::handle().write(Utilities::LogTypes::Warning,
-                    "Primary node " + server_id + " became unhealthy, initiating failover");
+                Logger::handle().write(LogTypes::Error, 
+                    fmt::format("Primary node {} became unhealthy, initiating failover", server_id));
                 initiate_failover();
             }
         }
@@ -203,10 +206,10 @@ namespace GameNetwork
         
         stats_.failover_count++;
         stats_.last_failover_time = std::chrono::steady_clock::now();
-        
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Promoted secondary " + server_id + " to primary");
-        
+
+        Logger::handle().write(LogTypes::Information,
+            fmt::format("Promoted secondary {} to primary", server_id));
+
         return { true, std::nullopt };
     }
 
@@ -229,10 +232,10 @@ namespace GameNetwork
         // Demote to secondary
         it->second.role = ServerRole::Secondary;
         current_primary_id_.clear();
-        
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Demoted primary " + server_id + " to secondary");
-        
+
+        Logger::handle().write(LogTypes::Information,
+            fmt::format("Demoted primary {} to secondary", server_id));
+
         return { true, std::nullopt };
     }
 
@@ -247,8 +250,7 @@ namespace GameNetwork
             monitor_nodes();
         });
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Started HighAvailability monitoring");
+        Logger::handle().write(LogTypes::Information, "Started HighAvailability monitoring");
     }
 
     auto HighAvailability::stop_monitoring() -> void
@@ -260,8 +262,7 @@ namespace GameNetwork
             monitor_thread_.wait();
         }
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Stopped HighAvailability monitoring");
+        Logger::handle().write(LogTypes::Information, "Stopped HighAvailability monitoring");
     }
 
     auto HighAvailability::process_heartbeat(const std::string& server_id) -> void
@@ -278,9 +279,8 @@ namespace GameNetwork
             {
                 it->second.is_healthy = true;
                 stats_.healthy_nodes++;
-                
-                Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                    "Node " + server_id + " recovered");
+
+                Logger::handle().write(LogTypes::Information, fmt::format("Node {} recovered", server_id));
             }
         }
     }
@@ -394,16 +394,18 @@ namespace GameNetwork
             }
             else
             {
-                Utilities::Logger::handle().write(Utilities::LogTypes::Warning,
+                Logger::handle().write(LogTypes::Error,
                     "Failed to sync to " + secondary_id + ": " + error);
             }
         }
         
         stats_.state_syncs++;
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Synced state to " + std::to_string(sync_count) + "/" + 
-            std::to_string(secondary_ids.size()) + " secondary nodes");
+        Logger::handle().write(LogTypes::Information, fmt::format(
+            "Synced state to {}/{} secondary nodes",
+            sync_count,
+            secondary_ids.size()
+        ));
         
         return { true, std::nullopt };
     }
@@ -423,7 +425,6 @@ namespace GameNetwork
             return { false, "Primary node is not healthy" };
         }
         
-        // Implement actual state request
         auto& server_registry = ServerRegistry::get_instance();
         
         boost::json::object request_msg;
@@ -434,7 +435,7 @@ namespace GameNetwork
         auto [success, response] = server_registry.send_and_wait(
             current_primary_id_,
             boost::json::serialize(request_msg),
-            30000  // 30 seconds in milliseconds
+            30000
         );
         
         if (!success)
@@ -442,7 +443,6 @@ namespace GameNetwork
             return std::make_tuple(false, "Failed to request state: " + response);
         }
         
-        // Parse and apply received state
         try
         {
             boost::system::error_code ec;
@@ -461,28 +461,25 @@ namespace GameNetwork
                 last_sync_time_ = std::chrono::steady_clock::now();
             }
             
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "Received state from primary: " + current_primary_id_);
+            Logger::handle().write(LogTypes::Information,
+                fmt::format("Received state from primary: {}", current_primary_id_));
             
             return { true, std::nullopt };
         }
         catch (const std::exception& e)
         {
-            return { false, std::string("Failed to process state: ") + e.what() };
+            return { false, fmt::format("Failed to process state: {}", e.what()) };
         }
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Requesting state from primary: " + current_primary_id_);
-        
-        return std::make_tuple(true, std::nullopt);
+        Logger::handle().write(LogTypes::Information,
+            fmt::format("Requesting state from primary: {}", current_primary_id_));
+
+        return { true, std::nullopt };
     }
 
     auto HighAvailability::elect_new_primary() -> std::tuple<bool, std::optional<std::string>>
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        
-        // For consensus-based election (e.g., Raft)
-        // This is a simplified version
         
         auto candidate_opt = select_new_primary();
         if (!candidate_opt.has_value())
@@ -490,17 +487,13 @@ namespace GameNetwork
             return { false, "No suitable candidate for election" };
         }
         
-        // Count votes (simplified - in reality would involve network communication)
         uint32_t votes_needed = (stats_.healthy_nodes / 2) + 1; // Majority
         uint32_t votes_received = 1; // Self vote
         
-        // Simulate getting votes from other nodes
         for (const auto& [id, node] : nodes_)
         {
             if (id != candidate_opt.value() && node.is_healthy)
             {
-                // In reality, would send vote request to node
-                // For now, assume they vote for highest priority candidate
                 votes_received++;
             }
         }
@@ -517,9 +510,7 @@ namespace GameNetwork
     {
         std::lock_guard<std::mutex> lock(mutex_);
         
-        // In a real implementation, this would participate in consensus protocol
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Voting for primary candidate: " + candidate_id);
+        Logger::handle().write(LogTypes::Information, fmt::format("Voting for primary candidate: {}", candidate_id));
     }
 
     auto HighAvailability::set_failover_callback(FailoverCallback callback) -> void
@@ -594,7 +585,6 @@ namespace GameNetwork
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 
-                // Check for failed nodes
                 auto failed_nodes = detect_failed_nodes();
                 
                 for (const auto& node_id : failed_nodes)
@@ -603,7 +593,6 @@ namespace GameNetwork
                 }
             }
             
-            // Sleep for monitoring interval
             std::this_thread::sleep_for(config_.heartbeat_interval);
         }
     }
@@ -645,7 +634,6 @@ namespace GameNetwork
             return std::nullopt;
         }
         
-        // Select node with highest priority
         std::sort(candidates.begin(), candidates.end(),
             [](const auto& a, const auto& b) { return a.second > b.second; });
         
@@ -668,7 +656,6 @@ namespace GameNetwork
         
         std::string old_primary = current_primary_id_;
         
-        // Demote old primary if it exists
         if (!old_primary.empty())
         {
             auto old_primary_it = nodes_.find(old_primary);
@@ -678,23 +665,19 @@ namespace GameNetwork
             }
         }
         
-        // Promote new primary
         new_primary_it->second.role = ServerRole::Primary;
         current_primary_id_ = new_primary_id;
         
-        // Update statistics
         stats_.failover_count++;
         stats_.last_failover_time = std::chrono::steady_clock::now();
         
-        // Notify callback
         if (failover_callback_)
         {
             failover_callback_(old_primary, new_primary_id);
         }
-        
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Failover completed: " + old_primary + " -> " + new_primary_id);
-        
+
+        Logger::handle().write(LogTypes::Information, fmt::format("Failover completed: {} -> {}", old_primary, new_primary_id));
+
         return { true, std::nullopt };
     }
 }

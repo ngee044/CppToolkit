@@ -3,8 +3,14 @@
 #include "GameSessionManager.h"
 #include "../../Samples/Location.h"
 #include <Logger.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <chrono>
 #include <algorithm>
+
+using namespace Utilities;
 
 namespace GameNetwork
 {
@@ -33,8 +39,7 @@ namespace GameNetwork
         config_ = config;
     }
     
-    auto DisconnectionHandler::handle_disconnection(std::shared_ptr<GameSession> session, 
-                                                   DisconnectReason reason) -> void
+    auto DisconnectionHandler::handle_disconnection(std::shared_ptr<GameSession> session, DisconnectReason reason) -> void
     {
         if (!session)
         {
@@ -43,9 +48,9 @@ namespace GameNetwork
         
         auto session_id = session->session_id();
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Handling disconnection for session: " + session_id);
-        
+        Logger::handle().write(LogTypes::Information,
+            fmt::format("Handling disconnection for session: {}", session_id));
+
         // Session state save
         auto info = save_session_state(session);
         info.reason = reason;
@@ -83,8 +88,7 @@ namespace GameNetwork
         session->set_state(SessionConnectionState::Disconnected);
     }
     
-    auto DisconnectionHandler::handle_reconnection(const std::string& session_id, 
-                                                  std::shared_ptr<GameConnection> connection) 
+    auto DisconnectionHandler::handle_reconnection(const std::string& session_id, std::shared_ptr<GameConnection> connection) 
         -> std::tuple<bool, std::optional<std::string>>
     {
         std::unique_lock<std::mutex> lock(pending_mutex_);
@@ -137,10 +141,9 @@ namespace GameNetwork
         // 재접속 시간 기록
         auto reconnection_time = std::chrono::duration_cast<std::chrono::milliseconds>(now - info.disconnect_time);
         
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Session reconnected: " + session_id + " after " + 
-            std::to_string(reconnection_time.count()) + "ms");
-        
+        Logger::handle().write(LogTypes::Information,
+            fmt::format("Session reconnected: {} after {}ms", session_id, reconnection_time.count()));
+
         successful_reconnections_++;
         
         // Track reconnection time
@@ -301,7 +304,7 @@ namespace GameNetwork
             
             if (removed > 0)
             {
-                Utilities::Logger::handle().write(Utilities::LogTypes::Information,
+                Logger::handle().write(LogTypes::Information,
                     "Cleaned up " + std::to_string(removed) + " expired sessions");
             }
         }
@@ -381,7 +384,7 @@ namespace GameNetwork
             }
             catch (const std::exception& e)
             {
-                Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                Logger::handle().write(LogTypes::Error,
                     "Failed to restore custom session data: " + std::string(e.what()));
             }
         }

@@ -4,10 +4,14 @@
 #include "SessionPersistence.h"
 #include "ChannelManager.h"
 #include "DisconnectionHandler.h"
-#include "Security/SessionSecurityManager.h"
+#include "SessionSecurityManager.h"
+
 #include <Logger.h>
 #include <Converter.h>
 #include <Generator.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
 
 using namespace Utilities;
 
@@ -55,11 +59,11 @@ namespace GameNetwork
         {
             thread_pool_ = thread_pool;
             is_running_ = true;
-            return std::make_tuple(true, std::optional<std::string>());
+            return { true, std::nullopt };
         }
         catch (const std::exception& e)
         {
-            return std::make_tuple(false, std::optional<std::string>(e.what()));
+            return { false, fmt::format("Initialization failed: {}", e.what()) };
         }
     }
 
@@ -117,12 +121,12 @@ namespace GameNetwork
         if (sessions_by_id_.size() >= max_players_)
         {
             Logger::handle().write(LogTypes::Error,
-                "Maximum player limit reached: " + std::to_string(max_players_));
+                fmt::format("Maximum player limit reached: {}", max_players_));
             return { nullptr, "Maximum player limit reached" };
         }
         
         // Generate session ID
-        std::string session_id = Utilities::Generator::guid();
+        std::string session_id = Generator::guid();
         
         // Create new session
         auto session = std::make_shared<GameSession>(session_id, account_id);
@@ -139,8 +143,8 @@ namespace GameNetwork
         }
         
         Logger::handle().write(LogTypes::Information,
-            "Created session " + session_id + " for connection");
-        
+            fmt::format("Created session {} for connection", session_id));
+
         return { session, std::nullopt };
     }
 
@@ -196,7 +200,7 @@ namespace GameNetwork
         stats_.total_sessions_terminated++;
         
         Logger::handle().write(LogTypes::Information,
-            "Removed session " + session->session_id());
+            fmt::format("Removed session {}", session->session_id()));
     }
 
     auto GameSessionManager::get_channel_sessions(uint32_t channel_id) const 
@@ -214,8 +218,7 @@ namespace GameNetwork
             session->unbind_connection();
         }
         
-        Logger::handle().write(LogTypes::Information,
-            "Disconnected all sessions");
+        Logger::handle().write(LogTypes::Information, "Disconnected all sessions");
     }
 
     auto GameSessionManager::set_thread_pool(std::shared_ptr<Thread::ThreadPool> thread_pool) -> void
@@ -255,9 +258,9 @@ namespace GameNetwork
             
             if (expired_tokens > 0 || inactive_sessions > 0)
             {
-                // Utilities::Logger::debug("Security cleanup: " + 
-                //     std::to_string(expired_tokens) + " expired tokens, " +
-                //     std::to_string(inactive_sessions) + " inactive sessions");
+                Logger::handle().write(LogTypes::Information,
+                    fmt::format("Security cleanup: {} expired tokens, {} inactive sessions",
+                        expired_tokens, inactive_sessions));
             }
         }
         
@@ -294,7 +297,7 @@ namespace GameNetwork
         if (!sessions_to_remove.empty())
         {
             Logger::handle().write(LogTypes::Information,
-                "Cleaned up " + std::to_string(sessions_to_remove.size()) + " timeout sessions");
+                fmt::format("Cleaned up {} timeout sessions", sessions_to_remove.size()));
         }
         
         return sessions_to_remove.size();
@@ -304,15 +307,12 @@ namespace GameNetwork
     {
         auto now = std::chrono::steady_clock::now();
         auto uptime = std::chrono::duration_cast<std::chrono::hours>(now - stats_.start_time);
-        
+
         Logger::handle().write(LogTypes::Information,
-            "Session Manager Statistics - Uptime: " + std::to_string(uptime.count()) + " hours, " +
-            "Total Sessions: " + std::to_string(stats_.total_sessions_created) + ", " +
-            "Active Sessions: " + std::to_string(sessions_by_id_.size()) + ", " +
-            "Peak Sessions: " + std::to_string(stats_.peak_concurrent_sessions));
+            fmt::format("Session Manager Statistics - Uptime: {} hours, Total Sessions: {}, Active Sessions: {}, Peak Sessions: {}",
+                uptime.count(), stats_.total_sessions_created, sessions_by_id_.size(), stats_.peak_concurrent_sessions));
     }
 
-    // Missing method implementations for GameNetworkServerSample
     auto GameSessionManager::get_session_by_id(const std::string& session_id) const -> std::shared_ptr<GameSession>
     {
         std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(mutex_));
@@ -441,20 +441,19 @@ namespace GameNetwork
         session_disconnected_callbacks.push_back(callback);
     }
 
-    auto GameSessionManager::on_network_connected(std::shared_ptr<Network::NetworkSession> network_session, 
-                                                 const std::string& account_id) 
+    auto GameSessionManager::on_network_connected(std::shared_ptr<Network::NetworkSession> network_session, const std::string& account_id) 
         -> std::tuple<bool, std::optional<std::string>>
     {
         if (!network_session)
         {
-            return std::make_tuple(false, std::string("Invalid network session"));
+            return { false, std::string("Invalid network session") };
         }
         
         // Create or restore session for the account
         auto [session, error] = create_or_restore_session(account_id);
         if (!session)
         {
-            return std::make_tuple(false, error.value_or("Failed to create session"));
+            return { false, error.value_or("Failed to create session") };
         }
         
         // Create GameConnection wrapper for NetworkSession
@@ -468,10 +467,10 @@ namespace GameNetwork
         
         // Notify callbacks
         notify_session_connected(session);
-        
+
         Logger::handle().write(LogTypes::Information,
-            "Network session connected for account: " + account_id);
-        
+            fmt::format("Network session connected for account: {}", account_id));
+
         return {true, std::nullopt};
     }
 
@@ -485,8 +484,9 @@ namespace GameNetwork
         if (existing)
         {
             Logger::handle().write(LogTypes::Information,
-                "Restoring existing session for account: " + account_id);
-            return {existing, std::nullopt};
+                fmt::format("Restoring existing session for account: {}", account_id));
+            
+                return {existing, std::nullopt};
         }
         
         // Try to load session from persistence
@@ -508,11 +508,11 @@ namespace GameNetwork
                 // Register session
                 sessions_by_id_[session->session_id()] = session;
                 sessions_by_account_[account_id] = session;
-                
+
                 Logger::handle().write(LogTypes::Information,
-                    "Session restored from persistence for account: " + account_id);
-                
-                return std::make_tuple(session, std::nullopt);
+                    fmt::format("Session restored from persistence for account: {}", account_id));
+
+                return { session, std::nullopt };
             }
         }
         
@@ -558,10 +558,9 @@ namespace GameNetwork
             }
         }
         
-        Logger::handle().write(LogTypes::Information,
-            "Session terminated: " + session_id);
-        
-        return std::make_tuple(true, std::nullopt);
+        Logger::handle().write(LogTypes::Information, fmt::format("Session terminated: {}", session_id));
+
+        return { true, std::nullopt };
     }
 
     auto GameSessionManager::update_peak_sessions() -> void
@@ -570,14 +569,16 @@ namespace GameNetwork
         if (current_sessions > stats_.peak_concurrent_sessions)
         {
             stats_.peak_concurrent_sessions = current_sessions;
-            Logger::handle().write(LogTypes::Information,
-                "New peak concurrent sessions: " + std::to_string(current_sessions));
+            Logger::handle().write(LogTypes::Information, fmt::format("New peak concurrent sessions: {}", current_sessions));
         }
     }
 
     auto GameSessionManager::notify_session_connected(std::shared_ptr<GameSession> session) -> void
     {
-        if (!session) return;
+        if (!session) 
+        {
+            return;
+        }
         
         // Update stats
         stats_.total_connections++;
@@ -592,7 +593,6 @@ namespace GameNetwork
             }
         }
         
-        // Queue session connected event
         {
             std::lock_guard<std::mutex> event_lock(event_mutex_);
             SessionEvent event;
@@ -629,8 +629,8 @@ namespace GameNetwork
         update_peak_sessions();
         
         Logger::handle().write(LogTypes::Information,
-            "Session added: " + session_id + " (Account: " + account_id + ")");
-        
+            fmt::format("Session added: {} (Account: {})", session_id, account_id));
+
         // Notify session connected
         notify_session_connected(session);
     }
@@ -673,4 +673,4 @@ namespace GameNetwork
         return channel_sessions;
     }
     
-} // namespace GameNetwork
+}

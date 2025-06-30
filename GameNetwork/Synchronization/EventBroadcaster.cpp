@@ -1,7 +1,9 @@
 #include "EventBroadcaster.h"
-#include "../Session/GameSession.h"
-#include "../Session/GameSessionManager.h"
+#include "GameSession.h"
+#include "GameSessionManager.h"
+
 #include <Logger.h>
+
 #include <algorithm>
 #include <thread>
 
@@ -29,8 +31,8 @@ namespace GameNetwork
     }
 
     auto EventBroadcaster::broadcast_global(const std::string& event_name,
-                                          std::unique_ptr<GamePacket> packet,
-                                          EventPriority priority)
+                                            std::unique_ptr<GamePacket> packet,
+                                            EventPriority priority)
         -> std::tuple<bool, std::optional<std::string>>
     {
         if (!packet)
@@ -64,9 +66,9 @@ namespace GameNetwork
     }
 
     auto EventBroadcaster::broadcast_to_channel(const std::string& event_name,
-                                              uint32_t channel_id,
-                                              std::unique_ptr<GamePacket> packet,
-                                              EventPriority priority)
+                                                uint32_t channel_id,
+                                                std::unique_ptr<GamePacket> packet,
+                                                EventPriority priority)
         -> std::tuple<bool, std::optional<std::string>>
     {
         if (!packet)
@@ -101,10 +103,10 @@ namespace GameNetwork
     }
 
     auto EventBroadcaster::broadcast_to_area(const std::string& event_name,
-                                           const Location& center,
-                                           float radius,
-                                           std::unique_ptr<GamePacket> packet,
-                                           EventPriority priority)
+                                            const Location& center,
+                                            float radius,
+                                            std::unique_ptr<GamePacket> packet,
+                                            EventPriority priority)
         -> std::tuple<bool, std::optional<std::string>>
     {
         if (!packet)
@@ -145,9 +147,9 @@ namespace GameNetwork
     }
 
     auto EventBroadcaster::broadcast_custom(const std::string& event_name,
-                                          std::unique_ptr<GamePacket> packet,
-                                          std::function<bool(std::shared_ptr<GameSession>)> filter,
-                                          EventPriority priority)
+                                            std::unique_ptr<GamePacket> packet,
+                                            std::function<bool(std::shared_ptr<GameSession>)> filter,
+                                            EventPriority priority)
         -> std::tuple<bool, std::optional<std::string>>
     {
         if (!packet)
@@ -256,8 +258,7 @@ namespace GameNetwork
         }
     }
 
-    auto EventBroadcaster::is_subscribed(const std::string& event_name,
-                                       std::shared_ptr<GameSession> session) const -> bool
+    auto EventBroadcaster::is_subscribed(const std::string& event_name, std::shared_ptr<GameSession> session) const -> bool
     {
         if (!session) return false;
         
@@ -509,11 +510,11 @@ namespace GameNetwork
                     }
                     else
                     {
-                        Logger::handle().write(LogTypes::Warning,
+                        Logger::handle().write(LogTypes::Error,
                             "Failed to compress event data, sending uncompressed");
                     }
                     #else
-                    Logger::handle().write(LogTypes::Warning,
+                    Logger::handle().write(LogTypes::Error,
                         "Compression enabled but not compiled with USE_COMPRESSION");
                     #endif
                 }

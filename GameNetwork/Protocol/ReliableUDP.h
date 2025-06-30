@@ -121,8 +121,7 @@ namespace GameNetwork
             auto advance_window() -> void;
 
             // Packet buffering
-            auto buffer_out_of_order_packet(uint32_t sequence, 
-                                          std::unique_ptr<GamePacket> packet) -> void;
+            auto buffer_out_of_order_packet(uint32_t sequence, std::unique_ptr<GamePacket> packet) -> void;
             auto deliver_buffered_packets() -> std::vector<std::unique_ptr<GamePacket>>;
 
         private:

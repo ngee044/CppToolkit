@@ -1,4 +1,5 @@
 #include "NetworkPrediction.h"
+
 #include <algorithm>
 #include <cmath>
 

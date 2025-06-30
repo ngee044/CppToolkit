@@ -1,6 +1,11 @@
 #include "PacketFragmentation.h"
-#include "../../Utilities/Logger.h"
-#include "../../Utilities/Converter.h"
+
+#include <Logger.h>
+#include <Converter.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <cstring>
 #include <algorithm>
 
@@ -31,7 +36,7 @@ namespace GameNetwork
         
         if (data.empty())
         {
-            Logger::handle().write(LogTypes::Warning, "PacketFragmenter: Empty data to fragment");
+            Logger::handle().write(LogTypes::Error, fmt::format("PacketFragmenter: Empty data to fragment"));
             return {false, fragments};
         }
         
@@ -61,8 +66,7 @@ namespace GameNetwork
         
         if (total_fragments > 65535)
         {
-            Logger::handle().write(LogTypes::Error, "PacketFragmenter: Data too large, would require " + 
-                         std::to_string(total_fragments) + " fragments");
+            Logger::handle().write(LogTypes::Error, fmt::format("PacketFragmenter: Data too large, would require {} fragments", total_fragments));
             return {false, fragments};
         }
         
@@ -85,14 +89,12 @@ namespace GameNetwork
             std::vector<uint8_t> fragment;
             fragment.resize(kFragmentHeaderSize + fragment_data_size);
             std::memcpy(fragment.data(), &header, kFragmentHeaderSize);
-            std::memcpy(fragment.data() + kFragmentHeaderSize, 
-                       data.data() + offset, fragment_data_size);
+            std::memcpy(fragment.data() + kFragmentHeaderSize, data.data() + offset, fragment_data_size);
             
             fragments.push_back(std::move(fragment));
         }
         
-        Logger::handle().write(LogTypes::Debug, "PacketFragmenter: Fragmented " + std::to_string(data.size()) + 
-                     " bytes into " + std::to_string(fragments.size()) + " fragments");
+        Logger::handle().write(LogTypes::Debug, fmt::format("PacketFragmenter: Fragmented {} bytes into {} fragments", data.size(), fragments.size()));
         
         return {true, fragments};
     }
@@ -129,22 +131,20 @@ namespace GameNetwork
         auto [header_valid, header] = extract_header(fragment_data);
         if (!header_valid)
         {
-            Logger::handle().write(LogTypes::Warning, "PacketReassembler: Invalid fragment header");
+            Logger::handle().write(LogTypes::Error, "PacketReassembler: Invalid fragment header");
             return {false, std::nullopt};
         }
         
         // Validate fragment
         if (header.fragment_index >= header.total_fragments)
         {
-            Logger::handle().write(LogTypes::Warning, "PacketReassembler: Invalid fragment index " + 
-                           std::to_string(header.fragment_index) + " >= " + 
-                           std::to_string(header.total_fragments));
+            Logger::handle().write(LogTypes::Error, fmt::format("PacketReassembler: Invalid fragment index {} >= {}", header.fragment_index, header.total_fragments));
             return {false, std::nullopt};
         }
         
         if (fragment_data.size() != PacketFragmenter::kFragmentHeaderSize + header.fragment_size)
         {
-            Logger::handle().write(LogTypes::Warning, "PacketReassembler: Fragment size mismatch");
+            Logger::handle().write(LogTypes::Error, fmt::format("PacketReassembler: Fragment size mismatch ({} != {})", fragment_data.size(), PacketFragmenter::kFragmentHeaderSize + header.fragment_size));
             return {false, std::nullopt};
         }
         
@@ -168,7 +168,7 @@ namespace GameNetwork
         // Check for duplicate fragment
         if (pending.fragment_received[header.fragment_index])
         {
-            Logger::handle().write(LogTypes::Debug, "PacketReassembler: Duplicate fragment received");
+            Logger::handle().write(LogTypes::Debug, fmt::format("PacketReassembler: Duplicate fragment received"));
             return {false, std::nullopt};
         }
         
@@ -189,14 +189,12 @@ namespace GameNetwork
             
             for (const auto& fragment : pending.fragments)
             {
-                complete_message.insert(complete_message.end(), 
-                                      fragment.begin(), fragment.end());
+                complete_message.insert(complete_message.end(), fragment.begin(), fragment.end());
             }
             
             pending_messages_.erase(header.message_id);
             
-            Logger::handle().write(LogTypes::Debug, "PacketReassembler: Message " + std::to_string(header.message_id) + 
-                         " reassembled (" + std::to_string(complete_message.size()) + " bytes)");
+            Logger::handle().write(LogTypes::Debug, fmt::format("PacketReassembler: Message {} reassembled ({} bytes)", header.message_id, complete_message.size()));
             
             return {true, complete_message};
         }
@@ -215,10 +213,8 @@ namespace GameNetwork
         {
             if (now - it->second.last_fragment_time > timeout)
             {
-                Logger::handle().write(LogTypes::Debug, "PacketReassembler: Message " + std::to_string(it->second.message_id) + 
-                             " timed out (" + std::to_string(it->second.received_fragments) + "/" + 
-                             std::to_string(it->second.total_fragments) + " fragments)");
-                
+                Logger::handle().write(LogTypes::Debug, fmt::format("PacketReassembler: Message {} timed out ({} / {} fragments)", it->second.message_id, it->second.received_fragments, it->second.total_fragments));
+
                 it = pending_messages_.erase(it);
                 cleaned++;
             }
