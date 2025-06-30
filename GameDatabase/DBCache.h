@@ -18,7 +18,6 @@ namespace Redis {
 
 namespace GameDatabase
 {
-	// 캐시 항목 구조체
 	struct CacheEntry
 	{
 		std::any data;
@@ -28,13 +27,12 @@ namespace GameDatabase
 		std::size_t size_bytes;
 	};
 
-	// 캐시 정책
 	enum class CacheEvictionPolicy
 	{
-		LRU,    // Least Recently Used
-		LFU,    // Least Frequently Used
-		FIFO,   // First In First Out
-		TTL     // Time To Live based
+		LRU,
+		LFU,
+		FIFO,
+		TTL
 	};
 
 	// 캐시 통계
@@ -49,7 +47,6 @@ namespace GameDatabase
 		double hit_rate;
 	};
 
-	// 캐시 백엔드 인터페이스
 	class ICacheBackend
 	{
 	public:
@@ -63,11 +60,10 @@ namespace GameDatabase
 		virtual auto get_statistics() -> CacheStatistics = 0;
 	};
 
-	// 인메모리 캐시 백엔드
 	class MemoryCacheBackend : public ICacheBackend
 	{
 	public:
-		MemoryCacheBackend(std::size_t max_size_bytes = 100 * 1024 * 1024, // 100MB
+		MemoryCacheBackend(std::size_t max_size_bytes = 100 * 1024 * 1024,
 						CacheEvictionPolicy policy = CacheEvictionPolicy::LRU);
 		
 		auto get(const std::string& key) -> std::tuple<bool, std::optional<std::string>, std::any> override;
@@ -94,7 +90,6 @@ namespace GameDatabase
 		mutable std::mutex cache_mutex_;
 	};
 
-	// Redis 캐시 백엔드 (인터페이스만 정의, 실제 구현은 Redis 모듈에서)
 	class RedisCacheBackend : public ICacheBackend
 	{
 	public:
@@ -110,50 +105,34 @@ namespace GameDatabase
 		auto get_statistics() -> CacheStatistics override;
 		
 	private:
-		// Redis 연결 정보
 		std::string host_;
 		std::uint16_t port_;
 		std::optional<std::string> password_;
 		std::int32_t db_index_;
 		
-		// Redis client
 		std::shared_ptr<Redis::RedisClient> redis_client_;
 	};
 
-	// 데이터베이스 캐시 관리자
 	class DBCache
 	{
 	public:
 		DBCache(std::unique_ptr<ICacheBackend> backend = std::make_unique<MemoryCacheBackend>());
 		~DBCache();
 
-		// 캐시 조회
 		template<typename T>
 		auto get(const std::string& key) -> std::tuple<bool, std::optional<std::string>, std::optional<T>>;
 		
-		// 캐시 저장
 		template<typename T>
 		auto set(const std::string& key, const T& value, 
 				std::chrono::seconds ttl = std::chrono::seconds(300)) -> std::tuple<bool, std::optional<std::string>>;
 		
-		// 캐시 삭제
 		auto remove(const std::string& key) -> std::tuple<bool, std::optional<std::string>>;
-		
-		// 패턴 기반 삭제
 		auto remove_by_pattern(const std::string& pattern) -> std::tuple<bool, std::optional<std::string>>;
-		
-		// 캐시 존재 확인
 		auto exists(const std::string& key) -> bool;
-		
-		// 전체 캐시 삭제
 		auto clear() -> std::tuple<bool, std::optional<std::string>>;
-		
-		// 캐시 백엔드 변경
 		auto set_backend(std::unique_ptr<ICacheBackend> backend) -> void;
-		
-		// 통계 정보
 		auto get_statistics() -> CacheStatistics;
-				// 쿼리 결과 캐싱을 위한 헬퍼 함수
+
 		template<typename TResult>
 		auto cache_query(const std::string& query_key,
 						std::function<std::tuple<bool, std::optional<std::string>, TResult>()> query_func,
@@ -165,7 +144,6 @@ namespace GameDatabase
 		mutable std::mutex backend_mutex_;
 	};
 
-	// 템플릿 구현
 	template<typename T>
 	auto DBCache::get(const std::string& key) -> std::tuple<bool, std::optional<std::string>, std::optional<T>>
 	{

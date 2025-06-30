@@ -1,13 +1,19 @@
 #include "DBCache.h"
+
 #include <Logger.h>
 #include <Converter.h>
-#include "../Redis/RedisClient.h"
+#include <RedisClient.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <regex>
 #include <algorithm>
 
+using namespace Utilities;
+
 namespace GameDatabase
 {
-    // MemoryCacheBackend implementation
     MemoryCacheBackend::MemoryCacheBackend(std::size_t max_size_bytes, CacheEvictionPolicy policy)
         : max_size_bytes_(max_size_bytes)
         , current_size_bytes_(0)
@@ -35,12 +41,10 @@ namespace GameDatabase
         
         auto& entry = it->second;
         
-        // Check if expired
         auto now = std::chrono::steady_clock::now();
         if (entry.expire_time != std::chrono::steady_clock::time_point::max() && 
             now > entry.expire_time)
         {
-            // Remove expired entry
             current_size_bytes_ -= entry.size_bytes;
             cache_.erase(it);
             statistics_.total_misses++;
@@ -48,13 +52,11 @@ namespace GameDatabase
             return { false, "Key expired", std::any{} };
         }
         
-        // Update access info
         entry.last_access_time = now;
         entry.access_count++;
         
         statistics_.total_hits++;
-        statistics_.hit_rate = static_cast<double>(statistics_.total_hits) / 
-                              (statistics_.total_hits + statistics_.total_misses);
+        statistics_.hit_rate = static_cast<double>(statistics_.total_hits) / (statistics_.total_hits + statistics_.total_misses);
         
         return { true, std::nullopt, entry.data };
     }
@@ -178,10 +180,8 @@ namespace GameDatabase
 
     auto MemoryCacheBackend::evict_if_needed(std::size_t required_size) -> void
     {
-        // First, remove expired entries
         evict_expired();
         
-        // If still need more space, use eviction policy
         while (current_size_bytes_ + required_size > max_size_bytes_ && !cache_.empty())
         {
             switch (eviction_policy_)
@@ -252,10 +252,7 @@ namespace GameDatabase
         cache_.erase(least_used);
     }
 
-    auto MemoryCacheBackend::evict_fifo() -> void
-    {
-        // Since unordered_map doesn't maintain insertion order,
-        // we'll use access time as a proxy (assuming first access is close to insertion)
+    auto MemoryCacheBackend::evict_fifo() -> void {
         evict_lru();
     }
 
@@ -289,9 +286,6 @@ namespace GameDatabase
 
     auto MemoryCacheBackend::calculate_size(const std::any& value) -> std::size_t
     {
-        // This is a simplified size calculation
-        // In production, you'd want more accurate sizing
-        
         if (value.type() == typeid(std::string))
         {
             return std::any_cast<std::string>(value).size();
@@ -361,16 +355,13 @@ namespace GameDatabase
         {
             std::regex regex(regex_pattern);
             
-            // This is a simplified implementation
-            // In production, you'd want to iterate through keys more efficiently
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "Pattern-based cache removal not fully implemented");
+            Logger::handle().write(LogTypes::Information, "Pattern-based cache removal not fully implemented");
             
             return { true, std::nullopt };
         }
         catch (const std::regex_error& e)
         {
-            return { false, std::string("Invalid pattern: ") + e.what() };
+            return { false, fmt::format("Invalid pattern: {}", e.what()) };
         }
     }
 
@@ -401,115 +392,127 @@ namespace GameDatabase
         return backend_->get_statistics();
     }
 
-    // RedisCacheBackend implementation
-    RedisCacheBackend::RedisCacheBackend(const std::string& host, std::uint16_t port,
-                                         const std::optional<std::string>& password,
-                                         std::int32_t db_index)
+    RedisCacheBackend::RedisCacheBackend(const std::string& host, std::uint16_t port, const std::optional<std::string>& password, std::int32_t db_index)
         : host_(host), port_(port), password_(password), db_index_(db_index)
     {
-        // Initialize Redis client
         redis_client_ = std::make_shared<Redis::RedisClient>(host, static_cast<int>(port), Redis::TLSOptions(), db_index);
         
-        // Try to connect
         auto [connected, error] = redis_client_->connect();
-        if (!connected) {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-                "Failed to connect to Redis: " + (error ? *error : "Unknown error"));
+        if (!connected)
+        {
+            Logger::handle().write(LogTypes::Error, fmt::format("Failed to connect to Redis: {}", error.value_or("Unknown error")));
         }
     }
 
     auto RedisCacheBackend::get(const std::string& key) 
         -> std::tuple<bool, std::optional<std::string>, std::any>
     {
-        try {
-            if (!redis_client_ || !redis_client_->is_connected()) {
+        try
+        {
+            if (!redis_client_ || !redis_client_->is_connected())
+            {
                 return {false, "Redis client not connected", std::any{}};
             }
             
             auto [value, error] = redis_client_->get(key);
-            if (error) {
+            if (error)
+            {
                 return {false, *error, std::any{}};
             }
             
-            if (value.empty()) {
+            if (value.empty())
+            {
                 return {false, "Key not found", std::any{}};
             }
             
-            // Return as string wrapped in std::any
             return {true, std::nullopt, std::any(value)};
         }
-        catch (const std::exception& e) {
-            return {false, std::string("Redis get error: ") + e.what(), std::any{}};
+        catch (const std::exception& e)
+        {
+            return {false, fmt::format("Redis get error: {}", e.what()), std::any{}};
         }
     }
 
     auto RedisCacheBackend::set(const std::string& key, const std::any& value, std::chrono::seconds ttl) 
         -> std::tuple<bool, std::optional<std::string>>
     {
-        try {
-            if (!redis_client_ || !redis_client_->is_connected()) {
+        try
+        {
+            if (!redis_client_ || !redis_client_->is_connected())
+            {
                 return {false, "Redis client not connected"};
             }
             
-            // Convert std::any to string for Redis storage
             std::string str_value;
-            if (value.type() == typeid(std::string)) {
+            if (value.type() == typeid(std::string))
+            {
                 str_value = std::any_cast<std::string>(value);
             }
-            else {
-                // For other types, you might want to serialize them
+            else
+            {
                 return {false, "Unsupported value type for Redis storage"};
             }
             
-            if (ttl.count() > 0) {
+            if (ttl.count() > 0)
+            {
                 auto [success, error] = redis_client_->set(key, str_value, static_cast<std::uint32_t>(ttl.count()));
                 return {success, error};
             }
-            else {
+            else
+            {
                 auto [success, error] = redis_client_->set(key, str_value);
                 return {success, error};
             }
         }
-        catch (const std::exception& e) {
-            return {false, std::string("Redis set error: ") + e.what()};
+        catch (const std::exception& e)
+        {
+            return {false, fmt::format("Redis set error: {}", e.what())};
         }
     }
 
     auto RedisCacheBackend::remove(const std::string& key) 
         -> std::tuple<bool, std::optional<std::string>>
     {
-        try {
-            if (!redis_client_ || !redis_client_->is_connected()) {
+        try
+        {
+            if (!redis_client_ || !redis_client_->is_connected())
+            {
                 return {false, "Redis client not connected"};
             }
             
             auto [success, error] = redis_client_->del(key);
             return {success, error};
         }
-        catch (const std::exception& e) {
-            return {false, std::string("Redis remove error: ") + e.what()};
+        catch (const std::exception& e)
+        {
+            return {false, fmt::format("Redis remove error: {}", e.what())};
         }
     }
 
     auto RedisCacheBackend::exists(const std::string& key) -> bool
     {
-        try {
-            if (!redis_client_ || !redis_client_->is_connected()) {
+        try
+        {
+            if (!redis_client_ || !redis_client_->is_connected())
+            {
                 return false;
             }
             
             auto [exists_result, error] = redis_client_->exists(key);
             return exists_result;
         }
-        catch (const std::exception&) {
+        catch (const std::exception&)
+        {
             return false;
         }
     }
 
     auto RedisCacheBackend::clear() -> std::tuple<bool, std::optional<std::string>>
     {
-        try {
-            if (!redis_client_ || !redis_client_->is_connected()) {
+        try
+        {
+            if (!redis_client_ || !redis_client_->is_connected())
+            {
                 return {false, "Redis client not connected"};
             }
             
@@ -517,8 +520,9 @@ namespace GameDatabase
             auto [success, error] = redis_client_->flush_db();
             return {success, error};
         }
-        catch (const std::exception& e) {
-            return {false, std::string("Redis clear error: ") + e.what()};
+        catch (const std::exception& e)
+        {
+            return {false, fmt::format("Redis clear error: {}", e.what())};
         }
     }
 
@@ -526,26 +530,29 @@ namespace GameDatabase
     {
         CacheStatistics stats{};
         
-        try {
-            if (!redis_client_ || !redis_client_->is_connected()) {
+        try
+        {
+            if (!redis_client_ || !redis_client_->is_connected())
+            {
                 return stats;
             }
             
             // Initialize basic statistics
-            stats.total_requests = 0;  // Would need to track this separately
-            stats.total_hits = 0;      // Would need to track this separately  
-            stats.total_misses = 0;    // Would need to track this separately
+            stats.total_requests = 0;
+            stats.total_hits = 0;  
+            stats.total_misses = 0;
             stats.hit_rate = 0.0;
-            stats.current_size_bytes = 0; // Could parse from used_memory if available
-            stats.total_evictions = 0;    // Could parse from evicted_keys if available
-            
-            // Get the number of keys in the database
+            stats.current_size_bytes = 0;
+            stats.total_evictions = 0; 
+
             auto [dbsize, error] = redis_client_->get_db_size();
-            if (!error) {
+            if (!error)
+            {
                 stats.current_entry_count = static_cast<std::size_t>(dbsize);
             }
         }
-        catch (const std::exception&) {
+        catch (const std::exception&)
+        {
             // Return empty stats on error
         }
         

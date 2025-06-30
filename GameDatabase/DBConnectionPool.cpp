@@ -1,10 +1,18 @@
 #include "DBConnectionPool.h"
+
 #include <Logger.h>
 #include <Converter.h>
-#include "Job.h"
+#include <Job.h>
+
+#include <fmt/format.h>
+#include <fmt/xchar.h>
+
 #include <algorithm>
 #include <numeric>
 #include <thread>
+
+using namespace Utilities;
+using namespace Thread;
 
 namespace GameDatabase
 {
@@ -65,8 +73,7 @@ namespace GameDatabase
             auto [connect_success, connect_error] = connection->connect(environment_, connection_string);
             if (!connect_success)
             {
-                return { false, "Failed to create connection #" + std::to_string(i) + ": " + 
-                         (connect_error ? *connect_error : "Unknown error") };
+                return { false, fmt::format("Failed to create connection #{}: {}", i, connect_error ? *connect_error : "Unknown error") };
             }
 
             connections_.push_back(connection);
@@ -80,8 +87,7 @@ namespace GameDatabase
             start_validation_timer();
         }
 
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "DBConnectionPool initialized with " + std::to_string(connection_count) + " connections");
+        Logger::handle().write(LogTypes::Information, fmt::format("DBConnectionPool initialized with {} connections", connection_count));
 
         return { true, std::nullopt };
     }
@@ -108,8 +114,7 @@ namespace GameDatabase
         if (!connection_available_.wait_for(lock, connection_timeout_, 
             [this] { return !available_connections_.empty(); }))
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-                "Timeout waiting for database connection");
+            Logger::handle().write(LogTypes::Error, "Timeout waiting for database connection");
             return nullptr;
         }
 
@@ -129,8 +134,7 @@ namespace GameDatabase
         if (!connection_available_.wait_for(lock, connection_timeout_, 
             [this] { return !available_connections_.empty(); }))
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-                "Timeout waiting for database connection");
+            Logger::handle().write(LogTypes::Error, "Timeout waiting for database connection");
             return nullptr;
         }
 
@@ -151,8 +155,7 @@ namespace GameDatabase
         // Update statistics
         pool_stats_.current_active_connections = active_connections_;
         pool_stats_.current_available_connections = available_connections_.size();
-        pool_stats_.peak_active_connections = (std::max)(pool_stats_.peak_active_connections, 
-                                                       static_cast<uint64_t>(active_connections_));
+        pool_stats_.peak_active_connections = (std::max)(pool_stats_.peak_active_connections, static_cast<uint64_t>(active_connections_));
         
         if (wait_time > pool_stats_.max_wait_time)
         {
@@ -161,17 +164,12 @@ namespace GameDatabase
         
         if (!wait_times_.empty())
         {
-            auto total_wait = std::accumulate(wait_times_.begin(), wait_times_.end(), 
-                                              std::chrono::milliseconds(0));
+            auto total_wait = std::accumulate(wait_times_.begin(), wait_times_.end(), std::chrono::milliseconds(0));
             pool_stats_.average_wait_time = total_wait / wait_times_.size();
         }
         
         // Record lease for leak detection
-        active_leases_[connection] = ConnectionLease{
-            connection,
-            std::chrono::steady_clock::now(),
-            context
-        };
+        active_leases_[connection] = ConnectionLease{ connection, std::chrono::steady_clock::now(), context };
 
         return connection;
     }
@@ -192,8 +190,7 @@ namespace GameDatabase
             // Check if connection is still valid
             if (!connection->is_valid())
             {
-                Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-                    "Returning invalid connection to pool, attempting to recreate");
+                Logger::handle().write(LogTypes::Error, "Returning invalid connection to pool, attempting to recreate");
                 
                 // Try to recreate the connection
                 auto [new_connection, error] = recreate_connection(connection);
@@ -203,8 +200,7 @@ namespace GameDatabase
                 }
                 else
                 {
-                    Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-                        "Failed to recreate connection: " + error.value_or("Unknown error"));
+                    Logger::handle().write(LogTypes::Error, fmt::format("Failed to recreate connection: {}", error.value_or("Unknown error")));
                     active_connections_--;
                     pool_stats_.current_active_connections = active_connections_;
                     pool_stats_.current_available_connections = available_connections_.size();
@@ -223,7 +219,7 @@ namespace GameDatabase
         connection_available_.notify_one();
     }
 
-    auto DBConnectionPool::set_thread_pool(std::shared_ptr<Thread::ThreadPool> thread_pool) -> void
+    auto DBConnectionPool::set_thread_pool(std::shared_ptr<ThreadPool> thread_pool) -> void
     {
         thread_pool_ = thread_pool;
     }
@@ -237,8 +233,8 @@ namespace GameDatabase
             return;
         }
 
-        auto job = std::make_shared<Thread::Job>(
-            Thread::ThreadPriority::Normal,
+        auto job = std::make_shared<Job>(
+            ThreadPriority::Normal,
             [this, operation, callback]() -> std::tuple<bool, std::optional<std::string>>
             {
                 auto connection = pop_with_context("async_operation");
@@ -298,10 +294,8 @@ namespace GameDatabase
                 failed++;
             }
         }
-        
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Connection validation completed: " + std::to_string(validated) + 
-            " validated, " + std::to_string(failed) + " failed");
+
+        Logger::handle().write(LogTypes::Information, fmt::format("Connection validation completed: {} validated, {} failed", validated, failed));
     }
 
     auto DBConnectionPool::set_validation_query(const std::string& query) -> void
@@ -356,11 +350,12 @@ namespace GameDatabase
                 leaked_count++;
                 leaked_connections.push_back(conn);
                 
-                std::string leak_info = "Leaked connection detected - Context: " + lease.lease_context +
-                                       ", Lease time: " + std::to_string(lease_duration.count()) + " minutes";
+                std::string leak_info = fmt::format("Leaked connection detected - Context: {}, Lease time: {} minutes",
+                                                    lease.lease_context, 
+                                                    lease_duration.count());
                 leaked_connection_logs_.push_back(leak_info);
                 
-                Utilities::Logger::handle().write(Utilities::LogTypes::Warning, leak_info);
+                Logger::handle().write(LogTypes::Error, leak_info);
             }
         }
         
@@ -401,8 +396,7 @@ namespace GameDatabase
         }
         catch (const std::exception& e)
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-                "Connection validation failed: " + std::string(e.what()));
+            Logger::handle().write(LogTypes::Error, fmt::format("Connection validation failed: {}", e.what()));
             return false;
         }
     }
@@ -445,8 +439,7 @@ namespace GameDatabase
             }
             catch (const std::exception& e)
             {
-                Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-                    "Validation timer error: " + std::string(e.what()));
+                Logger::handle().write(LogTypes::Error, fmt::format("Validation timer error: {}", e.what()));
             }
         }
     }
@@ -472,16 +465,14 @@ namespace GameDatabase
             {
                 pool_stats_.total_connections_destroyed++;
             }
-            
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "Successfully recreated database connection");
-            
+
+            Logger::handle().write(LogTypes::Information, fmt::format("Successfully recreated database connection"));
             return {new_connection, std::nullopt};
         }
         catch (const std::exception& e)
         {
-            std::string error_msg = "Failed to recreate connection: " + std::string(e.what());
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error, error_msg);
+            std::string error_msg = fmt::format("Failed to recreate connection: {}", e.what());
+            Logger::handle().write(LogTypes::Error, error_msg);
             return {nullptr, error_msg};
         }
     }

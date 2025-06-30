@@ -7,6 +7,8 @@
 #include <functional>
 #include <future>
 
+using namespace Thread;
+
 namespace GameDatabase::Optimization
 {
     /**
@@ -28,7 +30,7 @@ namespace GameDatabase::Optimization
         auto release(std::shared_ptr<DBConnection> connection) -> void;
         
         // Async operations with minimal overhead
-        auto set_thread_pool(std::shared_ptr<Thread::ThreadPool> thread_pool) -> void
+        auto set_thread_pool(std::shared_ptr<ThreadPool> thread_pool) -> void
         {
             thread_pool_ = thread_pool;
         }
@@ -40,7 +42,7 @@ namespace GameDatabase::Optimization
             auto promise = std::make_shared<std::promise<std::tuple<ResultType, std::optional<std::string>>>>();
             auto future = promise->get_future();
             
-            thread_pool_->add_job(Thread::ThreadPriority::Normal, 
+            thread_pool_->add_job(ThreadPriority::Normal, 
                 [this, operation, promise]()
             {
                 auto connection = acquire();
@@ -84,8 +86,7 @@ namespace GameDatabase::Optimization
         
         auto is_healthy() const -> bool
         {
-            return get_available_connections() > 0 || 
-                   get_active_connections() < get_total_connections();
+            return get_available_connections() > 0 || get_active_connections() < get_total_connections();
         }
         
     private:
@@ -104,7 +105,7 @@ namespace GameDatabase::Optimization
         std::atomic<uint64_t> total_queries_{0};
         std::atomic<uint64_t> failed_queries_{0};
         
-        std::shared_ptr<Thread::ThreadPool> thread_pool_;
+        std::shared_ptr<ThreadPool> thread_pool_;
     };
     
 } // namespace GameDatabase::Optimization

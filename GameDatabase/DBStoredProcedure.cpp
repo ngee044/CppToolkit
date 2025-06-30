@@ -18,7 +18,6 @@ namespace GameDatabase
 
 	DBStoredProcedure::~DBStoredProcedure()
 	{
-		// 자동 정리
 	}
 
 	auto DBStoredProcedure::add_output_parameter(const std::wstring& param_name, SQLSMALLINT sql_type, SQLULEN size) -> void
@@ -30,7 +29,6 @@ namespace GameDatabase
 		param.size = size;
 		param.indicator = SQL_NULL_DATA;
 		
-		// 출력 파라미터를 위한 버퍼 할당
 		switch (sql_type)
 		{
 			case SQL_C_BIT:
@@ -72,22 +70,18 @@ namespace GameDatabase
 		param.value = return_value_;
 		param.indicator = return_indicator_;
 		
-		// 리턴 값은 항상 첫 번째 파라미터로 추가
 		parameters_.insert(parameters_.begin(), std::move(param));
 	}
 
 	auto DBStoredProcedure::execute() -> std::tuple<bool, std::optional<std::string>>
 	{
-		// 호출문 생성
 		std::wstring call_statement = build_call_statement();
 		
-		// 파라미터 바인딩
 		auto [bind_success, bind_error] = bind_parameters();
 		if (!bind_success)
 		{
 			return { false, bind_error };
 		}
-		
 		// 저장 프로시저 실행
 		return connection_->execute(call_statement);
 	}
@@ -99,7 +93,6 @@ namespace GameDatabase
 
 	auto DBStoredProcedure::get_return_value(std::int32_t& value) -> std::tuple<bool, std::optional<std::string>>
 	{
-		// 리턴 값 파라미터 찾기
 		auto it = std::find_if(parameters_.begin(), parameters_.end(),
 			[](const ProcedureParameter& param) 
 			{
@@ -124,9 +117,6 @@ namespace GameDatabase
 
 	auto DBStoredProcedure::next_result_set() -> std::tuple<bool, std::optional<std::string>>
 	{
-		// 다음 결과 집합으로 이동
-		// SQL Server에서는 SQLMoreResults 함수 사용
-		// 여기서는 간단히 구현
 		return { true, std::nullopt };
 	}
 
@@ -147,7 +137,6 @@ namespace GameDatabase
 		{
 			std::tuple<bool, std::optional<std::string>> result;
 			
-			// 파라미터 타입에 따라 바인딩
 			if (param.value.type() == typeid(bool))
 			{
 				auto* value = std::any_cast<bool>(&param.value);
@@ -205,7 +194,6 @@ namespace GameDatabase
 		std::wstringstream call_stmt;
 		call_stmt << L"{";
 		
-		// 리턴 값이 있는 경우
 		bool has_return_value = false;
 		for (const auto& param : parameters_)
 		{
@@ -219,7 +207,6 @@ namespace GameDatabase
 		
 		call_stmt << L"CALL " << procedure_name_ << L"(";
 		
-		// 파라미터 수만큼 ? 추가 (리턴 값 제외)
 		bool first = true;
 		for (const auto& param : parameters_)
 		{

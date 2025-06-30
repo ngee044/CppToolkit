@@ -12,8 +12,7 @@ namespace GameDatabase::Optimization
             throw std::runtime_error("Failed to allocate ODBC environment handle");
         }
         
-        if (SQLSetEnvAttr(environment_, SQL_ATTR_ODBC_VERSION, 
-                         reinterpret_cast<SQLPOINTER>(SQL_OV_ODBC3), 0) != SQL_SUCCESS)
+        if (SQLSetEnvAttr(environment_, SQL_ATTR_ODBC_VERSION, reinterpret_cast<SQLPOINTER>(SQL_OV_ODBC3), 0) != SQL_SUCCESS)
         {
             SQLFreeHandle(SQL_HANDLE_ENV, environment_);
             throw std::runtime_error("Failed to set ODBC version");
@@ -30,8 +29,7 @@ namespace GameDatabase::Optimization
         }
     }
     
-    auto OptimizedDBConnectionPool::connect(std::int32_t connection_count, 
-                                           const std::wstring& connection_string) 
+    auto OptimizedDBConnectionPool::connect(std::int32_t connection_count, const std::wstring& connection_string) 
         -> std::tuple<bool, std::optional<std::string>>
     {
         connection_string_ = connection_string;

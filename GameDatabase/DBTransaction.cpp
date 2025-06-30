@@ -13,7 +13,6 @@ namespace GameDatabase
 
 	DBTransaction::~DBTransaction()
 	{
-		// 커밋되지 않은 활성 트랜잭션은 자동 롤백
 		if (is_active_ && !is_committed_)
 		{
 			rollback();
@@ -34,14 +33,12 @@ namespace GameDatabase
 			return { false, "Database connection is null" };
 		}
 
-		// 격리 수준 설정
 		auto [isolation_success, isolation_error] = set_isolation_level(isolation_level_);
 		if (!isolation_success)
 		{
 			return { false, isolation_error };
 		}
 
-		// 트랜잭션 시작
 		auto [success, error] = connection_->execute(L"BEGIN TRANSACTION");
 		if (success)
 		{
@@ -175,12 +172,9 @@ namespace GameDatabase
 			return { false, "No active transaction for savepoint release" };
 		}
 
-		// SQL Server는 명시적인 RELEASE SAVEPOINT를 지원하지 않음
-		// 대신 savepoint를 덮어쓸 수 있음
 		return { true, std::nullopt };
 	}
 
-	// TransactionGuard 구현
 	TransactionGuard::TransactionGuard(std::shared_ptr<DBTransaction> transaction)
 		: transaction_(transaction)
 		, should_rollback_(true)

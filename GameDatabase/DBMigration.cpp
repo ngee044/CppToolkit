@@ -1,9 +1,12 @@
 #include "DBMigration.h"
+
 #include <DBTransaction.h>
 #include <Logger.h>
 #include <File.h>
 #include <Converter.h>
+
 #include <cstdint>
+
 #ifdef _WIN32
 #include <windows.h>
 #include <bcrypt.h>
@@ -11,11 +14,14 @@
 #else
 #include <openssl/sha.h>
 #endif
+
 #include <sstream>
 #include <algorithm>
 #include <regex>
 #include <thread>
 #include <iomanip>
+
+using namespace Utilities;
 
 namespace GameDatabase
 {
@@ -115,8 +121,7 @@ namespace GameDatabase
             connection_pool_->push(connection);
             is_initialized_ = true;
 
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                "DBMigration initialized successfully");
+            Logger::handle().write(LogTypes::Information, "DBMigration initialized successfully");
 
             return { true, std::nullopt };
         }
@@ -167,8 +172,7 @@ namespace GameDatabase
         stored_migration.checksum = checksum;
         migrations_[migration.version] = stored_migration;
 
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Registered migration: v" + std::to_string(migration.version) + " - " + migration.name);
+        Logger::handle().write(LogTypes::Information, fmt::format("Registered migration: v{} - {}", migration.version, migration.name));
 
         return { true, std::nullopt };
     }
@@ -209,7 +213,7 @@ namespace GameDatabase
             std::string name = matches[2].str();
 
             // Read file content
-            Utilities::File file;
+            File file;
             auto open_result = file.open(entry.path().string(), std::ios::in);
             if (!std::get<0>(open_result))
             {
@@ -230,7 +234,7 @@ namespace GameDatabase
             file.close();
 
             // Convert to wide string
-            std::wstring wide_content = Utilities::Converter::to_wstring(content);
+            std::wstring wide_content = Converter::to_wstring(content);
 
             // Check for down script (separated by -- DOWN marker)
             std::wstring up_script = wide_content;
@@ -260,8 +264,7 @@ namespace GameDatabase
             }
         }
 
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Loaded " + std::to_string(migrations_.size()) + " migrations from " + directory_path.string());
+        Logger::handle().write(LogTypes::Information, fmt::format("Loaded {} migrations from {}", migrations_.size(), directory_path.string()));
 
         return { true, std::nullopt };
     }
@@ -409,9 +412,7 @@ namespace GameDatabase
             }
         }
 
-        Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-            "Successfully migrated from version " + std::to_string(current_version) + 
-            " to " + std::to_string(target_version));
+        Logger::handle().write(LogTypes::Information, fmt::format("Successfully migrated from version {} to {}", current_version, target_version));
 
         return { true, std::nullopt };
     }
@@ -489,10 +490,10 @@ namespace GameDatabase
                 int32_t version_int32 = static_cast<int32_t>(migration.version);
                 connection->bind_param(1, &version_int32, &ind1);
                 
-                std::wstring name_w = Utilities::Converter::to_wstring(migration.name);
+                std::wstring name_w = Converter::to_wstring(migration.name);
                 connection->bind_param(2, const_cast<WCHAR*>(name_w.c_str()), &ind2);
                 
-                std::wstring checksum_w = Utilities::Converter::to_wstring(migration.checksum);
+                std::wstring checksum_w = Converter::to_wstring(migration.checksum);
                 connection->bind_param(3, const_cast<WCHAR*>(checksum_w.c_str()), &ind3);
                 
                 int exec_time = static_cast<int>(execution_time.count());
@@ -523,10 +524,11 @@ namespace GameDatabase
 
             connection_pool_->push(connection);
 
-            Utilities::Logger::handle().write(Utilities::LogTypes::Information,
-                (is_upgrade ? "Applied" : "Rolled back") + std::string(" migration: v") + 
-                std::to_string(migration.version) + " - " + migration.name + 
-                " (" + std::to_string(execution_time.count()) + "ms)");
+            Logger::handle().write(LogTypes::Information, fmt::format("{} migration: v{} - {} ({})",
+                (is_upgrade ? "Applied" : "Rolled back"),
+                migration.version,
+                migration.name,
+                std::to_string(execution_time.count()) + "ms"));
 
             return { true, std::nullopt };
         }
@@ -581,7 +583,7 @@ namespace GameDatabase
 
     auto DBMigration::calculate_checksum(const std::wstring& content) -> std::string
     {
-        std::string utf8_content = Utilities::Converter::to_string(content);
+        std::string utf8_content = Converter::to_string(content);
         
 #ifdef _WIN32
         BCRYPT_ALG_HANDLE hAlg = nullptr;
@@ -702,7 +704,7 @@ namespace GameDatabase
             std::ostringstream thread_id_stream;
             thread_id_stream << std::this_thread::get_id();
             std::string thread_id_str = "DBMigration_" + thread_id_stream.str();
-            std::wstring thread_id_w = Utilities::Converter::to_wstring(thread_id_str);
+            std::wstring thread_id_w = Converter::to_wstring(thread_id_str);
             
             SQLLEN ind1 = SQL_NTS;
             connection->bind_param(1, const_cast<WCHAR*>(thread_id_w.c_str()), &ind1);
@@ -737,8 +739,7 @@ namespace GameDatabase
         auto connection = connection_pool_->pop();
         if (!connection)
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-                "Failed to get connection to release migration lock");
+            Logger::handle().write(LogTypes::Error, fmt::format("Failed to get connection to release migration lock"));
             return;
         }
 
@@ -751,8 +752,7 @@ namespace GameDatabase
         }
         catch (const std::exception& e)
         {
-            Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-                "Failed to release migration lock: " + std::string(e.what()));
+            Logger::handle().write(LogTypes::Error, fmt::format("Failed to release migration lock: {}", e.what()));
         }
 
         connection_pool_->push(connection);
