@@ -1,4 +1,4 @@
 #include "LatencyCompensator.h"
 namespace GameNetwork { 
-    LatencyCompensator::LatencyCompensator() = default;
+	LatencyCompensator::LatencyCompensator() = default;
 }

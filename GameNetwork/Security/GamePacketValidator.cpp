@@ -1,4 +1,4 @@
 #include "GamePacketValidator.h"
 namespace GameNetwork { 
-    GamePacketValidator::GamePacketValidator() = default;
+	GamePacketValidator::GamePacketValidator() = default;
 }

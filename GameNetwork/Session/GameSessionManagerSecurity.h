@@ -5,5 +5,5 @@
 
 namespace GameNetwork
 {
-    // Security implementations are in GameSessionManagerSecurity.cpp
+	// Security implementations are in GameSessionManagerSecurity.cpp
 }

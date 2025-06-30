@@ -13,7 +13,7 @@
 #include <any>
 
 namespace Redis {
-    class RedisClient;
+	class RedisClient;
 }
 
 namespace GameDatabase
