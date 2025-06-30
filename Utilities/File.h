@@ -33,7 +33,8 @@ namespace Utilities
 		auto read_bytes(void) -> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>;
 		auto read_bytes(const size_t& index, const size_t& size) -> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>;
 		auto read_lines(const bool& include_new_line = true)
-			-> std::tuple<std::optional<std::deque<std::string>>, std::optional<std::string>>;		void close(void);
+			-> std::tuple<std::optional<std::deque<std::string>>, std::optional<std::string>>;
+		auto close(void) -> void;
 		
 		static auto compression(const std::string& path, const uint16_t& block_bytes = 1024) -> std::tuple<bool, std::optional<std::string>>;
 		static auto decompression(const std::string& path, const uint16_t& block_bytes = 1024) -> std::tuple<bool, std::optional<std::string>>;

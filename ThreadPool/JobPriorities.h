@@ -14,7 +14,7 @@ namespace Thread
 		Low,
 		LongTerm,
 	};
-	
+
 	auto priority_string(const JobPriorities& priority) -> const std::string;
 	auto priority_string(const std::vector<JobPriorities>& priorities) -> const std::string;
 }

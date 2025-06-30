@@ -22,7 +22,8 @@ namespace Thread
 
 		auto get_ptr(void) -> std::shared_ptr<ThreadPool>;
 
-		auto uncompleted_jobs(const std::string& backup_folder) -> std::vector<std::vector<uint8_t>>;		auto push(std::shared_ptr<Job> job) -> std::tuple<bool, std::optional<std::string>>;
+		auto uncompleted_jobs(const std::string& backup_folder) -> std::vector<std::vector<uint8_t>>;
+		auto push(std::shared_ptr<Job> job) -> std::tuple<bool, std::optional<std::string>>;
 		auto push(std::shared_ptr<ThreadWorker> worker) -> void;
 		
 		auto remove_workers(const JobPriorities& priority) -> std::tuple<size_t, std::optional<std::string>>;
