@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+
 namespace Network
 {
 	constexpr size_t START_CODE_SIZE = 4;

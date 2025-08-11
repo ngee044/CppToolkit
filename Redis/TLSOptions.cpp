@@ -4,7 +4,7 @@ namespace Redis
 {
 	TLSOptions::TLSOptions(void) : use_tls_(false), ca_cert_(""), client_cert_(""), client_key_(""), verify_peer_(false) {}
 
-	auto TLSOptions::use_tls(bool value) -> TLSOptions&
+	auto TLSOptions::use_tls(const bool& value) -> TLSOptions&
 	{
 		use_tls_ = value;
 		return *this;
@@ -36,7 +36,7 @@ namespace Redis
 
 	auto TLSOptions::client_key() const -> const std::string& { return client_key_; }
 
-	auto TLSOptions::verify_peer(bool value) -> TLSOptions&
+	auto TLSOptions::verify_peer(const bool& value) -> TLSOptions&
 	{
 		verify_peer_ = value;
 		return *this;

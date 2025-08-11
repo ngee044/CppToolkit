@@ -5,7 +5,7 @@ if [ "$(uname)" == "Darwin" ]; then
     # MacOS specific commands
     brew update
     brew upgrade
-    brew install pkg-config autoconf cmake boost python rust
+    brew install pkg-config autoconf cmake boost python rust clang-uml plantuml ninja
 
     # VCPKG installation steps
     cd ..
@@ -15,9 +15,7 @@ if [ "$(uname)" == "Darwin" ]; then
     cd vcpkg
     git pull
     ./bootstrap-vcpkg.sh
-    ./vcpkg integrate install
     ./vcpkg upgrade --no-dry-run
-    ./vcpkg install 'lz4' 'fmt' 'cryptopp' 'redis-plus-plus' 'gtest' 'libpq' 'efsw' 'boost-algorithm' 'boost-dll' 'boost-asio' 'boost-json' 'boost-system' 'boost-container' 'boost-filesystem' 'sndfile' 'libsamplerate' 'curl' 'cpp-httplib[openssl]' 'aws-sdk-cpp[ssm]' 'librabbitmq' --recurse
 
     cd ..
 
@@ -26,17 +24,21 @@ fi
 
 if [ "$(uname)" == "Linux" ]; then
     # Linux specific commands
+    add-apt-repository ppa:bkryza/clang-uml
+    
     apt update
     apt upgrade -y
-    apt install cmake build-essential gdb rustc -y
+    apt install cmake build-essential gdb rustc linux-libc-dev -y
+    apt install clang-uml plantuml -y
+
     apt-get update
     apt-get upgrade -y
     apt-get install curl zip unzip tar ninja-build -y
-    apt-get install swig pkg-config autoconf -y
-    apt-get install python3-pip -y
+    apt-get install bison flex pkg-config autoconf -y
 
     # Conditional Python package installation based on OS version
     if [ $(egrep "^(VERSION_ID)=" /etc/os-release) != "VERSION_ID=\"22.04\"" ]; then
+        apt-get install python3-pip -y
         pip3 install cmake
     fi
 
@@ -53,9 +55,7 @@ if [ "$(uname)" == "Linux" ]; then
     cd vcpkg
     git pull
     ./bootstrap-vcpkg.sh
-    ./vcpkg integrate install
     ./vcpkg upgrade --no-dry-run
-    ./vcpkg install 'lz4' 'fmt' 'cryptopp' 'redis-plus-plus' 'gtest' 'libpq' 'efsw' 'boost-algorithm' 'boost-dll' 'boost-asio' 'boost-json' 'boost-system' 'boost-container' 'boost-filesystem' 'sndfile' 'libsamplerate' 'curl' 'cpp-httplib[openssl]' 'aws-sdk-cpp[ssm]' 'librabbitmq' --recurse
 
     cd ..
 
