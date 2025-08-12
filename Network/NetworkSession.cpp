@@ -34,6 +34,8 @@ namespace Network
 								   const uint16_t& low_priority_count)
 #endif
 		: DataHandler(high_priority_count, normal_priority_count, low_priority_count)
+		, session_id_(0)
+		, state_(SessionState::Create)
 		, server_id_(session_id)
 		, registered_key_("")
 		, file_manager_(std::make_unique<FileManager>())
@@ -59,10 +61,17 @@ namespace Network
 		Logger::handle().write(LogTypes::Sequence, fmt::format("destroyed NetworkSession on {}", id()));
 	}
 
+	auto NetworkSession::session_id(void) const -> SessionId { return session_id_; }
+	
+	auto NetworkSession::state(void) const -> SessionState { return state_; }
+	
+	auto NetworkSession::session_id(const SessionId& id) -> void { session_id_ = id; }
+
 	auto NetworkSession::get_ptr(void) -> std::shared_ptr<NetworkSession> { return shared_from_this(); }
 
 	auto NetworkSession::start(std::shared_ptr<boost::asio::ip::tcp::socket> connected_socket, const size_t& socket_buffer_size) -> void
 	{
+		state_ = SessionState::Handshaking;
 		condition(ConnectConditions::None);
 
 		if (connected_socket == nullptr)
@@ -89,6 +98,7 @@ namespace Network
 
 	auto NetworkSession::stop(void) -> void
 	{
+		state_ = SessionState::Closed;
 		condition(ConnectConditions::Expired, true);
 
 		file_manager_->thread_pool(nullptr);
@@ -161,7 +171,7 @@ namespace Network
 		}
 
 		condition(ConnectConditions::Confirmed);
-
+		state_ = SessionState::Authenticated;
 		return response_connection(true);
 	}
 

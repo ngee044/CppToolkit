@@ -2,6 +2,7 @@
 
 #include "FileManager.h"
 #include "DataHandler.h"
+#include "Protocol.h"
 
 #include <map>
 #include <memory>
@@ -20,6 +21,9 @@ namespace Network
 #endif
 		virtual ~NetworkSession(void);
 
+		auto session_id(void) const -> SessionId;
+		auto session_id(const SessionId& id) -> void;
+		auto state(void) const -> SessionState;
 		auto get_ptr(void) -> std::shared_ptr<NetworkSession>;
 
 		auto start(std::shared_ptr<boost::asio::ip::tcp::socket> socket, const size_t& socket_buffer_size) -> void;
@@ -55,6 +59,8 @@ namespace Network
 		auto response_connection(const bool& condition) -> std::tuple<bool, std::optional<std::string>>;
 
 	private:
+		SessionId session_id_;
+		SessionState state_;
 		std::string server_id_;
 		std::string registered_key_;
 		std::map<DataModes, const std::function<std::tuple<bool, std::optional<std::string>>(const std::vector<uint8_t>&)>> message_handlers_;
