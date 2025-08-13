@@ -108,7 +108,7 @@ namespace Network
 	{
 		if (condition_ != ConnectConditions::Confirmed)
 		{
-			return { false, fmt::format("cannot send binary due to connect condition on {}: not confirmed", id()) };
+			return { false, fmt::format("cannot send message due to connect condition on {}: not confirmed", id()) };
 		}
 
 		return send(DataModes::Message, Converter::to_array(message));
@@ -118,7 +118,7 @@ namespace Network
 	{
 		if (condition_ != ConnectConditions::Confirmed)
 		{
-			return { false, fmt::format("cannot send binary due to connect condition on {}: not confirmed", id()) };
+			return { false, fmt::format("cannot send files due to connect condition on {}: not confirmed", id()) };
 		}
 
 		std::string guid = Generator::guid();

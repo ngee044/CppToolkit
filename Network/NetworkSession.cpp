@@ -12,6 +12,7 @@
 #include "fmt/format.h"
 
 #include "boost/json.hpp"
+#include <boost/asio/steady_timer.hpp>
 
 #include <locale>
 #include <filesystem>
@@ -21,17 +22,24 @@ using namespace Utilities;
 
 namespace Network
 {
+	static const std::string k_hb_ping = "hb:ping";
+	static const std::string k_hb_pong = "hb:pong";
+
 #ifdef USE_ENCRYPT_MODULE
 	NetworkSession::NetworkSession(const std::string& session_id,
 								   const bool& encrypt,
 								   const uint16_t& high_priority_count,
 								   const uint16_t& normal_priority_count,
-								   const uint16_t& low_priority_count)
+								   const uint16_t& low_priority_count,
+								   const bool& heartbeat_enabled,
+								   const uint32_t& heartbeat_interval_sec)
 #else
 	NetworkSession::NetworkSession(const std::string& session_id,
 								   const uint16_t& high_priority_count,
 								   const uint16_t& normal_priority_count,
-								   const uint16_t& low_priority_count)
+								   const uint16_t& low_priority_count,
+								   const bool& heartbeat_enabled,
+								   const uint32_t& heartbeat_interval_sec)
 #endif
 		: DataHandler(high_priority_count, normal_priority_count, low_priority_count)
 		, session_id_(0)
@@ -39,6 +47,8 @@ namespace Network
 		, server_id_(session_id)
 		, registered_key_("")
 		, file_manager_(std::make_unique<FileManager>())
+		, heartbeat_enabled_(heartbeat_enabled)
+		, heartbeat_interval_sec_(heartbeat_interval_sec)
 	{
 		id("unauthorized_client");
 		sub_id(Generator::guid());
@@ -62,16 +72,29 @@ namespace Network
 	}
 
 	auto NetworkSession::session_id(void) const -> SessionId { return session_id_; }
-	
+
 	auto NetworkSession::state(void) const -> SessionState { return state_; }
-	
-	auto NetworkSession::session_id(const SessionId& id) -> void { session_id_ = id; }
+
+	auto NetworkSession::session_id(const SessionId& id) -> void
+	{
+		std::scoped_lock<std::mutex> lock(mutex_);
+		session_id_ = id;
+	}
 
 	auto NetworkSession::get_ptr(void) -> std::shared_ptr<NetworkSession> { return shared_from_this(); }
 
+	auto NetworkSession::heartbeat(const bool& enable, const uint32_t& interval_sec) -> void
+	{
+		heartbeat_enabled_ = enable;
+		heartbeat_interval_sec_ = interval_sec == 0 ? 1 : interval_sec;
+	}
+
 	auto NetworkSession::start(std::shared_ptr<boost::asio::ip::tcp::socket> connected_socket, const size_t& socket_buffer_size) -> void
 	{
-		state_ = SessionState::Handshaking;
+		{
+			std::scoped_lock<std::mutex> lock(mutex_);
+			state_ = SessionState::Handshaking;
+		}
 		condition(ConnectConditions::None);
 
 		if (connected_socket == nullptr)
@@ -93,18 +116,61 @@ namespace Network
 
 		file_manager_->thread_pool(thread_pool());
 
+		// Start handshake timeout timer (10s)
+		try
+		{
+			auto ex = socket()->get_executor();
+			handshake_timer_ = std::make_shared<boost::asio::steady_timer>(ex);
+			handshake_timer_->expires_after(std::chrono::seconds(10));
+			auto self = shared_from_this();
+			handshake_timer_->async_wait(
+				[self](const boost::system::error_code& ec)
+				{
+					if (ec == boost::asio::error::operation_aborted)
+					{
+						return;
+					}
+					// If not authenticated yet, expire the connection
+					if (self->state() != SessionState::Authenticated && self->condition() != ConnectConditions::Expired)
+					{
+						Utilities::Logger::handle().write(Utilities::LogTypes::Debug, fmt::format("handshake timeout on session [{}:{}]", self->id(), self->sub_id()));
+						self->condition(ConnectConditions::Expired);
+					}
+				});
+		}
+		catch (...)
+		{
+			// ignore timer init failure, proceed without timeout
+		}
+
 		read_start_code();
 	}
 
 	auto NetworkSession::stop(void) -> void
 	{
-		state_ = SessionState::Closed;
+		{
+			std::scoped_lock<std::mutex> lock(mutex_);
+			state_ = SessionState::Closing;
+		}
 		condition(ConnectConditions::Expired, true);
+
+		stop_heartbeat();
+
+		if (handshake_timer_)
+		{
+			handshake_timer_->cancel();
+			handshake_timer_.reset();
+		}
 
 		file_manager_->thread_pool(nullptr);
 
 		destroy_thread_pool();
 		destroy_socket();
+
+		{
+			std::scoped_lock<std::mutex> lock(mutex_);
+			state_ = SessionState::Closed;
+		}
 	}
 
 	auto NetworkSession::register_key(const std::string& key) -> void { registered_key_ = key; }
@@ -155,13 +221,28 @@ namespace Network
 			return { false, "received empty data for connection" };
 		}
 
-		boost::json::object received_message = boost::json::parse(Converter::to_string(data)).as_object();
+		boost::json::object received_message;
+		try
+		{
+			received_message = boost::json::parse(Converter::to_string(data)).as_object();
+		}
+		catch (const std::exception& e)
+		{
+			Utilities::Logger::handle().write(Utilities::LogTypes::Error, fmt::format("invalid connection json: {}", e.what()));
+			return { false, "invalid connection json" };
+		}
+
+		if (!received_message.if_contains("id") || !received_message.at("id").is_string())
+		{
+			return { false, "invalid connection message: missing id" };
+		}
 
 		id(received_message.at("id").as_string().data());
 
 		Logger::handle().write(LogTypes::Debug, fmt::format("received connection message from NetworkClient: ({})", id()));
 
-		if (!received_message.at("registered_key").is_string() || received_message.at("registered_key").as_string().data() != registered_key_)
+		if (!received_message.if_contains("registered_key") || !received_message.at("registered_key").is_string()
+			|| received_message.at("registered_key").as_string().data() != registered_key_)
 		{
 			Logger::handle().write(LogTypes::Error, fmt::format("the registered key of the NetworkClient is not compatible with the server: ({})", id()));
 
@@ -171,7 +252,21 @@ namespace Network
 		}
 
 		condition(ConnectConditions::Confirmed);
-		state_ = SessionState::Authenticated;
+		{
+			std::scoped_lock<std::mutex> lock(mutex_);
+			state_ = SessionState::Authenticated;
+		}
+		if (handshake_timer_)
+		{
+			handshake_timer_->cancel();
+			handshake_timer_.reset();
+		}
+
+		// Start heartbeat after authentication if enabled
+		if (heartbeat_enabled_)
+		{
+			start_heartbeat();
+		}
 		return response_connection(true);
 	}
 
@@ -199,6 +294,7 @@ namespace Network
 
 		if (received_binary_callback_ == nullptr)
 		{
+			Logger::handle().write(LogTypes::Error, fmt::format("no binary-callback on [{}:{}] state:{}", id(), sub_id(), to_string(state_)));
 			return { false, "there is no callback to handle binary data" };
 		}
 
@@ -232,10 +328,26 @@ namespace Network
 
 		if (received_message_callback_ == nullptr)
 		{
+			Logger::handle().write(LogTypes::Error, fmt::format("no message-callback on [{}:{}] state:{}", id(), sub_id(), to_string(state_)));
 			return { false, "there is no callback to handle message data" };
 		}
 
-		return received_message_callback_(id(), sub_id(), Converter::to_string(data));
+		auto msg = Converter::to_string(data);
+		// Heartbeat handling
+		if (msg.rfind(k_hb_ping, 0) == 0)
+		{
+			Logger::handle().write(LogTypes::Debug, fmt::format("received hb:ping from [{}:{}]", id(), sub_id()));
+			// Reply pong and swallow
+			send_message(k_hb_pong);
+			return { true, std::nullopt };
+		}
+		if (msg.rfind(k_hb_pong, 0) == 0)
+		{
+			Logger::handle().write(LogTypes::Debug, fmt::format("received hb:pong from [{}:{}]", id(), sub_id()));
+			return { true, std::nullopt };
+		}
+
+		return received_message_callback_(id(), sub_id(), msg);
 	}
 
 	auto NetworkSession::received_file(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
@@ -257,8 +369,17 @@ namespace Network
 		auto file_mode = Combiner::divide(data, index);
 		auto file_index = Combiner::divide(data, index);
 
+		if (file_mode.empty())
+		{
+			return { false, "invalid file message: missing mode" };
+		}
+
 		size_t file_count = 0;
-		std::copy(file_index.begin(), file_index.end(), reinterpret_cast<uint8_t*>(&file_count));
+		if (file_index.size() != sizeof(size_t))
+		{
+			return { false, "invalid file message: bad index length" };
+		}
+		memcpy(&file_count, file_index.data(), sizeof(size_t));
 
 		if ((FileModes)file_mode[0] == FileModes::Start)
 		{
@@ -343,5 +464,45 @@ namespace Network
 		}
 
 		return received_connection_callback_(array_data);
+	}
+
+	auto NetworkSession::start_heartbeat(void) -> void
+	{
+		try
+		{
+			auto ex = socket()->get_executor();
+			heartbeat_timer_ = std::make_shared<boost::asio::steady_timer>(ex);
+			heartbeat_timer_->expires_after(std::chrono::seconds(heartbeat_interval_sec_));
+			auto self = shared_from_this();
+			heartbeat_timer_->async_wait(
+				[self](const boost::system::error_code& ec)
+				{
+					if (ec == boost::asio::error::operation_aborted)
+					{
+						return;
+					}
+					if (self->condition() == ConnectConditions::Expired)
+					{
+						return;
+					}
+					Utilities::Logger::handle().write(Utilities::LogTypes::Debug, fmt::format("send hb:ping to [{}:{}]", self->id(), self->sub_id()));
+					self->send_message(k_hb_ping);
+					// reschedule
+					self->start_heartbeat();
+				});
+		}
+		catch (...)
+		{
+			// ignore heartbeat init failure
+		}
+	}
+
+	auto NetworkSession::stop_heartbeat(void) -> void
+	{
+		if (heartbeat_timer_)
+		{
+			heartbeat_timer_->cancel();
+			heartbeat_timer_.reset();
+		}
 	}
 }

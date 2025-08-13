@@ -26,6 +26,8 @@ namespace Network
 		, io_context_(nullptr)
 		, acceptor_(nullptr)
 		, promise_status_(nullptr)
+		, heartbeat_enabled_(false)
+		, heartbeat_interval_sec_(30)
 #ifdef USE_ENCRYPT_MODULE
 		, encrypt_mode_(false)
 #endif
@@ -53,6 +55,12 @@ namespace Network
 #endif
 
 	auto NetworkServer::register_key(const std::string& key) -> void { registered_key_ = key; }
+
+	auto NetworkServer::heartbeat_mode(const bool& enable, const uint32_t& interval_sec) -> void
+	{
+		heartbeat_enabled_ = enable;
+		heartbeat_interval_sec_ = interval_sec == 0 ? 1 : interval_sec;
+	}
 
 	auto NetworkServer::start(const uint16_t& port, const size_t& socket_buffer_size) -> std::tuple<bool, std::optional<std::string>>
 	{
@@ -325,6 +333,7 @@ namespace Network
 
 			if (id.compare(session->id()) == 0 && sub_id.compare(session->sub_id()) == 0)
 			{
+				session->stop();
 				continue;
 			}
 
@@ -350,6 +359,7 @@ namespace Network
 
 			if (id.compare(session->id()) == 0)
 			{
+				session->stop();
 				continue;
 			}
 
@@ -575,10 +585,20 @@ namespace Network
 #endif
 
 #ifdef USE_ENCRYPT_MODULE
-				std::shared_ptr<NetworkSession> session
-					= std::make_shared<NetworkSession>(id_, encrypt_mode_, high_priority_count_, normal_priority_count_, low_priority_count_);
+				std::shared_ptr<NetworkSession> session = std::make_shared<NetworkSession>(id_,
+						encrypt_mode_,
+						high_priority_count_,
+						normal_priority_count_,
+						low_priority_count_,
+						heartbeat_enabled_,
+						heartbeat_interval_sec_);
 #else
-				std::shared_ptr<NetworkSession> session = std::make_shared<NetworkSession>(id_, high_priority_count_, normal_priority_count_, low_priority_count_);
+				std::shared_ptr<NetworkSession> session = std::make_shared<NetworkSession>(id_,
+						high_priority_count_,
+						normal_priority_count_,
+						low_priority_count_,
+						heartbeat_enabled_,
+						heartbeat_interval_sec_);
 #endif
 				if (session == nullptr)
 				{
@@ -608,7 +628,16 @@ namespace Network
 
 	auto NetworkServer::received_connection_handler(const std::vector<uint8_t>& condition) -> std::tuple<bool, std::optional<std::string>>
 	{
-		boost::json::object condition_message = boost::json::parse(Converter::to_string(condition)).as_object();
+		boost::json::object condition_message;
+		try
+		{
+			condition_message = boost::json::parse(Converter::to_string(condition)).as_object();
+		}
+		catch (const std::exception& e)
+		{
+			Logger::handle().write(LogTypes::Error, fmt::format("invalid connection json: {}", e.what()));
+			return { false, "invalid connection json" };
+		}
 
 		Logger::handle().write(LogTypes::Debug,
 							   fmt::format("received connection message from NetworkSession : [{}:{}] => {}", condition_message.at("id").as_string().data(),
@@ -641,6 +670,33 @@ namespace Network
 		}
 
 		Logger::handle().write(LogTypes::Information, fmt::format("working session count : {}", sessions_.size()));
+
+		// Detailed session state counts
+		{
+			std::unique_lock<std::mutex> lock(mutex_);
+			size_t create_cnt = 0, handshaking_cnt = 0, authed_cnt = 0, ingame_cnt = 0, closing_cnt = 0, closed_cnt = 0;
+			for (const auto& s : sessions_)
+			{
+				if (!s)
+				{
+					continue;
+				}
+				switch (s->state())
+				{
+				case SessionState::Create: create_cnt++; break;
+				case SessionState::Handshaking: handshaking_cnt++; break;
+				case SessionState::Authenticated: authed_cnt++; break;
+				case SessionState::InGame: ingame_cnt++; break;
+				case SessionState::Closing: closing_cnt++; break;
+				case SessionState::Closed: closed_cnt++; break;
+				default: break;
+				}
+			}
+
+			Logger::handle().write(LogTypes::Debug,
+								fmt::format("sessions by state - Create:{} Handshaking:{} Authenticated:{} InGame:{} Closing:{} Closed:{}",
+										create_cnt, handshaking_cnt, authed_cnt, ingame_cnt, closing_cnt, closed_cnt));
+		}
 
 		if (received_connection_callback_ == nullptr)
 		{

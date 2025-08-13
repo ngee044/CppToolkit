@@ -35,6 +35,9 @@ namespace Network
 
 		auto register_key(const std::string& key) -> void;
 
+		// Heartbeat control for all sessions created by this server
+		auto heartbeat_mode(const bool& enable, const uint32_t& interval_sec = 30) -> void;
+
 		auto start(const uint16_t& port, const size_t& socket_buffer_size) -> std::tuple<bool, std::optional<std::string>>;
 		auto send_binary(const std::vector<uint8_t>& binary, const std::string& message, const std::string& id = "", const std::string& sub_id = "")
 			-> std::tuple<bool, std::optional<std::string>>;
@@ -97,6 +100,10 @@ namespace Network
 		uint16_t high_priority_count_;
 		uint16_t normal_priority_count_;
 		uint16_t low_priority_count_;
+
+		// Heartbeat settings
+		bool heartbeat_enabled_;
+		uint32_t heartbeat_interval_sec_;
 
 #ifdef USE_ENCRYPT_MODULE
 		bool encrypt_mode_;

@@ -20,13 +20,20 @@ namespace Network
 	{
 		switch (state)
 		{
-		case SessionState::Create: return "Create";
-		case SessionState::Handshaking: return "Handshaking";
-		case SessionState::Authenticated: return "Authenticated";
-		case SessionState::InGame: return "InGame";
-		case SessionState::Closing: return "Closing";
-		case SessionState::Closed: return "Closed";
-		default: return "Unknown";
+		case SessionState::Create:
+			return "Create";
+		case SessionState::Handshaking:
+			return "Handshaking";
+		case SessionState::Authenticated:
+			return "Authenticated";
+		case SessionState::InGame:
+			return "InGame";
+		case SessionState::Closing:
+			return "Closing";
+		case SessionState::Closed:
+			return "Closed";
+		default:
+			return "Unknown";
 		}
 	}
 
