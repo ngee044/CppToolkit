@@ -49,6 +49,7 @@ namespace Network
 		, file_manager_(std::make_unique<FileManager>())
 		, heartbeat_enabled_(heartbeat_enabled)
 		, heartbeat_interval_sec_(heartbeat_interval_sec)
+		, stopped_(false)
 	{
 		id("unauthorized_client");
 		sub_id(Generator::guid());
@@ -110,6 +111,7 @@ namespace Network
 		connected_socket->set_option(boost::asio::socket_base::send_buffer_size(buffer_size()));
 
 		socket(connected_socket);
+		set_self_guard(shared_from_this());
 		condition(ConnectConditions::Waiting);
 
 		create_thread_pool(fmt::format("ThreadPool on NetworkSession on {}", id()));
@@ -119,8 +121,16 @@ namespace Network
 		// Start handshake timeout timer (10s)
 		try
 		{
-			auto ex = socket()->get_executor();
-			handshake_timer_ = std::make_shared<boost::asio::steady_timer>(ex);
+			auto s = strand();
+			if (s)
+			{
+				handshake_timer_ = std::make_shared<boost::asio::steady_timer>(*s);
+			}
+			else
+			{
+				auto ex = socket()->get_executor();
+				handshake_timer_ = std::make_shared<boost::asio::steady_timer>(ex);
+			}
 			handshake_timer_->expires_after(std::chrono::seconds(10));
 			auto self = shared_from_this();
 			handshake_timer_->async_wait(
@@ -148,6 +158,10 @@ namespace Network
 
 	auto NetworkSession::stop(void) -> void
 	{
+		if (stopped_.exchange(true))
+		{
+			return;
+		}
 		{
 			std::scoped_lock<std::mutex> lock(mutex_);
 			state_ = SessionState::Closing;
@@ -470,8 +484,16 @@ namespace Network
 	{
 		try
 		{
-			auto ex = socket()->get_executor();
-			heartbeat_timer_ = std::make_shared<boost::asio::steady_timer>(ex);
+			auto s = strand();
+			if (s)
+			{
+				heartbeat_timer_ = std::make_shared<boost::asio::steady_timer>(*s);
+			}
+			else
+			{
+				auto ex = socket()->get_executor();
+				heartbeat_timer_ = std::make_shared<boost::asio::steady_timer>(ex);
+			}
 			heartbeat_timer_->expires_after(std::chrono::seconds(heartbeat_interval_sec_));
 			auto self = shared_from_this();
 			heartbeat_timer_->async_wait(

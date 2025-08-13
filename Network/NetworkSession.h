@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 #include <boost/asio/steady_timer.hpp>
+#include <atomic>
 
 namespace Network
 {
@@ -85,6 +86,7 @@ namespace Network
 
 		// Handshake timeout timer; created on start and cancelled on authentication/stop
 		std::shared_ptr<boost::asio::steady_timer> handshake_timer_;
+		std::atomic<bool> stopped_;
 
 		// Optional heartbeat
 		bool heartbeat_enabled_;

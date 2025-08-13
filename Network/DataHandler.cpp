@@ -29,6 +29,7 @@ namespace Network
 		, low_priority_count_(low_priority_count)
 		, condition_(ConnectConditions::None)
 		, socket_(nullptr)
+		, strand_(nullptr)
 		, id_("")
 		, buffer_size_(1024)
 		, receiving_buffers_(nullptr)
@@ -62,9 +63,15 @@ namespace Network
 		}
 	}
 
-	auto DataHandler::id(void) const -> std::string { return id_; }
+auto DataHandler::id(void) const -> std::string { return id_; }
 
-	auto DataHandler::sub_id(void) const -> std::string { return sub_id_; }
+auto DataHandler::sub_id(void) const -> std::string { return sub_id_; }
+
+auto DataHandler::strand(void) -> std::shared_ptr<boost::asio::strand<boost::asio::any_io_executor>> { return strand_; }
+
+auto DataHandler::set_self_guard(const std::weak_ptr<void>& self) -> void { self_guard_ = self; }
+
+auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 
 	auto DataHandler::start_code(const char& code1, const char& code2, const char& code3, const char& code4) -> void
 	{
@@ -264,7 +271,25 @@ namespace Network
 
 	auto DataHandler::buffer_size(void) const -> size_t { return buffer_size_; }
 
-	auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socket) -> void { socket_ = new_socket; }
+auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socket) -> void
+{
+    socket_ = new_socket;
+    if (socket_ && socket_->is_open())
+    {
+        try
+        {
+            strand_ = std::make_shared<boost::asio::strand<boost::asio::any_io_executor>>(socket_->get_executor());
+        }
+        catch (...)
+        {
+            strand_.reset();
+        }
+    }
+    else
+    {
+        strand_.reset();
+    }
+}
 
 	auto DataHandler::socket(void) -> std::shared_ptr<boost::asio::ip::tcp::socket> { return socket_; }
 
@@ -293,6 +318,7 @@ namespace Network
 		ec.clear();
 
 		socket_.reset();
+		strand_.reset();
 	}
 
 	auto DataHandler::condition(const ConnectConditions& new_condition, const bool& by_itself) -> void
@@ -385,9 +411,12 @@ namespace Network
 
 		received_data_.clear();
 		memset(receiving_buffers_, 0, sizeof(uint8_t) * buffer_size_);
-		boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1),
-								[this, matched_index](boost::system::error_code ec, size_t length)
-								{
+		auto handler_start = [this, matched_index](boost::system::error_code ec, size_t length)
+		{
+			if (!alive())
+			{
+				return;
+			}
 									if (condition() == ConnectConditions::Expired)
 									{
 										return;
@@ -420,7 +449,17 @@ namespace Network
 									}
 
 									read_start_code(matched_index + 1);
-								});
+								};
+
+		if (strand_)
+		{
+			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1),
+									  boost::asio::bind_executor(*strand_, std::move(handler_start)));
+		}
+		else
+		{
+			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1), handler_start);
+		}
 	}
 
 	auto DataHandler::read_length_code(void) -> void
@@ -437,9 +476,12 @@ namespace Network
 		}
 
 		memset(receiving_buffers_, 0, sizeof(uint8_t) * buffer_size_);
-		boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, LENGTH_SIZE), boost::asio::transfer_exactly(LENGTH_SIZE),
-								[this](std::error_code ec, size_t length)
-								{
+		auto handler_length = [this](std::error_code ec, size_t length)
+		{
+			if (!alive())
+			{
+				return;
+			}
 									if (condition() == ConnectConditions::Expired)
 									{
 										return;
@@ -470,7 +512,17 @@ namespace Network
 									memcpy(&target_length, receiving_buffers_, length);
 
 									read_data(target_length);
-								});
+								};
+
+		if (strand_)
+		{
+			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, LENGTH_SIZE), boost::asio::transfer_exactly(LENGTH_SIZE),
+									  boost::asio::bind_executor(*strand_, std::move(handler_length)));
+		}
+		else
+		{
+			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, LENGTH_SIZE), boost::asio::transfer_exactly(LENGTH_SIZE), handler_length);
+		}
 	}
 
 	auto DataHandler::read_data(const size_t& remained_data_length) -> void
@@ -497,9 +549,12 @@ namespace Network
 
 		if (remained_data_length >= buffer_size_)
 		{
-			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, buffer_size_), boost::asio::transfer_exactly(buffer_size_),
-									[this, remained_data_length](boost::system::error_code ec, size_t length)
-									{
+			auto handler_chunk = [this, remained_data_length](boost::system::error_code ec, size_t length)
+			{
+				if (!alive())
+				{
+					return;
+				}
 										if (condition() == ConnectConditions::Expired)
 										{
 											return;
@@ -523,16 +578,28 @@ namespace Network
 										}
 
 										received_data_.insert(received_data_.end(), receiving_buffers_, receiving_buffers_ + length);
-
 										read_data(remained_data_length - length);
-									});
+			};
+
+			if (strand_)
+			{
+				boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, buffer_size_), boost::asio::transfer_exactly(buffer_size_),
+										  boost::asio::bind_executor(*strand_, std::move(handler_chunk)));
+			}
+			else
+			{
+				boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, buffer_size_), boost::asio::transfer_exactly(buffer_size_), handler_chunk);
+			}
 
 			return;
 		}
 
-		boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, remained_data_length), boost::asio::transfer_exactly(remained_data_length),
-								[this](boost::system::error_code ec, size_t length)
-								{
+		auto handler_last = [this](boost::system::error_code ec, size_t length)
+		{
+			if (!alive())
+			{
+				return;
+			}
 									if (condition() == ConnectConditions::Expired)
 									{
 										return;
@@ -553,7 +620,17 @@ namespace Network
 #endif
 
 									read_end_code();
-								});
+		};
+
+		if (strand_)
+		{
+			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, remained_data_length), boost::asio::transfer_exactly(remained_data_length),
+									  boost::asio::bind_executor(*strand_, std::move(handler_last)));
+		}
+		else
+		{
+			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, remained_data_length), boost::asio::transfer_exactly(remained_data_length), handler_last);
+		}
 	}
 
 	auto DataHandler::read_end_code(const uint8_t& matched_index) -> void
@@ -590,9 +667,12 @@ namespace Network
 
 		memset(receiving_buffers_, 0, sizeof(uint8_t) * buffer_size_);
 
-		boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1),
-								[this, matched_index](boost::system::error_code ec, size_t length)
-								{
+		auto handler_end = [this, matched_index](boost::system::error_code ec, size_t length)
+		{
+			if (!alive())
+			{
+				return;
+			}
 									if (condition() == ConnectConditions::Expired)
 									{
 										return;
@@ -616,7 +696,17 @@ namespace Network
 									}
 
 									read_end_code(matched_index + 1);
-								});
+		};
+
+		if (strand_)
+		{
+			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1),
+									  boost::asio::bind_executor(*strand_, std::move(handler_end)));
+		}
+		else
+		{
+			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1), handler_end);
+		}
 	}
 
 	auto DataHandler::create_receiving_buffers(const size_t& size) -> void
