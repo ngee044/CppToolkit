@@ -243,8 +243,8 @@ namespace Network
 
 		auto current_socket = std::make_shared<boost::asio::ip::tcp::socket>(*io_context_);
 
-		try
-		{
+    try
+    {
 			current_socket->open(boost::asio::ip::tcp::v4());
 			current_socket->bind(boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), 0));
 #if BOOST_VERSION >= 106600
@@ -257,34 +257,42 @@ namespace Network
 			current_socket->set_option(boost::asio::socket_base::receive_buffer_size(buffer_size()));
 			current_socket->set_option(boost::asio::socket_base::send_buffer_size(buffer_size()));
 		}
-		catch (const std::overflow_error& message)
-		{
-			destroy_socket();
-			Logger::handle().write(LogTypes::Exception, fmt::format("cannot create socket on NetworkClient on {} => {}", id(), ip, port, message.what()));
+    catch (const std::overflow_error& message)
+    {
+        destroy_socket();
+        Logger::handle().write(LogTypes::Exception,
+                               fmt::format("cannot create socket on NetworkClient on {} => {}:{} {}",
+                                           id(), ip, port, message.what()));
 
-			return false;
-		}
-		catch (const std::runtime_error& message)
-		{
-			destroy_socket();
-			Logger::handle().write(LogTypes::Exception, fmt::format("cannot create socket on NetworkClient on {} => {}", id(), ip, port, message.what()));
+        return false;
+    }
+    catch (const std::runtime_error& message)
+    {
+        destroy_socket();
+        Logger::handle().write(LogTypes::Exception,
+                               fmt::format("cannot create socket on NetworkClient on {} => {}:{} {}",
+                                           id(), ip, port, message.what()));
 
-			return false;
-		}
-		catch (const std::exception& message)
-		{
-			destroy_socket();
-			Logger::handle().write(LogTypes::Exception, fmt::format("cannot create socket on NetworkClient on {} => {}", id(), ip, port, message.what()));
+        return false;
+    }
+    catch (const std::exception& message)
+    {
+        destroy_socket();
+        Logger::handle().write(LogTypes::Exception,
+                               fmt::format("cannot create socket on NetworkClient on {} => {}:{} {}",
+                                           id(), ip, port, message.what()));
 
-			return false;
-		}
-		catch (...)
-		{
-			destroy_socket();
-			Logger::handle().write(LogTypes::Exception, fmt::format("cannot create acceptor on NetworkClient on {} => unexpected error", id(), ip, port));
+        return false;
+    }
+    catch (...)
+    {
+        destroy_socket();
+        Logger::handle().write(LogTypes::Exception,
+                               fmt::format("cannot create socket on NetworkClient on {} => {}:{} unexpected error",
+                                           id(), ip, port));
 
-			return false;
-		}
+        return false;
+    }
 
 		socket(current_socket);
 
@@ -333,10 +341,28 @@ namespace Network
 			return { false, "received empty data for connection" };
 		}
 
-		boost::json::object received_message = boost::json::parse(Converter::to_string(data)).as_object();
+    boost::json::object received_message;
+    try
+    {
+        received_message = boost::json::parse(Converter::to_string(data)).as_object();
+    }
+    catch (const std::exception& e)
+    {
+        Logger::handle().write(LogTypes::Error, fmt::format("invalid connection json on client: {}", e.what()));
+        return { false, "invalid connection json" };
+    }
 
-		server_id_ = received_message.at("id").as_string();
-		sub_id(received_message.at("sub_id").as_string().c_str());
+    if (!received_message.if_contains("id") || !received_message.at("id").is_string())
+    {
+        return { false, "invalid connection response: missing id" };
+    }
+    if (!received_message.if_contains("sub_id") || !received_message.at("sub_id").is_string())
+    {
+        return { false, "invalid connection response: missing sub_id" };
+    }
+
+    server_id_ = received_message.at("id").as_string();
+    sub_id(received_message.at("sub_id").as_string().c_str());
 
 #ifdef USE_ENCRYPT_MODULE
 		if (received_message.at("key").is_string())
@@ -353,11 +379,11 @@ namespace Network
 		}
 #endif
 
-		Logger::handle().write(LogTypes::Debug, fmt::format("received connection message: ({})", server_id_));
+    Logger::handle().write(LogTypes::Debug, fmt::format("received connection message: ({})", server_id_));
 
-		if (!received_message.at("condition").as_bool())
-		{
-			condition(ConnectConditions::Expired);
+    if (!received_message.if_contains("condition") || !received_message.at("condition").is_bool() || !received_message.at("condition").as_bool())
+    {
+        condition(ConnectConditions::Expired);
 
 			key("");
 			iv("");
@@ -371,10 +397,10 @@ namespace Network
 				}
 			}
 
-			return { false, "connection has expired by server" };
-		}
+        return { false, "connection has expired by server" };
+    }
 
-		condition(ConnectConditions::Confirmed);
+    condition(ConnectConditions::Confirmed);
 
 		if (received_connection_callback_)
 		{
@@ -432,12 +458,25 @@ namespace Network
 			return { false, "cannot handle empty message." };
 		}
 
-		if (received_message_callback_ == nullptr)
-		{
-			return { false, "there is no callback to handle message data" };
-		}
+    if (received_message_callback_ == nullptr)
+    {
+        return { false, "there is no callback to handle message data" };
+    }
+    auto msg = Converter::to_string(data);
+    // Heartbeat handling: reply pong and swallow
+    if (msg.rfind("heartbeat:ping", 0) == 0)
+    {
+        Logger::handle().write(LogTypes::Debug, fmt::format("received heartbeat:ping from server [{}:{}]", id(), sub_id()));
+        send_message("heartbeat:pong");
+        return { true, std::nullopt };
+    }
+    if (msg.rfind("heartbeat:pong", 0) == 0)
+    {
+        Logger::handle().write(LogTypes::Debug, fmt::format("received heartbeat:pong from server [{}:{}]", id(), sub_id()));
+        return { true, std::nullopt };
+    }
 
-		return received_message_callback_(Converter::to_string(data));
+    return received_message_callback_(msg);
 	}
 
 	auto NetworkClient::received_file(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
@@ -459,8 +498,11 @@ namespace Network
 		auto file_mode = Combiner::divide(data, index);
 		auto file_index = Combiner::divide(data, index);
 
-		size_t file_count = 0;
-		std::copy(file_index.begin(), file_index.end(), reinterpret_cast<uint8_t*>(&file_count));
+    size_t file_count = 0;
+    if (file_index.size() == sizeof(size_t))
+    {
+        memcpy(&file_count, file_index.data(), sizeof(size_t));
+    }
 
 		if ((FileModes)file_mode[0] == FileModes::Start)
 		{

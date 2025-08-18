@@ -22,8 +22,8 @@ using namespace Utilities;
 
 namespace Network
 {
-	static const std::string k_hb_ping = "hb:ping";
-	static const std::string k_hb_pong = "hb:pong";
+	static const std::string k_heartbeat_ping = "heartbeat:ping";
+	static const std::string k_heartbeat_pong = "heartbeat:pong";
 
 #ifdef USE_ENCRYPT_MODULE
 	NetworkSession::NetworkSession(const std::string& session_id,
@@ -277,12 +277,15 @@ namespace Network
 		}
 
 		// Start heartbeat after authentication if enabled
-		if (heartbeat_enabled_)
-		{
-			start_heartbeat();
-		}
-		return response_connection(true);
-	}
+        if (heartbeat_enabled_)
+        {
+            // initialize pong timestamp on successful authentication
+            last_pong_at_ = std::chrono::steady_clock::now();
+            missed_heartbeats_ = 0;
+            start_heartbeat();
+        }
+        return response_connection(true);
+    }
 
 	auto NetworkSession::received_binary(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
 	{
@@ -348,18 +351,20 @@ namespace Network
 
 		auto msg = Converter::to_string(data);
 		// Heartbeat handling
-		if (msg.rfind(k_hb_ping, 0) == 0)
+		if (msg.rfind(k_heartbeat_ping, 0) == 0)
 		{
-			Logger::handle().write(LogTypes::Debug, fmt::format("received hb:ping from [{}:{}]", id(), sub_id()));
+			Logger::handle().write(LogTypes::Debug, fmt::format("received heartbeat:ping from [{}:{}]", id(), sub_id()));
 			// Reply pong and swallow
-			send_message(k_hb_pong);
+			send_message(k_heartbeat_pong);
 			return { true, std::nullopt };
 		}
-		if (msg.rfind(k_hb_pong, 0) == 0)
-		{
-			Logger::handle().write(LogTypes::Debug, fmt::format("received hb:pong from [{}:{}]", id(), sub_id()));
-			return { true, std::nullopt };
-		}
+        if (msg.rfind(k_heartbeat_pong, 0) == 0)
+        {
+			Logger::handle().write(LogTypes::Debug, fmt::format("received heartbeat:pong from [{}:{}]", id(), sub_id()));
+            last_pong_at_ = std::chrono::steady_clock::now();
+            missed_heartbeats_ = 0;
+            return { true, std::nullopt };
+        }
 
 		return received_message_callback_(id(), sub_id(), msg);
 	}
@@ -480,10 +485,10 @@ namespace Network
 		return received_connection_callback_(array_data);
 	}
 
-	auto NetworkSession::start_heartbeat(void) -> void
-	{
-		try
-		{
+    auto NetworkSession::start_heartbeat(void) -> void
+    {
+        try
+        {
 			auto s = strand();
 			if (s)
 			{
@@ -494,27 +499,40 @@ namespace Network
 				auto ex = socket()->get_executor();
 				heartbeat_timer_ = std::make_shared<boost::asio::steady_timer>(ex);
 			}
-			heartbeat_timer_->expires_after(std::chrono::seconds(heartbeat_interval_sec_));
-			auto self = shared_from_this();
-			heartbeat_timer_->async_wait(
-				[self](const boost::system::error_code& ec)
-				{
-					if (ec == boost::asio::error::operation_aborted)
-					{
-						return;
-					}
-					if (self->condition() == ConnectConditions::Expired)
-					{
-						return;
-					}
-					Utilities::Logger::handle().write(Utilities::LogTypes::Debug, fmt::format("send hb:ping to [{}:{}]", self->id(), self->sub_id()));
-					self->send_message(k_hb_ping);
-					// reschedule
-					self->start_heartbeat();
-				});
-		}
-		catch (...)
-		{
+            heartbeat_timer_->expires_after(std::chrono::seconds(heartbeat_interval_sec_));
+            auto self = shared_from_this();
+            heartbeat_timer_->async_wait(
+                [self](const boost::system::error_code& ec)
+                {
+                    if (ec == boost::asio::error::operation_aborted)
+                    {
+                        return;
+                    }
+                    if (self->condition() == ConnectConditions::Expired)
+                    {
+                        return;
+                    }
+                    // Check missed heartbeats
+                    auto now = std::chrono::steady_clock::now();
+                    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - self->last_pong_at_).count();
+                    if (elapsed >= static_cast<long long>(self->heartbeat_interval_sec_) * self->max_missed_heartbeats_)
+                    {
+                        Utilities::Logger::handle().write(Utilities::LogTypes::Error,
+                                                          fmt::format("heartbeat timeout on [{}:{}], elapsed {}s >= {}s; expiring",
+                                                                      self->id(), self->sub_id(), elapsed,
+                                                                      static_cast<long long>(self->heartbeat_interval_sec_) * self->max_missed_heartbeats_));
+                        self->condition(ConnectConditions::Expired);
+                        return;
+                    }
+
+                    Utilities::Logger::handle().write(Utilities::LogTypes::Debug, fmt::format("send heartbeat:ping to [{}:{}]", self->id(), self->sub_id()));
+                    self->send_message(k_heartbeat_ping);
+                    // reschedule
+                    self->start_heartbeat();
+                });
+        }
+        catch (...)
+        {
 			// ignore heartbeat init failure
 		}
 	}

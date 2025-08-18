@@ -11,6 +11,7 @@
 #include "SendingJob.h"
 #include "ReceivingJob.h"
 #include "ThreadWorker.h"
+#include "JobPool.h"
 #include "FileSendingJob.h"
 #include "NetworkConstexpr.h"
 
@@ -359,6 +360,21 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 			return { false, fmt::format("cannot send a message by null data : mode[{}]", (uint8_t)mode) };
 		}
 
+		// Apply simple backpressure: cap total pending jobs except for Connection control messages
+		if (mode != DataModes::Connection)
+		{
+			auto pool = thread_pool_;
+			if (pool && pool->job_pool())
+			{
+				std::vector<JobPriorities> all; // empty => count all
+				size_t pending = pool->job_pool()->job_count(all);
+				if (pending >= MAX_PENDING_SEND_JOBS)
+				{
+					return { false, fmt::format("backpressure: too many pending send jobs ({} >= {})", pending, MAX_PENDING_SEND_JOBS) };
+				}
+			}
+		}
+
 		std::vector<uint8_t> sending_data;
 		Combiner::append(sending_data, { (uint8_t)mode });
 		Combiner::append(sending_data, data);
@@ -508,11 +524,20 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 									Logger::handle().write(LogTypes::Debug, fmt::format("read length code : {} bytes", LENGTH_SIZE));
 #endif
 
-									uint64_t target_length = 0;
-									memcpy(&target_length, receiving_buffers_, length);
+            uint64_t target_length = 0;
+            memcpy(&target_length, receiving_buffers_, length);
 
-									read_data(target_length);
-								};
+            // Enforce maximum frame size to protect memory and stability
+            if (target_length > MAX_FRAME_SIZE)
+            {
+                Logger::handle().write(LogTypes::Error,
+                                       fmt::format("drop frame: declared length {} exceeds MAX_FRAME_SIZE {}", target_length, MAX_FRAME_SIZE));
+                condition(ConnectConditions::Expired);
+                return;
+            }
+
+            read_data(target_length);
+        };
 
 		if (strand_)
 		{

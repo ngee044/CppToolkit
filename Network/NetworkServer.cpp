@@ -12,6 +12,7 @@
 #include "boost/json.hpp"
 
 #include <functional>
+#include <chrono>
 
 using namespace Utilities;
 
@@ -78,6 +79,7 @@ namespace Network
 		// Make sure the context starts to run AFTER calling async_accept on acceptor
 		wait_connection();
 		start_main_job();
+		start_maintenance_job();
 
 		return { true, std::nullopt };
 	}
@@ -278,6 +280,7 @@ namespace Network
 			return { true, std::nullopt };
 		}
 
+		stop_maintenance_job();
 		drop_sessions();
 		destroy_io_context();
 
@@ -437,9 +440,11 @@ namespace Network
 
 		io_context_ = std::make_shared<boost::asio::io_context>();
 
-		try
-		{
-			acceptor_ = std::make_shared<boost::asio::ip::tcp::acceptor>(*io_context_, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port), false);
+    try
+    {
+        acceptor_ = std::make_shared<boost::asio::ip::tcp::acceptor>(*io_context_, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port), false);
+        // Allow quick restarts without TIME_WAIT bind errors
+        acceptor_->set_option(boost::asio::socket_base::reuse_address(true));
 		}
 		catch (const std::overflow_error& message)
 		{
@@ -481,6 +486,67 @@ namespace Network
 		create_thread_pool();
 
 		return true;
+	}
+
+	auto NetworkServer::start_maintenance_job(void) -> void
+	{
+		if (io_context_ == nullptr)
+		{
+			return;
+		}
+
+		maintenance_timer_ = std::make_shared<boost::asio::steady_timer>(*io_context_);
+		auto schedule = [this]()
+		{
+			if (maintenance_timer_ == nullptr)
+			{
+				return;
+			}
+			maintenance_timer_->expires_after(std::chrono::seconds(5));
+			maintenance_timer_->async_wait([this](const boost::system::error_code& ec)
+										  {
+											  if (ec == boost::asio::error::operation_aborted)
+											  {
+												  return;
+											  }
+
+											  // Remove expired/closed/null sessions
+											  std::unique_lock lock(mutex_);
+											  auto iter = sessions_.begin();
+											  while (iter != sessions_.end())
+											  {
+												  if (!*iter || (*iter)->condition() == ConnectConditions::Expired || (*iter)->state() == SessionState::Closed)
+												  {
+													  if (*iter)
+													  {
+														  (*iter)->stop();
+													  }
+													  iter = sessions_.erase(iter);
+												  }
+												  else
+												  {
+													  ++iter;
+												  }
+											  }
+											  lock.unlock();
+											  Logger::handle().write(LogTypes::Information,
+																   fmt::format("maintenance: sessions={} (heartbeat:{}s enabled:{})",
+																		   sessions_.size(), heartbeat_interval_sec_, heartbeat_enabled_));
+											  // Reschedule
+											  start_maintenance_job();
+										  });
+		};
+
+		schedule();
+	}
+
+	auto NetworkServer::stop_maintenance_job(void) -> void
+	{
+		if (maintenance_timer_)
+		{
+			maintenance_timer_->cancel();
+			maintenance_timer_.reset();
+		}
 	}
 
 	auto NetworkServer::destroy_io_context(void) -> void

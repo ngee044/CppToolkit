@@ -14,6 +14,10 @@ using namespace Utilities;
 
 namespace Thread
 {
+	// Backpressure thresholds per priority (tunable)
+	static constexpr size_t MAX_QUEUE_LOW = 4096;
+	// static constexpr size_t MAX_QUEUE_NORMAL = 8192; // reserved for future use
+
 	JobPool::JobPool(const std::string& title) : lock_condition_(false), job_pool_title_(title)
 	{
 		backup_extensions_.insert({ ".top", JobPriorities::Top });
@@ -126,7 +130,15 @@ namespace Thread
 		JobPriorities priority = job->priority();
 		job->job_pool(get_ptr());
 
+		// Priority-based backpressure: drop low-priority jobs when the queue is full
 		auto iter = job_queues_.find(priority);
+		size_t qsize = (iter != job_queues_.end()) ? iter->second.size() : 0;
+		if (priority == JobPriorities::Low && qsize >= MAX_QUEUE_LOW)
+		{
+			lock.unlock();
+			return { false, "backpressure: low-priority queue is full" };
+		}
+
 		if (iter != job_queues_.end())
 		{
 			iter->second.push_back(job);

@@ -3,6 +3,7 @@
 #include "ThreadPool.h"
 
 #include "boost/asio.hpp"
+#include <boost/asio/steady_timer.hpp>
 
 #include <mutex>
 #include <future>
@@ -87,9 +88,13 @@ namespace Network
 
 		auto start_main_job(void) -> void;
 
-		auto wait_connection(void) -> void;
+	auto wait_connection(void) -> void;
 		auto received_connection_handler(const std::vector<uint8_t>& condition) -> std::tuple<bool, std::optional<std::string>>;
 		auto run(void) -> std::tuple<bool, std::optional<std::string>>;
+
+		// Periodic maintenance: cleanup expired/closed sessions
+		auto start_maintenance_job(void) -> void;
+		auto stop_maintenance_job(void) -> void;
 
 	private:
 		std::string id_;
@@ -118,6 +123,7 @@ namespace Network
 		std::shared_ptr<ThreadPool> thread_pool_;
 		std::shared_ptr<boost::asio::io_context> io_context_;
 		std::shared_ptr<boost::asio::ip::tcp::acceptor> acceptor_;
+		std::shared_ptr<boost::asio::steady_timer> maintenance_timer_;
 
 		std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const bool&)> received_connection_callback_;
 		std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&)> received_message_callback_;

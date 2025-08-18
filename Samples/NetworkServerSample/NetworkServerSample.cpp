@@ -125,10 +125,12 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		});
 
 #ifdef USE_ENCRYPT_MODULE
-	server_->encrypt_mode(true);
+    server_->encrypt_mode(true);
 #endif
 
-	server_->start(server_port_, buffer_size_);
+    // Enable heartbeat to verify liveness (5s interval for sample)
+    server_->heartbeat_mode(true, 5);
+    server_->start(server_port_, buffer_size_);
 	server_->wait_stop();
 	server_.reset();
 

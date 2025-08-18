@@ -7,6 +7,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <chrono>
 #include <boost/asio/steady_timer.hpp>
 #include <atomic>
 
@@ -92,6 +93,11 @@ namespace Network
 		bool heartbeat_enabled_;
 		uint32_t heartbeat_interval_sec_;
 		std::shared_ptr<boost::asio::steady_timer> heartbeat_timer_;
+
+		// Heartbeat monitoring
+		std::chrono::steady_clock::time_point last_pong_at_{};
+		uint32_t missed_heartbeats_ = 0;
+		uint32_t max_missed_heartbeats_ = 3; // expire after N missed intervals
 
 		std::function<std::tuple<bool, std::optional<std::string>>(const std::vector<uint8_t>&)> received_connection_callback_;
 		std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&)> received_message_callback_;
