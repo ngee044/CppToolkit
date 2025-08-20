@@ -28,12 +28,14 @@ namespace Network
 		, acceptor_(nullptr)
 		, promise_status_(nullptr)
 		, heartbeat_enabled_(false)
-		, heartbeat_interval_sec_(30)
+			, heartbeat_interval_sec_(30)
 #ifdef USE_ENCRYPT_MODULE
-		, encrypt_mode_(false)
+			, encrypt_mode_(false)
 #endif
-	{
-	}
+			, heartbeat_missed_tolerance_(3)
+			, maintenance_interval_sec_(5)
+		{
+		}
 
 	NetworkServer::~NetworkServer(void)
 	{
@@ -63,6 +65,18 @@ namespace Network
 		heartbeat_interval_sec_ = interval_sec == 0 ? 1 : interval_sec;
 	}
 
+	auto NetworkServer::heartbeat_tolerance(const uint32_t& missed_count) -> void
+	{
+		// Minimum of 1 to avoid immediate expiration
+		heartbeat_missed_tolerance_ = missed_count == 0 ? 1 : missed_count;
+	}
+
+	auto NetworkServer::maintenance_interval(const uint32_t& interval_sec) -> void
+	{
+		// Minimum of 1 second
+		maintenance_interval_sec_ = interval_sec == 0 ? 1 : interval_sec;
+	}
+
 	auto NetworkServer::start(const uint16_t& port, const size_t& socket_buffer_size) -> std::tuple<bool, std::optional<std::string>>
 	{
 		stop();
@@ -89,11 +103,14 @@ namespace Network
 									const std::string& id,
 									const std::string& sub_id) -> std::tuple<bool, std::optional<std::string>>
 	{
-		std::unique_lock lock(mutex_);
-		auto& sessions = sessions_;
-		lock.unlock();
+		// Take a snapshot of current sessions to avoid iterating while unlocked reference mutates
+		std::vector<std::shared_ptr<NetworkSession>> snapshot;
+		{
+			std::unique_lock lock(mutex_);
+			snapshot = sessions_;
+		}
 
-		for (auto& session : sessions)
+		for (auto& session : snapshot)
 		{
 			if (session == nullptr)
 			{
@@ -133,11 +150,13 @@ namespace Network
 
 	auto NetworkServer::send_message(const std::string& message, const std::string& id, const std::string& sub_id) -> std::tuple<bool, std::optional<std::string>>
 	{
-		std::unique_lock lock(mutex_);
-		auto& sessions = sessions_;
-		lock.unlock();
+		std::vector<std::shared_ptr<NetworkSession>> snapshot;
+		{
+			std::unique_lock lock(mutex_);
+			snapshot = sessions_;
+		}
 
-		for (auto& session : sessions)
+		for (auto& session : snapshot)
 		{
 			if (session == nullptr)
 			{
@@ -179,11 +198,13 @@ namespace Network
 								   const std::string& id,
 								   const std::string& sub_id) -> std::tuple<bool, std::optional<std::string>>
 	{
-		std::unique_lock lock(mutex_);
-		auto& sessions = sessions_;
-		lock.unlock();
+		std::vector<std::shared_ptr<NetworkSession>> snapshot;
+		{
+			std::unique_lock lock(mutex_);
+			snapshot = sessions_;
+		}
 
-		for (auto& session : sessions)
+		for (auto& session : snapshot)
 		{
 			if (session == nullptr)
 			{
@@ -502,7 +523,7 @@ namespace Network
 			{
 				return;
 			}
-			maintenance_timer_->expires_after(std::chrono::seconds(5));
+			maintenance_timer_->expires_after(std::chrono::seconds(maintenance_interval_sec_));
 			maintenance_timer_->async_wait([this](const boost::system::error_code& ec)
 										  {
 											  if (ec == boost::asio::error::operation_aborted)
@@ -650,6 +671,7 @@ namespace Network
 					LogTypes::Debug, fmt::format("accepted new client: {}:{}", new_socket.remote_endpoint().address().to_string(), new_socket.remote_endpoint().port()));
 #endif
 
+
 #ifdef USE_ENCRYPT_MODULE
 				std::shared_ptr<NetworkSession> session = std::make_shared<NetworkSession>(id_,
 						encrypt_mode_,
@@ -674,6 +696,8 @@ namespace Network
 				}
 
 				session->register_key(registered_key_);
+				// Apply heartbeat tolerance to the new session
+				session->set_max_missed_heartbeats(heartbeat_missed_tolerance_);
 				session->received_connection_callback(std::bind(&NetworkServer::received_connection, this, std::placeholders::_1));
 				session->received_binary_callback(
 					std::bind(&NetworkServer::received_binary, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
@@ -686,7 +710,10 @@ namespace Network
 
 				session->start(std::make_shared<boost::asio::ip::tcp::socket>(std::move(new_socket)), buffer_size_);
 
-				sessions_.push_back(session);
+				{
+					std::scoped_lock<std::mutex> lock(mutex_);
+					sessions_.push_back(session);
+				}
 
 				wait_connection();
 			});

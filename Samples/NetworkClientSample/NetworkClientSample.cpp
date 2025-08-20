@@ -41,6 +41,7 @@ uint16_t low_priority_count_ = 3;
 uint16_t write_interval_ = 1000;
 
 bool kill_signal = false;
+bool pong_enable_ = true;
 
 auto main(int32_t argc, char* argv[]) -> int32_t
 {
@@ -61,6 +62,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		client_ = std::make_shared<NetworkClient>("SampleClient", high_priority_count_, normal_priority_count_, low_priority_count_);
 
 		client_->register_key("test_key");
+        client_->auto_pong(pong_enable_);
 		client_->received_connection_callback(
 			[](const bool& condition, const bool& by_itself) -> std::tuple<bool, std::optional<std::string>>
 			{
@@ -244,4 +246,10 @@ auto parse_arguments(ArgumentParser& arguments) -> void
 	{
 		write_file_ = (LogTypes)int_target.value();
 	}
+
+    auto bool_target = arguments.to_bool("--pong_enable");
+    if (bool_target != std::nullopt)
+    {
+        pong_enable_ = bool_target.value();
+    }
 }

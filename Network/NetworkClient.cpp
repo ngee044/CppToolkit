@@ -458,22 +458,26 @@ namespace Network
 			return { false, "cannot handle empty message." };
 		}
 
-    if (received_message_callback_ == nullptr)
-    {
-        return { false, "there is no callback to handle message data" };
-    }
     auto msg = Converter::to_string(data);
-    // Heartbeat handling: reply pong and swallow
+    // Heartbeat handling: reply pong (optional) and swallow regardless of user callback presence
     if (msg.rfind("heartbeat:ping", 0) == 0)
     {
         Logger::handle().write(LogTypes::Debug, fmt::format("received heartbeat:ping from server [{}:{}]", id(), sub_id()));
-        send_message("heartbeat:pong");
+        if (auto_pong_enabled_)
+        {
+            send_message("heartbeat:pong");
+        }
         return { true, std::nullopt };
     }
     if (msg.rfind("heartbeat:pong", 0) == 0)
     {
         Logger::handle().write(LogTypes::Debug, fmt::format("received heartbeat:pong from server [{}:{}]", id(), sub_id()));
         return { true, std::nullopt };
+    }
+
+    if (received_message_callback_ == nullptr)
+    {
+        return { false, "there is no callback to handle message data" };
     }
 
     return received_message_callback_(msg);

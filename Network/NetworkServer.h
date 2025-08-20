@@ -38,6 +38,11 @@ namespace Network
 
 		// Heartbeat control for all sessions created by this server
 		auto heartbeat_mode(const bool& enable, const uint32_t& interval_sec = 30) -> void;
+		// Set how many heartbeat intervals are tolerated before expiring a session
+		auto heartbeat_tolerance(const uint32_t& missed_count) -> void;
+
+		// Maintenance (session cleaner) interval in seconds
+		auto maintenance_interval(const uint32_t& interval_sec) -> void;
 
 		auto start(const uint16_t& port, const size_t& socket_buffer_size) -> std::tuple<bool, std::optional<std::string>>;
 		auto send_binary(const std::vector<uint8_t>& binary, const std::string& message, const std::string& id = "", const std::string& sub_id = "")
@@ -124,6 +129,12 @@ namespace Network
 		std::shared_ptr<boost::asio::io_context> io_context_;
 		std::shared_ptr<boost::asio::ip::tcp::acceptor> acceptor_;
 		std::shared_ptr<boost::asio::steady_timer> maintenance_timer_;
+
+		// Session cleaner interval (seconds)
+		uint32_t maintenance_interval_sec_;
+
+		// Heartbeat tolerance (missed intervals allowed)
+		uint32_t heartbeat_missed_tolerance_;
 
 		std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const bool&)> received_connection_callback_;
 		std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&)> received_message_callback_;

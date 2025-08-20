@@ -41,6 +41,12 @@ uint16_t high_priority_count_ = 3;
 uint16_t normal_priority_count_ = 3;
 uint16_t low_priority_count_ = 3;
 uint16_t write_interval_ = 1000;
+// Heartbeat configuration (can be overridden by CLI)
+bool heartbeat_enable_ = true;
+uint32_t heartbeat_interval_sec_cli_ = 5;
+uint32_t heartbeat_missed_tolerance_cli_ = 3;
+// Maintenance (session cleaner) interval (seconds)
+uint32_t maintenance_interval_sec_cli_ = 5;
 
 auto main(int32_t argc, char* argv[]) -> int32_t
 {
@@ -128,8 +134,11 @@ auto main(int32_t argc, char* argv[]) -> int32_t
     server_->encrypt_mode(true);
 #endif
 
-    // Enable heartbeat to verify liveness (5s interval for sample)
-    server_->heartbeat_mode(true, 5);
+    // Enable/disable heartbeat via CLI (default: enabled, 5s)
+    server_->heartbeat_mode(heartbeat_enable_, heartbeat_interval_sec_cli_);
+    server_->heartbeat_tolerance(heartbeat_missed_tolerance_cli_);
+    // Configure maintenance (session cleaner) interval
+    server_->maintenance_interval(maintenance_interval_sec_cli_);
     server_->start(server_port_, buffer_size_);
 	server_->wait_stop();
 	server_.reset();
@@ -174,11 +183,11 @@ auto signal_callback(int32_t signum) -> void
 
 auto parse_arguments(ArgumentParser& arguments) -> void
 {
-	auto ushort_target = arguments.to_ushort("--server_port");
-	if (ushort_target != std::nullopt)
-	{
-		server_port_ = ushort_target.value();
-	}
+    auto ushort_target = arguments.to_ushort("--server_port");
+    if (ushort_target != std::nullopt)
+    {
+        server_port_ = ushort_target.value();
+    }
 
 	ushort_target = arguments.to_ushort("--high_priority_count");
 	if (ushort_target != std::nullopt)
@@ -210,9 +219,37 @@ auto parse_arguments(ArgumentParser& arguments) -> void
 		write_console_ = (LogTypes)int_target.value();
 	}
 
-	int_target = arguments.to_int("--write_file_log");
-	if (int_target != std::nullopt)
-	{
-		write_file_ = (LogTypes)int_target.value();
-	}
+    int_target = arguments.to_int("--write_file_log");
+    if (int_target != std::nullopt)
+    {
+        write_file_ = (LogTypes)int_target.value();
+    }
+
+    // Heartbeat options
+    auto bool_target = arguments.to_bool("--heartbeat_enable");
+    if (bool_target != std::nullopt)
+    {
+        heartbeat_enable_ = bool_target.value();
+    }
+
+    auto uint_target = arguments.to_uint("--heartbeat_interval");
+    if (uint_target != std::nullopt)
+    {
+        // minimum 1 second to avoid zero
+        heartbeat_interval_sec_cli_ = std::max<uint32_t>(1, uint_target.value());
+    }
+
+    uint_target = arguments.to_uint("--heartbeat_missed");
+    if (uint_target != std::nullopt)
+    {
+        // minimum 1
+        heartbeat_missed_tolerance_cli_ = std::max<uint32_t>(1, uint_target.value());
+    }
+
+    // Maintenance interval option
+    uint_target = arguments.to_uint("--maintenance_interval");
+    if (uint_target != std::nullopt)
+    {
+        maintenance_interval_sec_cli_ = std::max<uint32_t>(1, uint_target.value());
+    }
 }

@@ -42,6 +42,9 @@ namespace Network
 		// Heartbeat control: enable/disable and set interval (seconds)
 		auto heartbeat(const bool& enable, const uint32_t& interval_sec) -> void;
 
+		// Configure how many heartbeat intervals can be missed before expiring
+		auto set_max_missed_heartbeats(const uint32_t& count) -> void;
+
 		auto start(std::shared_ptr<boost::asio::ip::tcp::socket> socket, const size_t& socket_buffer_size) -> void;
 		auto stop(void) -> void;
 

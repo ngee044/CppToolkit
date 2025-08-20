@@ -23,6 +23,9 @@ namespace Network
 
 		auto get_ptr(void) -> std::shared_ptr<NetworkClient>;
 
+		// Control automatic pong reply to server heartbeat ping (default: true)
+		auto auto_pong(const bool& enable) -> void { auto_pong_enabled_ = enable; }
+
 		auto start(const std::string& ip, const uint16_t& port, const size_t& socket_buffer_size) -> bool;
 		auto wait_stop(const uint32_t& seconds = 0) -> void;
 		auto stop(void) -> void;
@@ -75,5 +78,7 @@ namespace Network
 		std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::vector<uint8_t>&)> received_binary_callback_;
 		std::function<std::tuple<bool, std::optional<std::string>>(const std::vector<std::string>&, const std::vector<std::pair<std::string, std::string>>&)>
 			received_files_callback_;
+
+		bool auto_pong_enabled_ = true;
 	};
 }
