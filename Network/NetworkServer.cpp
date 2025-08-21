@@ -12,6 +12,7 @@
 #include "boost/json.hpp"
 
 #include <functional>
+#include <chrono>
 
 using namespace Utilities;
 
@@ -26,11 +27,15 @@ namespace Network
 		, io_context_(nullptr)
 		, acceptor_(nullptr)
 		, promise_status_(nullptr)
+		, heartbeat_enabled_(false)
+			, heartbeat_interval_sec_(30)
 #ifdef USE_ENCRYPT_MODULE
-		, encrypt_mode_(false)
+			, encrypt_mode_(false)
 #endif
-	{
-	}
+			, heartbeat_missed_tolerance_(3)
+			, maintenance_interval_sec_(5)
+		{
+		}
 
 	NetworkServer::~NetworkServer(void)
 	{
@@ -54,6 +59,24 @@ namespace Network
 
 	auto NetworkServer::register_key(const std::string& key) -> void { registered_key_ = key; }
 
+	auto NetworkServer::heartbeat_mode(const bool& enable, const uint32_t& interval_sec) -> void
+	{
+		heartbeat_enabled_ = enable;
+		heartbeat_interval_sec_ = interval_sec == 0 ? 1 : interval_sec;
+	}
+
+	auto NetworkServer::heartbeat_tolerance(const uint32_t& missed_count) -> void
+	{
+		// Minimum of 1 to avoid immediate expiration
+		heartbeat_missed_tolerance_ = missed_count == 0 ? 1 : missed_count;
+	}
+
+	auto NetworkServer::maintenance_interval(const uint32_t& interval_sec) -> void
+	{
+		// Minimum of 1 second
+		maintenance_interval_sec_ = interval_sec == 0 ? 1 : interval_sec;
+	}
+
 	auto NetworkServer::start(const uint16_t& port, const size_t& socket_buffer_size) -> std::tuple<bool, std::optional<std::string>>
 	{
 		stop();
@@ -70,6 +93,7 @@ namespace Network
 		// Make sure the context starts to run AFTER calling async_accept on acceptor
 		wait_connection();
 		start_main_job();
+		start_maintenance_job();
 
 		return { true, std::nullopt };
 	}
@@ -79,11 +103,14 @@ namespace Network
 									const std::string& id,
 									const std::string& sub_id) -> std::tuple<bool, std::optional<std::string>>
 	{
-		std::unique_lock lock(mutex_);
-		auto& sessions = sessions_;
-		lock.unlock();
+		// Take a snapshot of current sessions to avoid iterating while unlocked reference mutates
+		std::vector<std::shared_ptr<NetworkSession>> snapshot;
+		{
+			std::unique_lock lock(mutex_);
+			snapshot = sessions_;
+		}
 
-		for (auto& session : sessions)
+		for (auto& session : snapshot)
 		{
 			if (session == nullptr)
 			{
@@ -123,11 +150,13 @@ namespace Network
 
 	auto NetworkServer::send_message(const std::string& message, const std::string& id, const std::string& sub_id) -> std::tuple<bool, std::optional<std::string>>
 	{
-		std::unique_lock lock(mutex_);
-		auto& sessions = sessions_;
-		lock.unlock();
+		std::vector<std::shared_ptr<NetworkSession>> snapshot;
+		{
+			std::unique_lock lock(mutex_);
+			snapshot = sessions_;
+		}
 
-		for (auto& session : sessions)
+		for (auto& session : snapshot)
 		{
 			if (session == nullptr)
 			{
@@ -169,11 +198,13 @@ namespace Network
 								   const std::string& id,
 								   const std::string& sub_id) -> std::tuple<bool, std::optional<std::string>>
 	{
-		std::unique_lock lock(mutex_);
-		auto& sessions = sessions_;
-		lock.unlock();
+		std::vector<std::shared_ptr<NetworkSession>> snapshot;
+		{
+			std::unique_lock lock(mutex_);
+			snapshot = sessions_;
+		}
 
-		for (auto& session : sessions)
+		for (auto& session : snapshot)
 		{
 			if (session == nullptr)
 			{
@@ -270,6 +301,7 @@ namespace Network
 			return { true, std::nullopt };
 		}
 
+		stop_maintenance_job();
 		drop_sessions();
 		destroy_io_context();
 
@@ -325,6 +357,7 @@ namespace Network
 
 			if (id.compare(session->id()) == 0 && sub_id.compare(session->sub_id()) == 0)
 			{
+				session->stop();
 				continue;
 			}
 
@@ -350,6 +383,7 @@ namespace Network
 
 			if (id.compare(session->id()) == 0)
 			{
+				session->stop();
 				continue;
 			}
 
@@ -427,9 +461,11 @@ namespace Network
 
 		io_context_ = std::make_shared<boost::asio::io_context>();
 
-		try
-		{
-			acceptor_ = std::make_shared<boost::asio::ip::tcp::acceptor>(*io_context_, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port), false);
+    try
+    {
+        acceptor_ = std::make_shared<boost::asio::ip::tcp::acceptor>(*io_context_, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port), false);
+        // Allow quick restarts without TIME_WAIT bind errors
+        acceptor_->set_option(boost::asio::socket_base::reuse_address(true));
 		}
 		catch (const std::overflow_error& message)
 		{
@@ -471,6 +507,67 @@ namespace Network
 		create_thread_pool();
 
 		return true;
+	}
+
+	auto NetworkServer::start_maintenance_job(void) -> void
+	{
+		if (io_context_ == nullptr)
+		{
+			return;
+		}
+
+		maintenance_timer_ = std::make_shared<boost::asio::steady_timer>(*io_context_);
+		auto schedule = [this]()
+		{
+			if (maintenance_timer_ == nullptr)
+			{
+				return;
+			}
+			maintenance_timer_->expires_after(std::chrono::seconds(maintenance_interval_sec_));
+			maintenance_timer_->async_wait([this](const boost::system::error_code& ec)
+										  {
+											  if (ec == boost::asio::error::operation_aborted)
+											  {
+												  return;
+											  }
+
+											  // Remove expired/closed/null sessions
+											  std::unique_lock lock(mutex_);
+											  auto iter = sessions_.begin();
+											  while (iter != sessions_.end())
+											  {
+												  if (!*iter || (*iter)->condition() == ConnectConditions::Expired || (*iter)->state() == SessionState::Closed)
+												  {
+													  if (*iter)
+													  {
+														  (*iter)->stop();
+													  }
+													  iter = sessions_.erase(iter);
+												  }
+												  else
+												  {
+													  ++iter;
+												  }
+											  }
+											  lock.unlock();
+											  Logger::handle().write(LogTypes::Information,
+																   fmt::format("maintenance: sessions={} (heartbeat:{}s enabled:{})",
+																		   sessions_.size(), heartbeat_interval_sec_, heartbeat_enabled_));
+											  // Reschedule
+											  start_maintenance_job();
+										  });
+		};
+
+		schedule();
+	}
+
+	auto NetworkServer::stop_maintenance_job(void) -> void
+	{
+		if (maintenance_timer_)
+		{
+			maintenance_timer_->cancel();
+			maintenance_timer_.reset();
+		}
 	}
 
 	auto NetworkServer::destroy_io_context(void) -> void
@@ -574,11 +671,22 @@ namespace Network
 					LogTypes::Debug, fmt::format("accepted new client: {}:{}", new_socket.remote_endpoint().address().to_string(), new_socket.remote_endpoint().port()));
 #endif
 
+
 #ifdef USE_ENCRYPT_MODULE
-				std::shared_ptr<NetworkSession> session
-					= std::make_shared<NetworkSession>(id_, encrypt_mode_, high_priority_count_, normal_priority_count_, low_priority_count_);
+				std::shared_ptr<NetworkSession> session = std::make_shared<NetworkSession>(id_,
+						encrypt_mode_,
+						high_priority_count_,
+						normal_priority_count_,
+						low_priority_count_,
+						heartbeat_enabled_,
+						heartbeat_interval_sec_);
 #else
-				std::shared_ptr<NetworkSession> session = std::make_shared<NetworkSession>(id_, high_priority_count_, normal_priority_count_, low_priority_count_);
+				std::shared_ptr<NetworkSession> session = std::make_shared<NetworkSession>(id_,
+						high_priority_count_,
+						normal_priority_count_,
+						low_priority_count_,
+						heartbeat_enabled_,
+						heartbeat_interval_sec_);
 #endif
 				if (session == nullptr)
 				{
@@ -588,6 +696,8 @@ namespace Network
 				}
 
 				session->register_key(registered_key_);
+				// Apply heartbeat tolerance to the new session
+				session->set_max_missed_heartbeats(heartbeat_missed_tolerance_);
 				session->received_connection_callback(std::bind(&NetworkServer::received_connection, this, std::placeholders::_1));
 				session->received_binary_callback(
 					std::bind(&NetworkServer::received_binary, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
@@ -600,7 +710,10 @@ namespace Network
 
 				session->start(std::make_shared<boost::asio::ip::tcp::socket>(std::move(new_socket)), buffer_size_);
 
-				sessions_.push_back(session);
+				{
+					std::scoped_lock<std::mutex> lock(mutex_);
+					sessions_.push_back(session);
+				}
 
 				wait_connection();
 			});
@@ -608,7 +721,16 @@ namespace Network
 
 	auto NetworkServer::received_connection_handler(const std::vector<uint8_t>& condition) -> std::tuple<bool, std::optional<std::string>>
 	{
-		boost::json::object condition_message = boost::json::parse(Converter::to_string(condition)).as_object();
+		boost::json::object condition_message;
+		try
+		{
+			condition_message = boost::json::parse(Converter::to_string(condition)).as_object();
+		}
+		catch (const std::exception& e)
+		{
+			Logger::handle().write(LogTypes::Error, fmt::format("invalid connection json: {}", e.what()));
+			return { false, "invalid connection json" };
+		}
 
 		Logger::handle().write(LogTypes::Debug,
 							   fmt::format("received connection message from NetworkSession : [{}:{}] => {}", condition_message.at("id").as_string().data(),
@@ -641,6 +763,33 @@ namespace Network
 		}
 
 		Logger::handle().write(LogTypes::Information, fmt::format("working session count : {}", sessions_.size()));
+
+		// Detailed session state counts
+		{
+			std::unique_lock<std::mutex> lock(mutex_);
+			size_t create_cnt = 0, handshaking_cnt = 0, authed_cnt = 0, ingame_cnt = 0, closing_cnt = 0, closed_cnt = 0;
+			for (const auto& s : sessions_)
+			{
+				if (!s)
+				{
+					continue;
+				}
+				switch (s->state())
+				{
+				case SessionState::Create: create_cnt++; break;
+				case SessionState::Handshaking: handshaking_cnt++; break;
+				case SessionState::Authenticated: authed_cnt++; break;
+				case SessionState::InGame: ingame_cnt++; break;
+				case SessionState::Closing: closing_cnt++; break;
+				case SessionState::Closed: closed_cnt++; break;
+				default: break;
+				}
+			}
+
+			Logger::handle().write(LogTypes::Debug,
+								fmt::format("sessions by state - Create:{} Handshaking:{} Authenticated:{} InGame:{} Closing:{} Closed:{}",
+										create_cnt, handshaking_cnt, authed_cnt, ingame_cnt, closing_cnt, closed_cnt));
+		}
 
 		if (received_connection_callback_ == nullptr)
 		{

@@ -2,10 +2,14 @@
 
 #include "FileManager.h"
 #include "DataHandler.h"
+#include "Protocol.h"
 
 #include <map>
 #include <memory>
 #include <string>
+#include <chrono>
+#include <boost/asio/steady_timer.hpp>
+#include <atomic>
 
 namespace Network
 {
@@ -13,14 +17,33 @@ namespace Network
 	{
 	public:
 #ifdef USE_ENCRYPT_MODULE
-		NetworkSession(
-			const std::string& id, const bool& encrypt, const uint16_t& high_priority_count, const uint16_t& normal_priority_count, const uint16_t& low_priority_count);
+		NetworkSession(const std::string& id,
+					   const bool& encrypt,
+					   const uint16_t& high_priority_count,
+					   const uint16_t& normal_priority_count,
+					   const uint16_t& low_priority_count,
+					   const bool& heartbeat_enabled = false,
+					   const uint32_t& heartbeat_interval_sec = 30);
 #else
-		NetworkSession(const std::string& id, const uint16_t& high_priority_count, const uint16_t& normal_priority_count, const uint16_t& low_priority_count);
+		NetworkSession(const std::string& id,
+					   const uint16_t& high_priority_count,
+					   const uint16_t& normal_priority_count,
+					   const uint16_t& low_priority_count,
+					   const bool& heartbeat_enabled = false,
+					   const uint32_t& heartbeat_interval_sec = 30);
 #endif
 		virtual ~NetworkSession(void);
 
+		auto session_id(void) const -> SessionId;
+		auto session_id(const SessionId& id) -> void;
+		auto state(void) const -> SessionState;
 		auto get_ptr(void) -> std::shared_ptr<NetworkSession>;
+
+		// Heartbeat control: enable/disable and set interval (seconds)
+		auto heartbeat(const bool& enable, const uint32_t& interval_sec) -> void;
+
+		// Configure how many heartbeat intervals can be missed before expiring
+		auto set_max_missed_heartbeats(const uint32_t& count) -> void;
 
 		auto start(std::shared_ptr<boost::asio::ip::tcp::socket> socket, const size_t& socket_buffer_size) -> void;
 		auto stop(void) -> void;
@@ -53,13 +76,31 @@ namespace Network
 			-> std::tuple<bool, std::optional<std::string>>;
 
 		auto response_connection(const bool& condition) -> std::tuple<bool, std::optional<std::string>>;
+		auto start_heartbeat(void) -> void;
+		auto stop_heartbeat(void) -> void;
 
 	private:
+		SessionId session_id_;
+		SessionState state_;
 		std::string server_id_;
 		std::string registered_key_;
 		std::map<DataModes, const std::function<std::tuple<bool, std::optional<std::string>>(const std::vector<uint8_t>&)>> message_handlers_;
 
 		std::unique_ptr<FileManager> file_manager_;
+
+		// Handshake timeout timer; created on start and cancelled on authentication/stop
+		std::shared_ptr<boost::asio::steady_timer> handshake_timer_;
+		std::atomic<bool> stopped_;
+
+		// Optional heartbeat
+		bool heartbeat_enabled_;
+		uint32_t heartbeat_interval_sec_;
+		std::shared_ptr<boost::asio::steady_timer> heartbeat_timer_;
+
+		// Heartbeat monitoring
+		std::chrono::steady_clock::time_point last_pong_at_{};
+		uint32_t missed_heartbeats_ = 0;
+		uint32_t max_missed_heartbeats_ = 3; // expire after N missed intervals
 
 		std::function<std::tuple<bool, std::optional<std::string>>(const std::vector<uint8_t>&)> received_connection_callback_;
 		std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&)> received_message_callback_;

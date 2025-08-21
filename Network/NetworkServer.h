@@ -3,6 +3,7 @@
 #include "ThreadPool.h"
 
 #include "boost/asio.hpp"
+#include <boost/asio/steady_timer.hpp>
 
 #include <mutex>
 #include <future>
@@ -34,6 +35,14 @@ namespace Network
 #endif
 
 		auto register_key(const std::string& key) -> void;
+
+		// Heartbeat control for all sessions created by this server
+		auto heartbeat_mode(const bool& enable, const uint32_t& interval_sec = 30) -> void;
+		// Set how many heartbeat intervals are tolerated before expiring a session
+		auto heartbeat_tolerance(const uint32_t& missed_count) -> void;
+
+		// Maintenance (session cleaner) interval in seconds
+		auto maintenance_interval(const uint32_t& interval_sec) -> void;
 
 		auto start(const uint16_t& port, const size_t& socket_buffer_size) -> std::tuple<bool, std::optional<std::string>>;
 		auto send_binary(const std::vector<uint8_t>& binary, const std::string& message, const std::string& id = "", const std::string& sub_id = "")
@@ -84,9 +93,13 @@ namespace Network
 
 		auto start_main_job(void) -> void;
 
-		auto wait_connection(void) -> void;
+	auto wait_connection(void) -> void;
 		auto received_connection_handler(const std::vector<uint8_t>& condition) -> std::tuple<bool, std::optional<std::string>>;
 		auto run(void) -> std::tuple<bool, std::optional<std::string>>;
+
+		// Periodic maintenance: cleanup expired/closed sessions
+		auto start_maintenance_job(void) -> void;
+		auto stop_maintenance_job(void) -> void;
 
 	private:
 		std::string id_;
@@ -97,6 +110,10 @@ namespace Network
 		uint16_t high_priority_count_;
 		uint16_t normal_priority_count_;
 		uint16_t low_priority_count_;
+
+		// Heartbeat settings
+		bool heartbeat_enabled_;
+		uint32_t heartbeat_interval_sec_;
 
 #ifdef USE_ENCRYPT_MODULE
 		bool encrypt_mode_;
@@ -111,6 +128,13 @@ namespace Network
 		std::shared_ptr<ThreadPool> thread_pool_;
 		std::shared_ptr<boost::asio::io_context> io_context_;
 		std::shared_ptr<boost::asio::ip::tcp::acceptor> acceptor_;
+		std::shared_ptr<boost::asio::steady_timer> maintenance_timer_;
+
+		// Session cleaner interval (seconds)
+		uint32_t maintenance_interval_sec_;
+
+		// Heartbeat tolerance (missed intervals allowed)
+		uint32_t heartbeat_missed_tolerance_;
 
 		std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const bool&)> received_connection_callback_;
 		std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&)> received_message_callback_;

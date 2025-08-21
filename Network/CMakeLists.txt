@@ -17,6 +17,7 @@ set(HEADER_FILES
 	FileSendingJob.h
 	ReceivingJob.h
 	SendingJob.h
+	Protocol.h
 )
 
 set(SOURCE_FILES

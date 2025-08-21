@@ -6,6 +6,9 @@
 #include "ConnectConditions.h"
 
 #include "boost/asio.hpp"
+#include <boost/asio/strand.hpp>
+#include <boost/asio/any_io_executor.hpp>
+#include <boost/asio/bind_executor.hpp>
 
 #include <memory>
 #include <vector>
@@ -51,6 +54,14 @@ namespace Network
 #endif
 
 		auto save_temp_path(const std::vector<uint8_t> data) -> std::optional<std::string>;
+
+	protected:
+		// Strand to serialize all socket IO handlers
+		auto strand(void) -> std::shared_ptr<boost::asio::strand<boost::asio::any_io_executor>>;
+
+		// Set a weak self guard to avoid use-after-free in async handlers
+		auto set_self_guard(const std::weak_ptr<void>& self) -> void;
+		auto alive(void) const -> bool;
 
 	protected:
 		auto sub_id(const std::string& new_id) -> void;
@@ -109,6 +120,8 @@ namespace Network
 
 		std::shared_ptr<ThreadPool> thread_pool_;
 		std::shared_ptr<boost::asio::ip::tcp::socket> socket_;
+		std::shared_ptr<boost::asio::strand<boost::asio::any_io_executor>> strand_;
+		std::weak_ptr<void> self_guard_;
 
 		uint8_t* receiving_buffers_;
 		std::vector<uint8_t> start_code_tag_;

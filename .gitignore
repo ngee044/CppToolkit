@@ -14,6 +14,7 @@ CMakeUserPresets.json
 # VS Code specific settings
 .vscode/
 .history/
+.cache/
 
 # User-specific settings
 *.code-workspace
@@ -58,3 +59,4 @@ CMakeLists.txt.user
 # OS-specific files
 .DS_Store
 Thumbs.db
+AGENTS.md

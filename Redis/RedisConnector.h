@@ -5,8 +5,8 @@
 #include <sw/redis++/redis++.h>
 
 #include <tuple>
-#include <string>
 #include <memory>
+#include <string>
 #include <optional>
 
 namespace Redis
@@ -14,23 +14,21 @@ namespace Redis
 	class RedisConnector
 	{
 	public:
-		RedisConnector(const std::string& host, int port = 6379, const TLSOptions& tlsOptions = TLSOptions(), const int& db_index = 0);
-		~RedisConnector();
+		RedisConnector(const std::string& address, const int& port = 6379, const TLSOptions& tls_options = TLSOptions(), const int& db_index = 0);
+		~RedisConnector(void);
 
-		auto connect() -> std::tuple<bool, std::optional<std::string>>;
-		auto disconnect() -> std::tuple<bool, std::optional<std::string>>;
-		auto is_connected() const -> bool;
+		auto connect(void) -> std::tuple<bool, std::optional<std::string>>;
+		auto disconnect(void) -> std::tuple<bool, std::optional<std::string>>;
+		auto is_connected(void) const -> bool;
 
-		auto get_redis() const -> std::shared_ptr<sw::redis::Redis>;
-		auto get_transaction() const -> std::shared_ptr<sw::redis::Transaction>;
-
+		auto get_redis(void) const -> std::shared_ptr<sw::redis::Redis>;
+		auto get_transaction(void) const -> std::shared_ptr<sw::redis::Transaction>;
 
 	private:
-		std::string host_;
+		std::string address_;
 		int port_;
-		TLSOptions tlsOptions_;
+		TLSOptions tls_options_;
 		int db_index_;
-
 		std::shared_ptr<sw::redis::Redis> redis_;
 		sw::redis::ConnectionOptions connection_options_;
 	};
