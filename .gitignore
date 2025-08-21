@@ -16,8 +16,6 @@ CMakeUserPresets.json
 .history/
 .cache/
 
-.AGENTS.md
-
 # User-specific settings
 *.code-workspace
 *.suo
@@ -61,3 +59,4 @@ CMakeLists.txt.user
 # OS-specific files
 .DS_Store
 Thumbs.db
+AGENTS.md
