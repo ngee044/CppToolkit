@@ -16,6 +16,8 @@ CMakeUserPresets.json
 .history/
 .cache/
 
+.AGENTS.md
+
 # User-specific settings
 *.code-workspace
 *.suo
