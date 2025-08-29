@@ -37,6 +37,10 @@ namespace RabbitMQ
 		auto wait_stop() -> std::tuple<bool, std::optional<std::string>>;
 		auto stop() -> void;
 
+		// Failure handling policy
+		void set_requeue_on_failure(bool enable) { requeue_on_failure_ = enable; }
+		auto requeue_on_failure() const -> bool { return requeue_on_failure_; }
+
 	protected:
 		auto basic_publish(int target_channel_id,
 			const std::string& exchange,
@@ -98,6 +102,7 @@ namespace RabbitMQ
 		std::promise<void> stop_promise_;
 		std::optional<std::future<void>> stop_future_;
 		std::atomic<bool> continue_receiving_{ false };
+		bool requeue_on_failure_{ true };
 
 		std::shared_ptr<ThreadPool> thread_pool_;
 		std::unique_ptr<ConsumeInformationContainer> consume_information_container_;

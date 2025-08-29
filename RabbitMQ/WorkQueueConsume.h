@@ -12,6 +12,11 @@ namespace RabbitMQ
 	public:
 		WorkQueueConsume(const std::string& host, int port, const std::string& user_name, const std::string& password, const SSLOptions& ssl_options = SSLOptions());
 
+		// Queue policies (optional)
+		void set_queue_policies(const std::optional<std::string>& dlx_exchange,
+							  const std::optional<std::string>& dlx_routing_key,
+							  const std::optional<uint32_t>& message_ttl_ms);
+
 		auto connect(const int& heartbeat) -> std::tuple<bool, std::optional<std::string>>;
 		auto start_consume(void) -> std::tuple<bool, std::optional<std::string>>;
 		auto stop_consume(void) -> std::tuple<bool, std::optional<std::string>>;
@@ -33,5 +38,10 @@ namespace RabbitMQ
 
 	private:
 		std::optional<std::tuple<int, std::string>> declare_;
+
+		// Optional queue argument settings
+		std::optional<std::string> dlx_exchange_;
+		std::optional<std::string> dlx_routing_key_;
+		std::optional<uint32_t> message_ttl_ms_;
 	};
 }

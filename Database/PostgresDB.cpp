@@ -7,12 +7,14 @@
 
 #include <regex>
 #include <sstream>
+#include <thread>
+#include <chrono>
 
 using namespace Utilities;
 
 namespace Database
 {
-	PostgresDB::PostgresDB(const std::string& conn_str) : connection_(NULL)
+	PostgresDB::PostgresDB(const std::string& conn_str) : connection_(NULL), conn_str_(conn_str)
 	{
 		connection_ = PQconnectdb(conn_str.c_str());
 		if (PQstatus(connection_) != CONNECTION_OK)
@@ -25,9 +27,10 @@ namespace Database
 
 	auto PostgresDB::execute_query(const std::string& sql_query) -> std::tuple<bool, std::optional<std::string>>
 	{
-		if (PQstatus(connection_) != CONNECTION_OK)
+		auto [ok, err] = ensure_connection();
+		if (!ok)
 		{
-			return { false, fmt::format("there is no created PGconn: {}", PQerrorMessage(connection_)) };
+			return { false, err };
 		}
 
 		PGresult* result = PQexec(connection_, sql_query.c_str());
@@ -46,9 +49,10 @@ namespace Database
 	auto PostgresDB::execute_query_and_get_result(const std::string& sql_query)
 		-> std::tuple<std::optional<std::vector<std::vector<std::variant<int, double, std::string, std::vector<std::string>>>>>, std::optional<std::string>>
 	{
-		if (PQstatus(connection_) != CONNECTION_OK)
+		auto [ok, err] = ensure_connection();
+		if (!ok)
 		{
-			return { std::nullopt, fmt::format("there is no created PGconn: {}", PQerrorMessage(connection_)) };
+			return { std::nullopt, err };
 		}
 
 		PGresult* result = PQexec(connection_, sql_query.c_str());
@@ -103,10 +107,11 @@ namespace Database
 
 	auto PostgresDB::execute_command(const std::string& sql) -> std::tuple<bool, std::optional<std::string>> 
 	{
-        if (!connection_)
-		{
-			return { false, fmt::format("there is no created PGconn: {}", PQerrorMessage(connection_)) };
-		}
+        auto [ok, err] = ensure_connection();
+        if (!ok)
+        {
+            return { false, err };
+        }
 
         PGresult* postgre_result = PQexec(connection_, sql.c_str());
         if (PQresultStatus(postgre_result) != PGRES_COMMAND_OK)
@@ -122,18 +127,18 @@ namespace Database
         return { true, std::nullopt };
 	}
 
-	auto PostgresDB::escape_string(const std::string input) -> std::string 
-	{
+auto PostgresDB::escape_string(const std::string& input) -> std::string 
+{
 		if (!connection_)
 		{
 			return input;
 		}
-        char* buffer = new char[input.size() * 2 + 1];
+        std::string buffer;
+        buffer.resize(input.size() * 2 + 1);
         int error = 0;
-        size_t len = PQescapeStringConn(connection_, buffer, input.c_str(), input.size(), &error);
+        size_t len = PQescapeStringConn(connection_, buffer.data(), input.c_str(), input.size(), &error);
 
-        std::string escaped(buffer, len);
-        delete[] buffer;
+        std::string escaped(buffer.data(), len);
 
         if (error != 0)
         {
@@ -164,5 +169,45 @@ namespace Database
 		}
 
 		return elements;
+	}
+
+	auto PostgresDB::is_connected() const -> bool
+	{
+		return connection_ != nullptr && PQstatus(connection_) == CONNECTION_OK;
+	}
+
+	auto PostgresDB::reconnect(int max_attempts, int backoff_ms) -> std::tuple<bool, std::optional<std::string>>
+	{
+		if (connection_ == nullptr)
+		{
+			connection_ = PQconnectdb(conn_str_.c_str());
+			if (PQstatus(connection_) == CONNECTION_OK)
+			{
+				return { true, std::nullopt };
+			}
+		}
+
+		int attempt = 0;
+		while (attempt < max_attempts)
+		{
+			++attempt;
+			PQreset(connection_);
+			if (PQstatus(connection_) == CONNECTION_OK)
+			{
+				return { true, std::nullopt };
+			}
+			std::this_thread::sleep_for(std::chrono::milliseconds(backoff_ms));
+		}
+
+		return { false, fmt::format("postgres reconnect failed: {}", PQerrorMessage(connection_)) };
+	}
+
+	auto PostgresDB::ensure_connection() -> std::tuple<bool, std::optional<std::string>>
+	{
+		if (is_connected())
+		{
+			return { true, std::nullopt };
+		}
+		return reconnect();
 	}
 }

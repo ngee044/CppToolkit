@@ -11,10 +11,19 @@ using namespace Utilities;
 
 namespace RabbitMQ
 {
-	WorkQueueConsume::WorkQueueConsume(const std::string& host, int port, const std::string& user_name, const std::string& password, const SSLOptions& ssl_options)
+WorkQueueConsume::WorkQueueConsume(const std::string& host, int port, const std::string& user_name, const std::string& password, const SSLOptions& ssl_options)
 		: RabbitMQBase(host, port, user_name, password, ssl_options), declare_(std::nullopt)
 	{
 	}
+
+void WorkQueueConsume::set_queue_policies(const std::optional<std::string>& dlx_exchange,
+											  const std::optional<std::string>& dlx_routing_key,
+											  const std::optional<uint32_t>& message_ttl_ms)
+{
+	dlx_exchange_ = dlx_exchange;
+	dlx_routing_key_ = dlx_routing_key;
+	message_ttl_ms_ = message_ttl_ms;
+}
 
 	auto WorkQueueConsume::connect(const int& heartbeat) -> std::tuple<bool, std::optional<std::string>>
 	{
@@ -169,15 +178,71 @@ namespace RabbitMQ
 		bool passive = false;
 		bool durable = true;
 		bool exclusive = false;
-		bool auto_delete = true;
+		bool auto_delete = false;
 
-		auto [declared, declare_error] = basic_declare_queue(conn_, channel_id, queue_name, passive, durable, exclusive, auto_delete);
-		if (!declared.has_value())
+		// If no arguments configured, use the base helper
+		if (!dlx_exchange_.has_value() && !message_ttl_ms_.has_value())
 		{
-			return { std::nullopt, declare_error };
+			auto [declared, declare_error] = basic_declare_queue(conn_, channel_id, queue_name, passive, durable, exclusive, auto_delete);
+			if (!declared.has_value())
+			{
+				return { std::nullopt, declare_error };
+			}
+
+			return { declared, std::nullopt };
 		}
 
-		return { declared, std::nullopt };
+		// Build AMQP table with optional DLX/TTL settings
+		std::vector<amqp_table_entry_t> entries;
+		std::vector<std::string> keys_storage;
+		std::vector<std::string> str_values_storage; // keep string memory alive until declare returns
+
+		if (dlx_exchange_.has_value())
+		{
+			keys_storage.emplace_back("x-dead-letter-exchange");
+			str_values_storage.emplace_back(dlx_exchange_.value());
+			amqp_table_entry_t e{};
+			e.key = amqp_cstring_bytes(keys_storage.back().c_str());
+			e.value.kind = AMQP_FIELD_KIND_UTF8;
+			e.value.value.bytes = amqp_cstring_bytes(str_values_storage.back().c_str());
+			entries.push_back(e);
+		}
+		if (dlx_routing_key_.has_value())
+		{
+			keys_storage.emplace_back("x-dead-letter-routing-key");
+			str_values_storage.emplace_back(dlx_routing_key_.value());
+			amqp_table_entry_t e{};
+			e.key = amqp_cstring_bytes(keys_storage.back().c_str());
+			e.value.kind = AMQP_FIELD_KIND_UTF8;
+			e.value.value.bytes = amqp_cstring_bytes(str_values_storage.back().c_str());
+			entries.push_back(e);
+		}
+		if (message_ttl_ms_.has_value())
+		{
+			keys_storage.emplace_back("x-message-ttl");
+			amqp_table_entry_t e{};
+			e.key = amqp_cstring_bytes(keys_storage.back().c_str());
+			e.value.kind = AMQP_FIELD_KIND_I32;
+			e.value.value.i32 = static_cast<int32_t>(message_ttl_ms_.value());
+			entries.push_back(e);
+		}
+
+		amqp_table_t args;
+		args.num_entries = static_cast<int>(entries.size());
+		args.entries = entries.empty() ? nullptr : entries.data();
+
+		std::unique_lock<std::mutex> unique(mutex_);
+		amqp_queue_declare_ok_t* declare_result
+			= amqp_queue_declare(conn_, channel_id, amqp_cstring_bytes(queue_name.c_str()), passive, durable, exclusive, auto_delete, args);
+		auto declare_reply = amqp_get_rpc_reply(conn_);
+		unique.unlock();
+
+		if (declare_reply.reply_type != AMQP_RESPONSE_NORMAL)
+		{
+			return { std::nullopt, fmt::format("queue declaration failed: {}", reply_message(declare_reply)) };
+		}
+
+		return { std::string((char*)declare_result->queue.bytes, declare_result->queue.len), std::nullopt };
 	}
 
 	auto WorkQueueConsume::redeclare_channel(void) -> std::tuple<bool, std::optional<std::string>>

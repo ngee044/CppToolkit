@@ -16,7 +16,12 @@ namespace Database
 			-> std::tuple<std::optional<std::vector<std::vector<std::variant<int, double, std::string, std::vector<std::string>>>>>, std::optional<std::string>> override;
 
 		auto execute_command(const std::string& sql) -> std::tuple<bool, std::optional<std::string>>;
-		auto escape_string(const std::string input) -> std::string;	
+	auto escape_string(const std::string& input) -> std::string;	
+
+		// Connection utilities
+		auto is_connected() const -> bool;
+		auto reconnect(int max_attempts = 3, int backoff_ms = 250) -> std::tuple<bool, std::optional<std::string>>;
+		auto ensure_connection() -> std::tuple<bool, std::optional<std::string>>;
 
 		auto handler() -> PGconn* { return connection_; }
 	protected:
@@ -24,5 +29,6 @@ namespace Database
 
 	private:
 		PGconn* connection_;
+		std::string conn_str_;
 	};
 }

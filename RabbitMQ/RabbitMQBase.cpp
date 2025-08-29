@@ -270,7 +270,7 @@ namespace RabbitMQ
 			return { false, unregister_error };
 		}
 
-		return { false, "not implemented" };
+		return { true, std::nullopt };
 	}
 
 	auto RabbitMQBase::basic_connect(int heartbeat) -> std::tuple<bool, std::optional<std::string>>
@@ -365,17 +365,17 @@ namespace RabbitMQ
 	{
 		if (conn_ == nullptr)
 		{
-			return { false, "cannot start to consuming_start: connection is not established" };
+			return { false, "cannot start consuming: connection is not established" };
 		}
 
 		if (thread_pool_ == nullptr)
 		{
-			return { false, "cannot start to consuming_start: thread pool is not created" };
+			return { false, "cannot start consuming: thread pool is not created" };
 		}
 
 		if (continue_receiving_.load())
 		{
-			return { false, "cannot start to consuming_start: message receiving is already in progress" };
+			return { false, "cannot start consuming: message receiving is already in progress" };
 		}
 
 		continue_receiving_.store(true);
@@ -444,10 +444,27 @@ namespace RabbitMQ
 						auto callback_opt = consume_information_container_->get_consume_callback(routing_key);
 						if (!callback_opt.has_value())
 						{
+							// Fallback: if there is exactly one registered consumer, use it.
+							auto infos = consume_information_container_->get_consume_informations();
+							if (infos.size() == 1)
+							{
+								auto callback = infos.front().get_callback();
+								auto [result, result_error] = callback(routing_key, Converter::to_string(received_message), Converter::to_string(content_type));
+								if (!result)
+								{
+									Logger::handle().write(LogTypes::Error, fmt::format("message consume error: {}", result_error.value()));
+									amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, requeue_on_failure_ ? 1 : 0);
+								}
+								else
+								{
+									amqp_basic_ack(conn_, envelope.channel, envelope.delivery_tag, 0);
+								}
+								amqp_destroy_envelope(&envelope);
+								continue;
+							}
+
 							Logger::handle().write(LogTypes::Error, fmt::format("message consume error: routing key not found"));
-
-							amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
-
+							amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, requeue_on_failure_ ? 1 : 0);
 							continue;
 						}
 
@@ -459,7 +476,7 @@ namespace RabbitMQ
 							{
 								Logger::handle().write(LogTypes::Error, fmt::format("message consume error: {}", result_error.value()));
 
-								amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
+								amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, requeue_on_failure_ ? 1 : 0);
 							}
 							else
 							{
@@ -471,14 +488,14 @@ namespace RabbitMQ
 							Logger::handle().write(LogTypes::Exception, fmt::format("message consume exception: {}", e.what()));
 							reconnection = true;
 
-							amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
+							amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, requeue_on_failure_ ? 1 : 0);
 						}
 						catch (...)
 						{
 							Logger::handle().write(LogTypes::Exception, "message consume exception: unexpected error");
 							reconnection = true;
 
-							amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
+							amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, requeue_on_failure_ ? 1 : 0);
 						}
 					}
 					catch (const std::exception& message)
@@ -486,14 +503,14 @@ namespace RabbitMQ
 						Logger::handle().write(LogTypes::Exception, fmt::format("message consume exception: {}", message.what()));
 						reconnection = true;
 
-						amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
+						amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, requeue_on_failure_ ? 1 : 0);
 					}
 					catch (...)
 					{
 						Logger::handle().write(LogTypes::Exception, "message consume exception: unexpected error");
 						reconnection = true;
 
-						amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
+						amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, requeue_on_failure_ ? 1 : 0);
 					}
 
 					amqp_destroy_envelope(&envelope);
@@ -508,12 +525,12 @@ namespace RabbitMQ
 	{
 		if (conn_ == nullptr)
 		{
-			return { false, "cannot start to consuming_stop: connection is not established" };
+			return { false, "cannot stop consuming: connection is not established" };
 		}
 
 		if (thread_pool_ == nullptr)
 		{
-			return { false, "cannot start to consuming_stop: thread pool is not created" };
+			return { false, "cannot stop consuming: thread pool is not created" };
 		}
 
 		continue_receiving_.store(false);
@@ -879,7 +896,7 @@ namespace RabbitMQ
 
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("consuming_start failed: {}", reply_message(reply)) };
+			return { false, fmt::format("consume-start failed: {}", reply_message(reply)) };
 		}
 
 		return { true, std::nullopt };
@@ -894,7 +911,7 @@ namespace RabbitMQ
 
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("consuming_stop failed: {}", reply_message(reply)) };
+			return { false, fmt::format("consume-stop failed: {}", reply_message(reply)) };
 		}
 
 		return { true, std::nullopt };
