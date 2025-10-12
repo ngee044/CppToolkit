@@ -35,6 +35,7 @@ namespace Thread
 
 		auto start(void) -> std::tuple<bool, std::optional<std::string>>;
 		auto pause(const bool& pause) -> void;
+		auto is_running() -> bool;
 		auto stop(const bool& stop_immediately = false) -> std::tuple<bool, std::optional<std::string>>;
 
 		auto job_pool(void) -> std::shared_ptr<JobPool>;

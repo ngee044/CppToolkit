@@ -8,12 +8,16 @@ set(HEADER_FILES
 	TLSOptions.h
 	RedisClient.h
 	RedisConnector.h
+	RedisWorkQueueEmitter.h
+	RedisWorkQueueConsume.h
 )
 
 set(SOURCE_FILES
 	TLSOptions.cpp
 	RedisClient.cpp
 	RedisConnector.cpp
+	RedisWorkQueueEmitter.cpp
+	RedisWorkQueueConsume.cpp
 )
 
 project(${LIBRARY_NAME} VERSION 1.0.0.0)

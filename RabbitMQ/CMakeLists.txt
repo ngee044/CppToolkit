@@ -9,8 +9,8 @@ set(HEADER_FILES
 	RabbitMQBase.h
 	ConsumeInformation.h
 	ConsumeInformationContainer.h
-	WorkQueueConsume.h
-	WorkQueueEmitter.h
+	RabbitMQWorkQueueConsume.h
+	RabbitMQWorkQueueEmitter.h
 )
 
 set(SOURCE_FILES
@@ -18,8 +18,8 @@ set(SOURCE_FILES
 	RabbitMQBase.cpp
 	ConsumeInformation.cpp
 	ConsumeInformationContainer.cpp
-	WorkQueueConsume.cpp
-	WorkQueueEmitter.cpp
+	RabbitMQWorkQueueConsume.cpp
+	RabbitMQWorkQueueEmitter.cpp
 )
 
 project(${LIBRARY_NAME} VERSION 1.0.0.0)

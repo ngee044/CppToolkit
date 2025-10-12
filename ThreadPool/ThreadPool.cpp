@@ -219,6 +219,11 @@ namespace Thread
 		}
 	}
 
+	auto ThreadPool::is_running() -> bool
+	{
+		return working_.load();
+	}
+
 	auto ThreadPool::stop(const bool& stop_immediately) -> std::tuple<bool, std::optional<std::string>>
 	{
 		{
