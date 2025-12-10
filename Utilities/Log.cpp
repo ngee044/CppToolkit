@@ -12,7 +12,6 @@
 #include <chrono>
 #include <unordered_map>
 #include <format>
-#include <ctime>
 
 namespace Utilities
 {
@@ -54,27 +53,20 @@ namespace Utilities
 		// Unused in JSON but kept for parity with the original code – silence warnings.
 		[[maybe_unused]] const std::string debug_line = std::format("{} {}", datetime_str, message);
 
-		if (message_type == message_types_.end())
-		{
-			if (start_time_flag() == std::nullopt)
-			{
-				boost::json::object json_message{ { "datetime", datetime_str }, { "message", message } };
-				return boost::json::serialize(json_message);
-			}
+		boost::json::object json_message;
+		json_message["datetime"] = datetime_str;
+		json_message["message"] = message;
 
-			boost::json::object json_message{ { "time_stamp", time_stamp() }, { "datetime", datetime_str }, { "message", message } };
-			return boost::json::serialize(json_message);
+		if (message_type != message_types_.end())
+		{
+			json_message["message_type"] = message_type->second;
 		}
 
-		if (start_time_flag() == std::nullopt)
+		if (start_time_flag() != std::nullopt)
 		{
-			boost::json::object json_message{ { "datetime", datetime_str }, { "message_type", message_type->second }, { "message", message } };
-			return boost::json::serialize(json_message);
+			json_message["time_stamp"] = time_stamp();
 		}
 
-		boost::json::object json_message{
-			{ "time_stamp", time_stamp() }, { "datetime", datetime_str }, { "message_type", message_type->second }, { "message", message }
-		};
 		return boost::json::serialize(json_message);
 	}
 
