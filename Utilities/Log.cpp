@@ -15,7 +15,24 @@
 #include <boost/json.hpp>
 
 #include <chrono>
+#include <ctime>
 #include <unordered_map>
+
+namespace
+{
+std::tm to_local_tm(const std::chrono::system_clock::time_point& time_point)
+{
+	std::time_t raw_time = std::chrono::system_clock::to_time_t(time_point);
+
+	std::tm converted{};
+#if defined(_WIN32)
+	localtime_s(&converted, &raw_time);
+#else
+	localtime_r(&raw_time, &converted);
+#endif
+	return converted;
+}
+} // namespace
 
 namespace Utilities
 {
@@ -51,34 +68,27 @@ namespace Utilities
 		auto base_time = time_point_.time_since_epoch();
 
 		// clang -Wformat-security requires fmt::runtime when the format string is run‑time data.
-		const auto datetime_str = fmt::format(fmt::runtime(datetime_format_), fmt::localtime(std::chrono::system_clock::to_time_t(time_point_)),
+		const auto datetime_str = fmt::format(fmt::runtime(datetime_format_), to_local_tm(time_point_),
 											  std::chrono::duration_cast<std::chrono::milliseconds>(base_time).count() % 1000,
 											  std::chrono::duration_cast<std::chrono::microseconds>(base_time).count() % 1000);
 
 		// Unused in JSON but kept for parity with the original code – silence warnings.
 		[[maybe_unused]] const std::string debug_line = fmt::format("{} {}", datetime_str, message);
 
-		if (message_type == message_types_.end())
-		{
-			if (start_time_flag() == std::nullopt)
-			{
-				boost::json::object json_message{ { "datetime", datetime_str }, { "message", message } };
-				return boost::json::serialize(json_message);
-			}
+		boost::json::object json_message;
+		json_message["datetime"] = datetime_str;
+		json_message["message"] = message;
 
-			boost::json::object json_message{ { "time_stamp", time_stamp() }, { "datetime", datetime_str }, { "message", message } };
-			return boost::json::serialize(json_message);
+		if (message_type != message_types_.end())
+		{
+			json_message["message_type"] = message_type->second;
 		}
 
-		if (start_time_flag() == std::nullopt)
+		if (start_time_flag() != std::nullopt)
 		{
-			boost::json::object json_message{ { "datetime", datetime_str }, { "message_type", message_type->second }, { "message", message } };
-			return boost::json::serialize(json_message);
+			json_message["time_stamp"] = time_stamp();
 		}
 
-		boost::json::object json_message{
-			{ "time_stamp", time_stamp() }, { "datetime", datetime_str }, { "message_type", message_type->second }, { "message", message }
-		};
 		return boost::json::serialize(json_message);
 	}
 
@@ -87,7 +97,7 @@ namespace Utilities
 		auto message_type = message_types_.find(log_type_);
 		auto base_time = time_point_.time_since_epoch();
 
-		const auto datetime_str = fmt::format(fmt::runtime(datetime_format_), fmt::localtime(std::chrono::system_clock::to_time_t(time_point_)),
+		const auto datetime_str = fmt::format(fmt::runtime(datetime_format_), to_local_tm(time_point_),
 											  std::chrono::duration_cast<std::chrono::milliseconds>(base_time).count() % 1000,
 											  std::chrono::duration_cast<std::chrono::microseconds>(base_time).count() % 1000);
 

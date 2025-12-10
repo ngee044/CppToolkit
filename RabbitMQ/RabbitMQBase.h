@@ -4,9 +4,31 @@
 #include "SSLOptions.h"
 #include "ConsumeInformationContainer.h"
 
-#include "rabbitmq-c/amqp.h"
-#include "rabbitmq-c/ssl_socket.h"
-#include "rabbitmq-c/tcp_socket.h"
+#if __has_include(<rabbitmq-c/amqp.h>)
+	#include <rabbitmq-c/amqp.h>
+#else
+	#include <amqp.h>
+#endif
+
+#if __has_include(<rabbitmq-c/ssl_socket.h>)
+	#include <rabbitmq-c/ssl_socket.h>
+#elif __has_include(<rabbitmq-c/amqp_ssl_socket.h>)
+	#include <rabbitmq-c/amqp_ssl_socket.h>
+#elif __has_include(<amqp_ssl_socket.h>)
+	#include <amqp_ssl_socket.h>
+#else
+	#error "Missing rabbitmq-c SSL socket header"
+#endif
+
+#if __has_include(<rabbitmq-c/tcp_socket.h>)
+	#include <rabbitmq-c/tcp_socket.h>
+#elif __has_include(<rabbitmq-c/amqp_tcp_socket.h>)
+	#include <rabbitmq-c/amqp_tcp_socket.h>
+#elif __has_include(<amqp_tcp_socket.h>)
+	#include <amqp_tcp_socket.h>
+#else
+	#error "Missing rabbitmq-c TCP socket header"
+#endif
 
 #include <map>
 #include <mutex>

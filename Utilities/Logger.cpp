@@ -9,11 +9,28 @@
 
 #include <tuple>
 #include <chrono>
+#include <ctime>
 #include <fcntl.h>
 #include <iostream>
 #include <filesystem>
 #include <codecvt>
 #include <fstream>
+
+namespace
+{
+std::tm to_local_tm(std::chrono::system_clock::time_point time_point)
+{
+	std::time_t raw_time = std::chrono::system_clock::to_time_t(time_point);
+
+	std::tm converted{};
+#if defined(_WIN32)
+	localtime_s(&converted, &raw_time);
+#else
+	localtime_r(&raw_time, &converted);
+#endif
+	return converted;
+}
+} // namespace
 
 namespace Utilities
 {
@@ -258,7 +275,7 @@ namespace Utilities
 	auto Logger::write_log(const std::vector<std::shared_ptr<Log>>& messages) -> void
 	{
 		std::string file_name
-			= fmt::format("{}{}_{:%Y-%m-%d}", log_root_, log_name_, fmt::localtime(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())));
+			= fmt::format("{}{}_{:%Y-%m-%d}", log_root_, log_name_, to_local_tm(std::chrono::system_clock::now()));
 
 		const auto [console_messages, file_messages, database_messages] = convert_log(messages);
 
@@ -455,7 +472,7 @@ namespace Utilities
 
 	std::string Logger::check_life_cycle(const std::string& previous_check_flag)
 	{
-		std::string current = fmt::format("{:%Y-%m-%d}", fmt::localtime(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())));
+		std::string current = fmt::format("{:%Y-%m-%d}", to_local_tm(std::chrono::system_clock::now()));
 		if (current == previous_check_flag)
 		{
 			return previous_check_flag;
@@ -492,7 +509,7 @@ namespace Utilities
 			}
 		}
 
-		return fmt::format("{:%Y-%m-%d}", fmt::localtime(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())));
+		return fmt::format("{:%Y-%m-%d}", to_local_tm(std::chrono::system_clock::now()));
 	}
 
 #pragma region Handle
