@@ -1,7 +1,6 @@
 #include "Generator.h"
 
-#include "fmt/format.h"
-
+#include <format>
 #include <random>
 
 namespace Utilities
@@ -14,7 +13,7 @@ namespace Utilities
 
 		uint16_t target_number = distrivution(generate);
 
-		return fmt::format("{:04X}-{:04X}-{:04X}-{:04X}-{:04X}", distrivution(generate), distrivution(generate), distrivution(generate), distrivution(generate),
+		return std::format("{:04X}-{:04X}-{:04X}-{:04X}-{:04X}", distrivution(generate), distrivution(generate), distrivution(generate), distrivution(generate),
 						   distrivution(generate));
 	}
 }

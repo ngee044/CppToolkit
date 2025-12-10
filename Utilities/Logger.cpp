@@ -3,10 +3,6 @@
 #include "File.h"
 #include "Converter.h"
 
-#include "fmt/chrono.h"
-#include "fmt/format.h"
-#include "fmt/xchar.h"
-
 #include <tuple>
 #include <chrono>
 #include <fcntl.h>
@@ -14,6 +10,7 @@
 #include <filesystem>
 #include <codecvt>
 #include <fstream>
+#include <format>
 
 namespace Utilities
 {
@@ -30,7 +27,7 @@ namespace Utilities
 		, file_backup_mode_(false)
 	{
 		locale_mode(std::locale(""));
-		log_root_ = fmt::format("{}/", std::filesystem::current_path().string());
+		log_root_ = std::format("{}/", std::filesystem::current_path().string());
 
 		log_types_ = std::max(file_mode_, console_mode_);
 	}
@@ -64,7 +61,7 @@ namespace Utilities
 
 		if (log_root_.empty())
 		{
-			log_root_ = fmt::format("{}/", std::filesystem::current_path().string());
+			log_root_ = std::format("{}/", std::filesystem::current_path().string());
 		}
 	}
 
@@ -257,14 +254,14 @@ namespace Utilities
 
 	auto Logger::write_log(const std::vector<std::shared_ptr<Log>>& messages) -> void
 	{
-		std::string file_name
-			= fmt::format("{}{}_{:%Y-%m-%d}", log_root_, log_name_, fmt::localtime(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())));
+		const auto now = std::chrono::system_clock::now();
+		std::string file_name = std::format("{}{}_{:%Y-%m-%d}", log_root_, log_name_, now);
 
 		const auto [console_messages, file_messages, database_messages] = convert_log(messages);
 
 		write_console(console_messages);
 		write_database(database_messages);
-		auto removed_lines = write_file(fmt::format("{}.log", file_name), file_messages);
+		auto removed_lines = write_file(std::format("{}.log", file_name), file_messages);
 
 		if (!file_backup_mode_)
 		{
@@ -273,11 +270,11 @@ namespace Utilities
 
 		if (max_lines_ > 0)
 		{
-			backup_file(removed_lines, fmt::format("{}.backup", file_name));
+			backup_file(removed_lines, std::format("{}.backup", file_name));
 			return;
 		}
 
-		backup_file(fmt::format("{}.log", file_name), fmt::format("{}.backup", file_name));
+		backup_file(std::format("{}.log", file_name), std::format("{}.backup", file_name));
 	}
 
 	std::tuple<std::vector<std::string>, std::vector<std::string>, std::vector<std::string>> Logger::convert_log(const std::vector<std::shared_ptr<Log>>& messages)
@@ -320,7 +317,10 @@ namespace Utilities
 			return;
 		}
 
-		fmt::print("{}", fmt::join(messages, ""));
+		for (const auto& msg : messages)
+		{
+			std::cout << msg;
+		}
 	}
 
 	void Logger::write_database(const std::vector<std::string>& messages)
@@ -455,7 +455,8 @@ namespace Utilities
 
 	std::string Logger::check_life_cycle(const std::string& previous_check_flag)
 	{
-		std::string current = fmt::format("{:%Y-%m-%d}", fmt::localtime(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())));
+		const auto now = std::chrono::system_clock::now();
+		std::string current = std::format("{:%Y-%m-%d}", now);
 		if (current == previous_check_flag)
 		{
 			return previous_check_flag;
@@ -492,7 +493,7 @@ namespace Utilities
 			}
 		}
 
-		return fmt::format("{:%Y-%m-%d}", fmt::localtime(std::chrono::system_clock::to_time_t(std::chrono::system_clock::now())));
+		return std::format("{:%Y-%m-%d}", std::chrono::system_clock::now());
 	}
 
 #pragma region Handle

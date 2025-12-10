@@ -4,8 +4,7 @@
 
 #include "lz4.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 namespace Utilities
 {
@@ -90,7 +89,7 @@ namespace Utilities
 		}
 
 		return { compressed_data,
-				 fmt::format("compressing(buffer {}): ({} -> {} : {:.2f} %)", block_bytes, original_data.size(),
+				 std::format("compressing(buffer {}): ({} -> {} : {:.2f} %)", block_bytes, original_data.size(),
 							 compressed_data.size(),
 							 (((double)compressed_data.size() / (double)original_data.size()) * 100)) };
 	}
@@ -176,7 +175,7 @@ namespace Utilities
 		}
 
 		return { decompressed_data,
-				 fmt::format("decompressing(buffer {}): ({} -> {} : {:.2f} %)", block_bytes, compressed_data.size(),
+				 std::format("decompressing(buffer {}): ({} -> {} : {:.2f} %)", block_bytes, compressed_data.size(),
 							 decompressed_data.size(),
 							 (((double)compressed_data.size() / (double)decompressed_data.size()) * 100)) };
 	}

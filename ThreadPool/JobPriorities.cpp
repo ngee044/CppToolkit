@@ -1,8 +1,6 @@
 #include "JobPriorities.h"
 
-#include "fmt/core.h"
-#include "fmt/ranges.h"
-
+#include <format>
 namespace Thread
 {
 	auto priority_string(const JobPriorities& priority) -> const std::string
@@ -32,6 +30,17 @@ namespace Thread
 			priority_strings.push_back(priority_string(priority));
 		}
 
-		return fmt::format("[ {} ]", fmt::join(priority_strings, ", "));
+		std::string joined_priorities;
+		for (const auto& priority_string_value : priority_strings)
+		{
+			if (!joined_priorities.empty())
+			{
+				joined_priorities += ", ";
+			}
+
+			joined_priorities += priority_string_value;
+		}
+
+		return std::format("[ {} ]", joined_priorities);
 	}
 } // namespace Thread

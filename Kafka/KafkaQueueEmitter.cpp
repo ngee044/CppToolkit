@@ -2,7 +2,7 @@
 
 #include "Logger.h"
 
-#include "fmt/format.h"
+#include <format>
 
 using namespace Utilities;
 
@@ -80,10 +80,10 @@ namespace Kafka
 			delivery_results.push_back(delivery_result);
 			if (delivery_result.get_status() != DeliveryResult::Status::Success)
 			{
-				Logger::handle().write(LogTypes::Debug, fmt::format("failed send message (kafka) = {}", delivery_result.get_message()));
+				Logger::handle().write(LogTypes::Debug, std::format("failed send message (kafka) = {}", delivery_result.get_message()));
 				if (delivery_result.get_error().has_value())
 				{
-					Logger::handle().write(LogTypes::Error, fmt::format("kafka producer send error = {}", delivery_result.get_error().value()));
+					Logger::handle().write(LogTypes::Error, std::format("kafka producer send error = {}", delivery_result.get_error().value()));
 				}
 			}
 		}
@@ -134,7 +134,7 @@ namespace Kafka
 		}
 		catch(const kafka::KafkaException& e)
 		{
-			std::string error_message = fmt::format("Producer Connect Error = {}", e.what());
+			std::string error_message = std::format("Producer Connect Error = {}", e.what());
 			Logger::handle().write(LogTypes::Error, error_message);
 			return { false, error_message };
 		}
@@ -168,7 +168,7 @@ namespace Kafka
 		}
 		catch(const kafka::KafkaException& e)
 		{
-			std::string error_message = fmt::format("Error Disconnecting producer: {}", e.what());
+			std::string error_message = std::format("Error Disconnecting producer: {}", e.what());
 			Logger::handle().write(LogTypes::Error, error_message);
 			return {false, error_message};
 		}

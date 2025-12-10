@@ -1,7 +1,6 @@
 {
     "dependencies": [
       "lz4",
-      "fmt",
       "cryptopp",
       "gtest",
       "libpq",

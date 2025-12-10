@@ -5,8 +5,7 @@
 #include "Converter.h"
 #include "ThreadWorker.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include <sw/redis++/tls.h>
 
@@ -43,7 +42,7 @@ namespace Redis
 		{
 			redis_.reset();
 
-			return { false, fmt::format("cannot connect: {}", err.what()) };
+			return { false, std::format("cannot connect: {}", err.what()) };
 		}
 	}
 
@@ -65,7 +64,7 @@ namespace Redis
 		{
 			redis_.reset();
 
-			return { false, fmt::format("cannot disconnect: {}", err.what()) };
+			return { false, std::format("cannot disconnect: {}", err.what()) };
 		}
 	}
 

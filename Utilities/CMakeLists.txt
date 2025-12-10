@@ -50,11 +50,10 @@ target_include_directories(${LIBRARY_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 find_package(Threads REQUIRED)
 find_package(lz4 CONFIG REQUIRED)
-find_package(fmt CONFIG REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system filesystem json)
 find_package(efsw CONFIG REQUIRED)
 
-target_link_libraries(${LIBRARY_NAME} PUBLIC lz4::lz4 efsw::efsw fmt::fmt-header-only ${CMAKE_DL_LIBS} Boost::filesystem Boost::system Boost::json)
+target_link_libraries(${LIBRARY_NAME} PUBLIC lz4::lz4 efsw::efsw ${CMAKE_DL_LIBS} Boost::filesystem Boost::system Boost::json)
 if(USE_ENCRYPT_LIBS)
 	find_package(cryptopp CONFIG REQUIRED)
 	target_link_libraries(${LIBRARY_NAME} PUBLIC cryptopp::cryptopp)

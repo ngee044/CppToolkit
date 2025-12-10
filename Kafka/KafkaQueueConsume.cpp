@@ -2,7 +2,7 @@
 #include "Logger.h"
 #include "Converter.h"
 
-#include "fmt/format.h"
+#include <format>
 
 using namespace Utilities;
 namespace Kafka
@@ -36,13 +36,13 @@ namespace Kafka
 		{
 			consumer_->subscribe({topic});
 			Logger::handle().write(LogTypes::Information, 
-				fmt::format("KafkaConsumer Subscribed to topic: {}", topic));
+				std::format("KafkaConsumer Subscribed to topic: {}", topic));
 
 			return {true, std::nullopt};
 		}
 		catch (const kafka::KafkaException& e)
 		{
-			auto msg = fmt::format("KafkaConsumer subscribe error: {}", e.what());
+			auto msg = std::format("KafkaConsumer subscribe error: {}", e.what());
 			Logger::handle().write(LogTypes::Error, msg);
 			
 			return {false, msg};
@@ -65,7 +65,7 @@ namespace Kafka
 		}
 		catch (const kafka::KafkaException& e)
 		{
-			auto msg = fmt::format("KafkaConsumer unsubscribe() error: {}", e.what());
+			auto msg = std::format("KafkaConsumer unsubscribe() error: {}", e.what());
 			Logger::handle().write(LogTypes::Error, msg);
 
 			return {false, msg};
@@ -94,7 +94,7 @@ namespace Kafka
 		}
 		catch (const kafka::KafkaException& e)
 		{
-			auto message = fmt::format("[KafkaConsumer] connect() error: {}", e.what());
+			auto message = std::format("[KafkaConsumer] connect() error: {}", e.what());
 			Logger::handle().write(LogTypes::Error, message);
 
 			status_ = KafkaStatus::Error;
@@ -130,7 +130,7 @@ namespace Kafka
 		}
 		catch (const kafka::KafkaException& e)
 		{
-			auto msg = fmt::format("KafkaConsumer disconnect() error: {}", e.what());
+			auto msg = std::format("KafkaConsumer disconnect() error: {}", e.what());
 			Logger::handle().write(LogTypes::Error, msg);
 
 			status_ = KafkaStatus::Error;
@@ -179,7 +179,7 @@ namespace Kafka
 		}
 		catch (const kafka::KafkaException& e)
 		{
-			auto msg = fmt::format("[KafkaConsumer] poll() error: {}", e.what());
+			auto msg = std::format("[KafkaConsumer] poll() error: {}", e.what());
 			Logger::handle().write(LogTypes::Error, msg);
 		}
 
@@ -198,7 +198,7 @@ namespace Kafka
 		}
 		catch(const kafka::KafkaException& e)
 		{
-			auto msg = fmt::format("KafkaConsumer commit_sync error: {}", e.what());
+			auto msg = std::format("KafkaConsumer commit_sync error: {}", e.what());
 			Logger::handle().write(LogTypes::Error, msg);
 		}
 
@@ -216,7 +216,7 @@ namespace Kafka
 		}
 		catch(const kafka::KafkaException& e)
 		{
-			auto msg = fmt::format("KafkaConsumer commit_async error: {}", e.what());
+			auto msg = std::format("KafkaConsumer commit_async error: {}", e.what());
 			Logger::handle().write(LogTypes::Error, msg);
 		}
 	}

@@ -5,9 +5,7 @@
 #include "JobPool.h"
 #include "Logger.h"
 
-#include "fmt/chrono.h"
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 using namespace Utilities;
 
@@ -26,7 +24,7 @@ namespace Thread
 	{
 		stop();
 
-		Logger::handle().write(LogTypes::Sequence, fmt::format("attempt to start for {}", thread_worker_title_));
+		Logger::handle().write(LogTypes::Sequence, std::format("attempt to start for {}", thread_worker_title_));
 
 		if (priorities_.empty())
 		{
@@ -46,7 +44,7 @@ namespace Thread
 			return { false, "Failed to create thread instance." };
 		}
 
-		Logger::handle().write(LogTypes::Sequence, fmt::format("waiting for {} to start", thread_worker_title_));
+		Logger::handle().write(LogTypes::Sequence, std::format("waiting for {} to start", thread_worker_title_));
 		future.wait();
 
 		return { true, std::nullopt };
@@ -90,7 +88,7 @@ namespace Thread
 
 		if (thread_->joinable())
 		{
-			Logger::handle().write(LogTypes::Sequence, fmt::format("attempt to join for {} to stop", thread_worker_title_));
+			Logger::handle().write(LogTypes::Sequence, std::format("attempt to join for {} to stop", thread_worker_title_));
 
 			{
 				std::scoped_lock<std::mutex> lock(mutex_);
@@ -100,7 +98,7 @@ namespace Thread
 			}
 
 			thread_->join();
-			Logger::handle().write(LogTypes::Sequence, fmt::format("completed to join for {} to stop", thread_worker_title_));
+			Logger::handle().write(LogTypes::Sequence, std::format("completed to join for {} to stop", thread_worker_title_));
 		}
 		thread_.reset();
 
@@ -123,21 +121,21 @@ namespace Thread
 
 	auto ThreadWorker::run(void) -> void
 	{
-		Logger::handle().write(LogTypes::Sequence, fmt::format("started thread for {}", thread_worker_title_));
+		Logger::handle().write(LogTypes::Sequence, std::format("started thread for {}", thread_worker_title_));
 		promise_.set_value(true);
 
 		while (true)
 		{
-			Logger::handle().write(LogTypes::Parameter, fmt::format("attempt to wait condition_variable for {}", thread_worker_title_));
+			Logger::handle().write(LogTypes::Parameter, std::format("attempt to wait condition_variable for {}", thread_worker_title_));
 			std::unique_lock<std::mutex> unique(mutex_);
 			condition_.wait(unique,
 							[this]()
 							{
 								auto result = check_condition();
-								Logger::handle().write(LogTypes::Parameter, fmt::format("checked condition_variable for {}", thread_worker_title_));
+								Logger::handle().write(LogTypes::Parameter, std::format("checked condition_variable for {}", thread_worker_title_));
 								return result;
 							});
-			Logger::handle().write(LogTypes::Parameter, fmt::format("notified condition_variable for {}", thread_worker_title_));
+			Logger::handle().write(LogTypes::Parameter, std::format("notified condition_variable for {}", thread_worker_title_));
 
 			if (thread_stop_.load() && !has_job())
 			{
@@ -146,7 +144,7 @@ namespace Thread
 
 			if (!thread_stop_.load() && pause_.load())
 			{
-				Logger::handle().write(LogTypes::Sequence, fmt::format("paused thread for {}", thread_worker_title_));
+				Logger::handle().write(LogTypes::Sequence, std::format("paused thread for {}", thread_worker_title_));
 
 				continue;
 			}
@@ -157,7 +155,7 @@ namespace Thread
 				break;
 			}
 
-			Logger::handle().write(LogTypes::Sequence, fmt::format("attempt to pop job for {}", thread_worker_title_));
+			Logger::handle().write(LogTypes::Sequence, std::format("attempt to pop job for {}", thread_worker_title_));
 
 			auto current_job = job_pool->pop(priorities_);
 			unique.unlock();
@@ -168,21 +166,21 @@ namespace Thread
 					break;
 				}
 
-				Logger::handle().write(LogTypes::Sequence, fmt::format("there is no job for {}", thread_worker_title_));
+				Logger::handle().write(LogTypes::Sequence, std::format("there is no job for {}", thread_worker_title_));
 
 				continue;
 			}
 
 			if (do_run(current_job))
 			{
-				Logger::handle().write(LogTypes::Sequence, fmt::format("completed work {} [ {} ] on {}", current_job->title(), priority_string(current_job->priority()),
+				Logger::handle().write(LogTypes::Sequence, std::format("completed work {} [ {} ] on {}", current_job->title(), priority_string(current_job->priority()),
 																	   thread_worker_title_));
 			}
 		}
 
 		thread_stop_.store(false);
 
-		Logger::handle().write(LogTypes::Sequence, fmt::format("stopped thread for {}", thread_worker_title_));
+		Logger::handle().write(LogTypes::Sequence, std::format("stopped thread for {}", thread_worker_title_));
 	}
 
 	auto ThreadWorker::do_run(std::shared_ptr<Job> job) -> bool
@@ -192,7 +190,7 @@ namespace Thread
 			auto [result_condition, error_message] = job->work();
 			if (!result_condition)
 			{
-				Logger::handle().write(LogTypes::Error, fmt::format("cannot complete {} [ {} ] on {} : {},\n{}", job->title(), priority_string(job->priority()),
+				Logger::handle().write(LogTypes::Error, std::format("cannot complete {} [ {} ] on {} : {},\n{}", job->title(), priority_string(job->priority()),
 																	thread_worker_title_, error_message.value(), job->to_json()));
 
 				return false;
@@ -202,28 +200,28 @@ namespace Thread
 		}
 		catch (const std::overflow_error& message)
 		{
-			Logger::handle().write(LogTypes::Exception, fmt::format("cannot complete {} [ {} ] on {} : {},\n{}", job->title(), priority_string(job->priority()),
+			Logger::handle().write(LogTypes::Exception, std::format("cannot complete {} [ {} ] on {} : {},\n{}", job->title(), priority_string(job->priority()),
 																	thread_worker_title_, message.what(), job->to_json()));
 
 			return false;
 		}
 		catch (const std::runtime_error& message)
 		{
-			Logger::handle().write(LogTypes::Exception, fmt::format("cannot complete {} [ {} ] on {} : {},\n{}", job->title(), priority_string(job->priority()),
+			Logger::handle().write(LogTypes::Exception, std::format("cannot complete {} [ {} ] on {} : {},\n{}", job->title(), priority_string(job->priority()),
 																	thread_worker_title_, message.what(), job->to_json()));
 
 			return false;
 		}
 		catch (const std::exception& message)
 		{
-			Logger::handle().write(LogTypes::Exception, fmt::format("cannot complete {} [ {} ] on {} : {},\n{}", job->title(), priority_string(job->priority()),
+			Logger::handle().write(LogTypes::Exception, std::format("cannot complete {} [ {} ] on {} : {},\n{}", job->title(), priority_string(job->priority()),
 																	thread_worker_title_, message.what(), job->to_json()));
 
 			return false;
 		}
 		catch (...)
 		{
-			Logger::handle().write(LogTypes::Exception, fmt::format("cannot complete {} [ {} ] on {} : unexpected error,\n{}", job->title(),
+			Logger::handle().write(LogTypes::Exception, std::format("cannot complete {} [ {} ] on {} : unexpected error,\n{}", job->title(),
 																	priority_string(job->priority()), thread_worker_title_, job->to_json()));
 
 			return false;
@@ -250,7 +248,7 @@ namespace Thread
 		auto job_pool = job_pool_.lock();
 		if (job_pool == nullptr)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("cannot check job count due to empty job pool for {}", thread_worker_title_));
+			Logger::handle().write(LogTypes::Error, std::format("cannot check job count due to empty job pool for {}", thread_worker_title_));
 
 			return true;
 		}

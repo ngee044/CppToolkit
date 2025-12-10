@@ -10,9 +10,7 @@
 #include "Converter.h"
 #include "ArgumentParser.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
-#include "fmt/ranges.h"
+#include <format>
 
 #include "boost/json.hpp"
 #include "boost/json/parse.hpp"
@@ -93,18 +91,18 @@ auto compress_folder() -> bool
 
 	if (!std::filesystem::exists(source_folder))
 	{
-		Logger::handle().write(LogTypes::Error, fmt::format("Source folder does not exist: {}", source_folder));
+		Logger::handle().write(LogTypes::Error, std::format("Source folder does not exist: {}", source_folder));
 		return false;
 	}
 
 	auto [compress_condition, compress_message] = Folder::compression(compressed_file, source_folder, true, file_extensions_);
 	if (!compress_condition)
 	{
-		Logger::handle().write(LogTypes::Error, fmt::format("Cannot compress folder: {}", compress_message.value()));
+		Logger::handle().write(LogTypes::Error, std::format("Cannot compress folder: {}", compress_message.value()));
 		return false;
 	}
 
-	Logger::handle().write(LogTypes::Information, fmt::format("Successfully compressed folder to: {}", compressed_file));
+	Logger::handle().write(LogTypes::Information, std::format("Successfully compressed folder to: {}", compressed_file));
 	return true;
 }
 
@@ -118,18 +116,18 @@ auto decompress_file() -> bool
 
 	if (!std::filesystem::exists(compressed_file))
 	{
-		Logger::handle().write(LogTypes::Error, fmt::format("Compressed file does not exist: {}", compressed_file));
+		Logger::handle().write(LogTypes::Error, std::format("Compressed file does not exist: {}", compressed_file));
 		return false;
 	}
 
 	auto [decompress_condition, decompress_message] = Folder::decompression(destination_folder, compressed_file);
 	if (!decompress_condition)
 	{
-		Logger::handle().write(LogTypes::Error, fmt::format("Cannot decompress file: {}", decompress_message.value()));
+		Logger::handle().write(LogTypes::Error, std::format("Cannot decompress file: {}", decompress_message.value()));
 		return false;
 	}
 
-	Logger::handle().write(LogTypes::Information, fmt::format("Successfully decompressed file to: {}", destination_folder));
+	Logger::handle().write(LogTypes::Information, std::format("Successfully decompressed file to: {}", destination_folder));
 	return true;
 }
 

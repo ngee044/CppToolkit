@@ -3,8 +3,7 @@
 #include "Logger.h"
 #include "Combiner.h"
 
-#include "fmt/xchar.h"
-#include "fmt/format.h"
+#include <format>
 
 using namespace Thread;
 using namespace Utilities;

@@ -1,6 +1,7 @@
 // RedisClient.cpp
 #include "RedisClient.h"
 
+#include <format>
 #include <iostream>
 
 namespace Redis
@@ -54,7 +55,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { false, fmt::format("failed to set value: {}", connect_error.value()) };
+				return { false, std::format("failed to set value: {}", connect_error.value()) };
 			}
 		}
 
@@ -92,7 +93,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { false, fmt::format("failed to set value {}: {}", key, err.what()) };
+			return { false, std::format("failed to set value {}: {}", key, err.what()) };
 		}
 	}
 
@@ -108,7 +109,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { "", fmt::format("failed to get value: {}", connect_error.value()) };
+				return { "", std::format("failed to get value: {}", connect_error.value()) };
 			}
 		}
 
@@ -123,7 +124,7 @@ namespace Redis
 			auto result = redis->get(key);
 			if (!result.has_value())
 			{
-				return { "", fmt::format("failed to get value {}", key) };
+				return { "", std::format("failed to get value {}", key) };
 			}
 
 			return { result.value(), std::nullopt };
@@ -132,7 +133,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { "", fmt::format("failed to get value {}: {}", key, err.what()) };
+			return { "", std::format("failed to get value {}: {}", key, err.what()) };
 		}
 	}
 
@@ -148,7 +149,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { 0, fmt::format("failed to lpush value: {}", connect_error.value()) };
+				return { 0, std::format("failed to lpush value: {}", connect_error.value()) };
 			}
 		}
 
@@ -170,14 +171,14 @@ namespace Redis
 			auto list_length = results.get<long long>(0);
 			if (list_length < 0)
 			{
-				return { 0, fmt::format("failed to lpush value {}", key) };
+				return { 0, std::format("failed to lpush value {}", key) };
 			}
 
 			if (ttl_seconds > 0)
 			{
 				if (!results.get<bool>(1))
 				{
-					return { 0, fmt::format("failed to set TTL for {}", key) };
+					return { 0, std::format("failed to set TTL for {}", key) };
 				}
 			}
 
@@ -187,7 +188,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { 0, fmt::format("failed to lpush value {}: {}", key, err.what()) };
+			return { 0, std::format("failed to lpush value {}: {}", key, err.what()) };
 		}
 	}
 
@@ -203,7 +204,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { 0, fmt::format("failed to rpush value: {}", connect_error.value()) };
+				return { 0, std::format("failed to rpush value: {}", connect_error.value()) };
 			}
 		}
 
@@ -225,14 +226,14 @@ namespace Redis
 			auto list_length = results.get<long long>(0);
 			if (list_length < 0)
 			{
-				return { 0, fmt::format("failed to rpush value {}", key) };
+				return { 0, std::format("failed to rpush value {}", key) };
 			}
 
 			if (ttl_seconds > 0)
 			{
 				if (!results.get<bool>(1))
 				{
-					return { 0, fmt::format("failed to set TTL for {}", key) };
+					return { 0, std::format("failed to set TTL for {}", key) };
 				}
 			}
 
@@ -242,7 +243,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { 0, fmt::format("failed to rpush value {}: {}", key, err.what()) };
+			return { 0, std::format("failed to rpush value {}: {}", key, err.what()) };
 		}
 	}
 
@@ -258,7 +259,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { std::nullopt, fmt::format("failed to lpop value: {}", connect_error.value()) };
+				return { std::nullopt, std::format("failed to lpop value: {}", connect_error.value()) };
 			}
 		}
 
@@ -277,7 +278,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { std::nullopt, fmt::format("failed to lpop value {}: {}", key, err.what()) };
+			return { std::nullopt, std::format("failed to lpop value {}: {}", key, err.what()) };
 		}
 
 		return { value, std::nullopt };
@@ -295,7 +296,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { std::nullopt, fmt::format("failed to rpop value: {}", connect_error.value()) };
+				return { std::nullopt, std::format("failed to rpop value: {}", connect_error.value()) };
 			}
 		}
 
@@ -310,7 +311,7 @@ namespace Redis
 			auto value = redis->rpop(key);
 			if (!value.has_value())
 			{
-				return { std::nullopt, fmt::format("failed to rpop value {}", key) };
+				return { std::nullopt, std::format("failed to rpop value {}", key) };
 			}
 
 			return { value, std::nullopt };
@@ -319,7 +320,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { std::nullopt, fmt::format("failed to rpop value {}: {}", key, err.what()) };
+			return { std::nullopt, std::format("failed to rpop value {}: {}", key, err.what()) };
 		}
 	}
 
@@ -335,7 +336,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { std::vector<std::string>{}, fmt::format("failed to lrange value: {}", connect_error.value()) };
+				return { std::vector<std::string>{}, std::format("failed to lrange value: {}", connect_error.value()) };
 			}
 		}
 
@@ -356,7 +357,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { std::vector<std::string>{}, fmt::format("failed to lrange value {}: {}", key, err.what()) };
+			return { std::vector<std::string>{}, std::format("failed to lrange value {}: {}", key, err.what()) };
 		}
 	}
 
@@ -372,7 +373,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { std::nullopt, fmt::format("failed to blpop value: {}", connect_error.value()) };
+				return { std::nullopt, std::format("failed to blpop value: {}", connect_error.value()) };
 			}
 		}
 
@@ -390,13 +391,13 @@ namespace Redis
 				return { result->second, std::nullopt };
 			}
 
-			return { std::nullopt, fmt::format("failed to blpop value {}", key) };
+			return { std::nullopt, std::format("failed to blpop value {}", key) };
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { std::nullopt, fmt::format("failed to blpop value {}: {}", key, err.what()) };
+			return { std::nullopt, std::format("failed to blpop value {}: {}", key, err.what()) };
 		}
 	}
 
@@ -414,7 +415,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { 0, fmt::format("failed to zadd value: {}", connect_error.value()) };
+				return { 0, std::format("failed to zadd value: {}", connect_error.value()) };
 			}
 		}
 
@@ -436,14 +437,14 @@ namespace Redis
 			auto added = results.get<long long>(0);
 			if (added < 0)
 			{
-				return { 0, fmt::format("failed to zadd value {}", key) };
+				return { 0, std::format("failed to zadd value {}", key) };
 			}
 
 			if (ttl_seconds > 0)
 			{
 				if (!results.get<bool>(1))
 				{
-					return { 0, fmt::format("failed to set TTL for {}", key) };
+					return { 0, std::format("failed to set TTL for {}", key) };
 				}
 			}
 
@@ -453,7 +454,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { 0, fmt::format("failed to zadd value {}: {}", key, err.what()) };
+			return { 0, std::format("failed to zadd value {}: {}", key, err.what()) };
 		}
 	}
 
@@ -469,7 +470,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { std::vector<std::string>{}, fmt::format("failed to zrange value: {}", connect_error.value()) };
+				return { std::vector<std::string>{}, std::format("failed to zrange value: {}", connect_error.value()) };
 			}
 		}
 
@@ -503,7 +504,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { std::vector<std::string>{}, fmt::format("failed to zrange value {}: {}", key, err.what()) };
+			return { std::vector<std::string>{}, std::format("failed to zrange value {}: {}", key, err.what()) };
 		}
 	}
 
@@ -519,7 +520,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { 0, fmt::format("failed to zrem value: {}", connect_error.value()) };
+				return { 0, std::format("failed to zrem value: {}", connect_error.value()) };
 			}
 		}
 
@@ -534,7 +535,7 @@ namespace Redis
 			auto removed = redis->zrem(key, members.begin(), members.end());
 			if (removed < 0)
 			{
-				return { 0, fmt::format("failed to zrem value {}", key) };
+				return { 0, std::format("failed to zrem value {}", key) };
 			}
 
 			return { removed, std::nullopt };
@@ -543,7 +544,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { 0, fmt::format("failed to zrem value {}: {}", key, err.what()) };
+			return { 0, std::format("failed to zrem value {}: {}", key, err.what()) };
 		}
 	}
 
@@ -559,7 +560,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { false, fmt::format("failed to expire value: {}", connect_error.value()) };
+				return { false, std::format("failed to expire value: {}", connect_error.value()) };
 			}
 		}
 
@@ -582,7 +583,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { false, fmt::format("failed to expire value {}: {}", key, err.what()) };
+			return { false, std::format("failed to expire value {}: {}", key, err.what()) };
 		}
 
 		return { true, std::nullopt };
@@ -600,7 +601,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { 0, fmt::format("failed to llen value: {}", connect_error.value()) };
+				return { 0, std::format("failed to llen value: {}", connect_error.value()) };
 			}
 		}
 
@@ -615,7 +616,7 @@ namespace Redis
 			auto length = redis->llen(key);
 			if (length < 0)
 			{
-				return { 0, fmt::format("failed to llen value {}", key) };
+				return { 0, std::format("failed to llen value {}", key) };
 			}
 
 			return { length, std::nullopt };
@@ -624,7 +625,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { 0, fmt::format("failed to llen value {}: {}", key, err.what()) };
+			return { 0, std::format("failed to llen value {}: {}", key, err.what()) };
 		}
 	}
 
@@ -640,7 +641,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { 0, fmt::format("failed to del value: {}", connect_error.value()) };
+				return { 0, std::format("failed to del value: {}", connect_error.value()) };
 			}
 		}
 
@@ -655,7 +656,7 @@ namespace Redis
 			auto deleted = redis->del(key);
 			if (deleted < 0)
 			{
-				return { 0, fmt::format("failed to del value {}", key) };
+				return { 0, std::format("failed to del value {}", key) };
 			}
 
 			return { deleted, std::nullopt };
@@ -664,7 +665,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { 0, fmt::format("failed to del value {}: {}", key, err.what()) };
+			return { 0, std::format("failed to del value {}: {}", key, err.what()) };
 		}
 	}
 
@@ -680,7 +681,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { 0, fmt::format("failed to lrem value: {}", connect_error.value()) };
+				return { 0, std::format("failed to lrem value: {}", connect_error.value()) };
 			}
 		}
 
@@ -695,7 +696,7 @@ namespace Redis
 			auto removed = redis->lrem(key, count, value);
 			if (removed < 0)
 			{
-				return { 0, fmt::format("failed to lrem value {}", key) };
+				return { 0, std::format("failed to lrem value {}", key) };
 			}
 
 			return { removed, std::nullopt };
@@ -704,7 +705,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { 0, fmt::format("failed to lrem value {}: {}", key, err.what()) };
+			return { 0, std::format("failed to lrem value {}: {}", key, err.what()) };
 		}
 	}
 
@@ -721,7 +722,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { "", fmt::format("failed to xadd: {}", connect_error.value()) };
+				return { "", std::format("failed to xadd: {}", connect_error.value()) };
 			}
 		}
 
@@ -792,7 +793,7 @@ namespace Redis
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
-			return { "", fmt::format("failed to xadd: {}", err.what()) };
+			return { "", std::format("failed to xadd: {}", err.what()) };
 		}
 	}
 
@@ -810,7 +811,7 @@ namespace Redis
 			if (connect_error.has_value())
 			{
 				return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{},
-						 fmt::format("failed to xread: {}", connect_error.value()) };
+						 std::format("failed to xread: {}", connect_error.value()) };
 			}
 		}
 
@@ -864,7 +865,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 			return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{},
-					 fmt::format("failed to xread: {}", err.what()) };
+					 std::format("failed to xread: {}", err.what()) };
 		}
 	}
 
@@ -880,7 +881,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { 0, fmt::format("failed to xlen: {}", connect_error.value()) };
+				return { 0, std::format("failed to xlen: {}", connect_error.value()) };
 			}
 		}
 
@@ -898,7 +899,7 @@ namespace Redis
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
-			return { 0, fmt::format("failed to xlen: {}", err.what()) };
+			return { 0, std::format("failed to xlen: {}", err.what()) };
 		}
 	}
 
@@ -914,7 +915,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { 0, fmt::format("failed to xdel: {}", connect_error.value()) };
+				return { 0, std::format("failed to xdel: {}", connect_error.value()) };
 			}
 		}
 
@@ -932,7 +933,7 @@ namespace Redis
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
-			return { 0, fmt::format("failed to xdel: {}", err.what()) };
+			return { 0, std::format("failed to xdel: {}", err.what()) };
 		}
 	}
 
@@ -951,7 +952,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { std::vector<std::pair<std::string, std::map<std::string, std::string>>>{}, fmt::format("failed to xrange: {}", connect_error.value()) };
+				return { std::vector<std::pair<std::string, std::map<std::string, std::string>>>{}, std::format("failed to xrange: {}", connect_error.value()) };
 			}
 		}
 
@@ -978,7 +979,7 @@ namespace Redis
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
-			return { std::vector<std::pair<std::string, std::map<std::string, std::string>>>{}, fmt::format("failed to xrange: {}", err.what()) };
+			return { std::vector<std::pair<std::string, std::map<std::string, std::string>>>{}, std::format("failed to xrange: {}", err.what()) };
 		}
 	}
 
@@ -997,7 +998,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { false, fmt::format("failed to create group: {}", connect_error.value()) };
+				return { false, std::format("failed to create group: {}", connect_error.value()) };
 			}
 		}
 
@@ -1029,7 +1030,7 @@ namespace Redis
 			}
 
 			connector_->disconnect();
-			return { false, fmt::format("failed to create group: {}", error_message) };
+			return { false, std::format("failed to create group: {}", error_message) };
 		}
 	}
 
@@ -1052,7 +1053,7 @@ namespace Redis
 			if (connect_error.has_value())
 			{
 				return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{},
-						 fmt::format("failed to xreadgroup: {}", connect_error.value()) };
+						 std::format("failed to xreadgroup: {}", connect_error.value()) };
 			}
 		}
 
@@ -1106,7 +1107,7 @@ namespace Redis
 		{
 			connector_->disconnect();
 			return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{},
-					 fmt::format("failed to xreadgroup: {}", err.what()) };
+					 std::format("failed to xreadgroup: {}", err.what()) };
 		}
 	}
 
@@ -1124,7 +1125,7 @@ namespace Redis
 			auto [connected, connect_error] = connector_->connect();
 			if (connect_error.has_value())
 			{
-				return { 0, fmt::format("failed to xack: {}", connect_error.value()) };
+				return { 0, std::format("failed to xack: {}", connect_error.value()) };
 			}
 		}
 
@@ -1142,7 +1143,7 @@ namespace Redis
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
-			return { 0, fmt::format("failed to xack: {}", err.what()) };
+			return { 0, std::format("failed to xack: {}", err.what()) };
 		}
 	}
 }

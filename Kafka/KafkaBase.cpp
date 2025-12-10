@@ -5,7 +5,7 @@
 #include "Converter.h"
 #include "ThreadWorker.h"
 
-#include "fmt/format.h"
+#include <format>
 
 #include <future>
 
@@ -40,7 +40,7 @@ namespace Kafka
 		auto [success, error_message] = connect();
 		if (!success)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("connect start error = {}", error_message.value()));
+			Logger::handle().write(LogTypes::Error, std::format("connect start error = {}", error_message.value()));
 			return { false, error_message };
 		}
 
@@ -89,7 +89,7 @@ namespace Kafka
 		}
 		catch (const std::bad_alloc& e)
 		{
-			return { false, fmt::format("thread pool creation failed: {}", e.what()) };
+			return { false, std::format("thread pool creation failed: {}", e.what()) };
 		}
 
 		thread_pool_->push(std::make_shared<ThreadWorker>(std::vector<JobPriorities>{ JobPriorities::Normal }));

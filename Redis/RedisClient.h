@@ -8,8 +8,7 @@
 #include <vector>
 #include <utility>
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 namespace Redis
 {
@@ -101,7 +100,7 @@ namespace Redis
 				auto [connected, connect_error] = connector_->connect();
 				if (connect_error.has_value())
 				{
-					return { std::nullopt, fmt::format("failed to start transaction: {}", connect_error.value()) };
+					return { std::nullopt, std::format("failed to start transaction: {}", connect_error.value()) };
 				}
 			}
 
@@ -121,7 +120,7 @@ namespace Redis
 			{
 				connector_->disconnect();
 
-				return { std::nullopt, fmt::format("failed to execute transaction: {}", err.what()) };
+				return { std::nullopt, std::format("failed to execute transaction: {}", err.what()) };
 			}
 		}
 

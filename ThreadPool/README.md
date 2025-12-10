@@ -168,8 +168,7 @@ ThreadPool 사용법
 #include "ThreadWorker.h"
 #include "ArgumentParser.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 using namespace Utilities;
 using namespace Thread;
@@ -248,13 +247,13 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		pool.push(std::make_shared<Job>(JobPriorities::Normal, &write_normal_data));
 		pool.push(std::make_shared<Job>(JobPriorities::Low, &write_low_data));
 
-		pool.push(std::make_shared<Job>(JobPriorities::High, Converter::to_array(fmt::format("high_{}", i)), &write_data));
-		pool.push(std::make_shared<Job>(JobPriorities::Normal, Converter::to_array(fmt::format("normal_{}", i)), &write_data));
-		pool.push(std::make_shared<Job>(JobPriorities::Low, Converter::to_array(fmt::format("low_{}", i)), &write_data));
+		pool.push(std::make_shared<Job>(JobPriorities::High, Converter::to_array(std::format("high_{}", i)), &write_data));
+		pool.push(std::make_shared<Job>(JobPriorities::Normal, Converter::to_array(std::format("normal_{}", i)), &write_data));
+		pool.push(std::make_shared<Job>(JobPriorities::Low, Converter::to_array(std::format("low_{}", i)), &write_data));
 
-		pool.push(std::make_shared<WriteJob>(JobPriorities::High, Converter::to_array(fmt::format("write_job_high_{}", i))));
-		pool.push(std::make_shared<WriteJob>(JobPriorities::Normal, Converter::to_array(fmt::format("write_job_normal_{}", i))));
-		pool.push(std::make_shared<WriteJob>(JobPriorities::Low, Converter::to_array(fmt::format("write_job_low_{}", i))));
+		pool.push(std::make_shared<WriteJob>(JobPriorities::High, Converter::to_array(std::format("write_job_high_{}", i))));
+		pool.push(std::make_shared<WriteJob>(JobPriorities::Normal, Converter::to_array(std::format("write_job_normal_{}", i))));
+		pool.push(std::make_shared<WriteJob>(JobPriorities::Low, Converter::to_array(std::format("write_job_low_{}", i))));
 	}
 
 	pool.start();

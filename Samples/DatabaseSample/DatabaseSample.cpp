@@ -6,8 +6,7 @@
 #include "PostgresDB.h"
 #include "ArgumentParser.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include <string>
 #include <vector>
@@ -39,6 +38,22 @@ std::string output_file_;
 std::string operation_ = "select";
 
 std::shared_ptr<DatabaseInterface> database_ = nullptr;
+
+auto join_strings(const std::vector<std::string>& values) -> std::string
+{
+	std::string result;
+	for (const auto& value : values)
+	{
+		if (!result.empty())
+		{
+			result += ", ";
+		}
+
+		result += value;
+	}
+
+	return result;
+}
 
 auto main(int32_t argc, char* argv[]) -> int32_t
 {
@@ -79,7 +94,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 
 	Logger::handle().start("DatabaseClient");
 
-	database_ = std::make_shared<PostgresDB>(fmt::format("user={} dbname={} password={} host={} port={}", user_name_, db_name_, db_password_, host_, port_));
+	database_ = std::make_shared<PostgresDB>(std::format("user={} dbname={} password={} host={} port={}", user_name_, db_name_, db_password_, host_, port_));
 
 	if (!query_file_.empty())
 	{
@@ -108,7 +123,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		auto [rows, error] = database_->execute_query_and_get_result(query_);
 		if (error.has_value())
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("Query execution failed: {}", *error));
+			Logger::handle().write(LogTypes::Error, std::format("Query execution failed: {}", *error));
 		}
 		else
 		{
@@ -122,16 +137,16 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 						{
 							if constexpr (std::is_same_v<std::decay_t<decltype(value)>, std::vector<std::string>>)
 							{
-								row_string += "{" + fmt::format("{}", fmt::join(value, ", ")) + "}";
+								row_string += std::format("{{{}}}", join_strings(value));
 							}
 							else
 							{
-								row_string += fmt::format("{} ", value);
+								row_string += std::format("{} ", value);
 							}
 						},
 						column);
 				}
-				Logger::handle().write(LogTypes::Information, fmt::format("Row: {}", row_string));
+				Logger::handle().write(LogTypes::Information, std::format("Row: {}", row_string));
 			}
 
 			if (!output_file_.empty())
@@ -145,7 +160,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		auto [success, error] = database_->execute_query(query_);
 		if (!success)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("Query execution failed: {}", *error));
+			Logger::handle().write(LogTypes::Error, std::format("Query execution failed: {}", *error));
 		}
 		else
 		{
@@ -234,13 +249,13 @@ auto read_query_from_file(const std::string& filename) -> std::tuple<std::option
 	auto [opened, open_error] = file.open(filename, std::ios::binary | std::ios::in);
 	if (!opened)
 	{
-		return { std::nullopt, fmt::format("Failed to open query file: {}", filename) };
+		return { std::nullopt, std::format("Failed to open query file: {}", filename) };
 	}
 
 	auto [bytes, read_error] = file.read_bytes();
 	if (!bytes.has_value())
 	{
-		return { std::nullopt, fmt::format("Failed to read query file: {}", *read_error) };
+		return { std::nullopt, std::format("Failed to read query file: {}", *read_error) };
 	}
 
 	return { Converter::to_string(bytes.value()), std::nullopt };
@@ -252,7 +267,7 @@ auto write_result_to_file(const std::string& filename, const std::vector<std::ve
 	auto [opened, open_error] = file.open(filename, std::ios::binary | std::ios::out);
 	if (!opened)
 	{
-		Logger::handle().write(LogTypes::Error, fmt::format("Failed to open output file: {}", filename));
+		Logger::handle().write(LogTypes::Error, std::format("Failed to open output file: {}", filename));
 		return;
 	}
 
@@ -266,11 +281,11 @@ auto write_result_to_file(const std::string& filename, const std::vector<std::ve
 				{
 					if constexpr (std::is_same_v<std::decay_t<decltype(value)>, std::vector<std::string>>)
 					{
-						row_string += "{" + fmt::format("{}", fmt::join(value, ", ")) + "}";
+						row_string += std::format("{{{}}}", join_strings(value));
 					}
 					else
 					{
-						row_string += fmt::format("{} ", value);
+						row_string += std::format("{} ", value);
 					}
 				},
 				column);
@@ -279,7 +294,7 @@ auto write_result_to_file(const std::string& filename, const std::vector<std::ve
 	}
 	file.close();
 
-	Logger::handle().write(LogTypes::Information, fmt::format("Results written to file: {}", filename));
+	Logger::handle().write(LogTypes::Information, std::format("Results written to file: {}", filename));
 }
 
 auto print_help_message() -> void

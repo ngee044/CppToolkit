@@ -9,8 +9,7 @@
 #include "Logger.h"
 #include "NetworkServer.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include <tuple>
 #include <memory>
@@ -73,7 +72,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 				return { false, "server has no handle" };
 			}
 
-			Logger::handle().write(LogTypes::Information, fmt::format("received condition message from "
+			Logger::handle().write(LogTypes::Information, std::format("received condition message from "
 																	  "NetworkClientSample : [{}:{}] => {}",
 																	  id, sub_id, condition));
 
@@ -87,7 +86,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 				return { false, "server has no handle" };
 			}
 
-			Logger::handle().write(LogTypes::Information, fmt::format("received_message: {}", message));
+			Logger::handle().write(LogTypes::Information, std::format("received_message: {}", message));
 
 			return server_->send_binary(Converter::to_array("send_binary"), message, id, sub_id);
 		});
@@ -99,7 +98,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 				return { false, "server has no handle" };
 			}
 
-			Logger::handle().write(LogTypes::Information, fmt::format("received_binary: {}", message));
+			Logger::handle().write(LogTypes::Information, std::format("received_binary: {}", message));
 
 			return server_->send_message(message, id, sub_id);
 		});
@@ -112,7 +111,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 				return { false, "server has no handle" };
 			}
 
-			Logger::handle().write(LogTypes::Information, fmt::format("received_file: {}", message));
+			Logger::handle().write(LogTypes::Information, std::format("received_file: {}", message));
 
 			return server_->send_message(message, id, sub_id);
 		});
@@ -125,7 +124,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 				return std::make_tuple(false, "server has no handle");
 			}
 
-			Logger::handle().write(LogTypes::Information, fmt::format("received_files: successes[{}], failures[{}]", successes.size(), failures.size()));
+			Logger::handle().write(LogTypes::Information, std::format("received_files: successes[{}], failures[{}]", successes.size(), failures.size()));
 
 			return { true, std::nullopt };
 		});
