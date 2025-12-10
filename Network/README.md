@@ -344,8 +344,7 @@ NetworkServer 사용법
 #include "NetworkServer.h"
 #include "ArgumentParser.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include <memory>
 #include <string>
@@ -425,7 +424,7 @@ bool received_connection(const std::string& id, const std::string& sub_id, const
 		return false;
 	}
 
-	Logger::handle().write(LogTypes::Information, fmt::format("received condition message from NetworkClientSample : [{}:{}] => {}", id, sub_id, condition));
+	Logger::handle().write(LogTypes::Information, std::format("received condition message from NetworkClientSample : [{}:{}] => {}", id, sub_id, condition));
 
 	return true;
 }
@@ -495,8 +494,7 @@ NetworkClient 사용법
 #include "NetworkClient.h"
 #include "ArgumentParser.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include <memory>
 #include <string>
@@ -577,7 +575,7 @@ bool received_connection(const bool& condition)
 		return false;
 	}
 
-	Logger::handle().write(LogTypes::Information, fmt::format("received condition of connection : {}", condition));
+	Logger::handle().write(LogTypes::Information, std::format("received condition of connection : {}", condition));
 
 	if (!condition)
 	{
@@ -596,7 +594,7 @@ bool received_message(const std::string& message)
 		return false;
 	}
 
-	Logger::handle().write(LogTypes::Information, fmt::format("received_message: {}", message));
+	Logger::handle().write(LogTypes::Information, std::format("received_message: {}", message));
 
 	return client_->send_message(message);
 }

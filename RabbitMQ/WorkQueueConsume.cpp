@@ -2,8 +2,7 @@
 
 #include "Logger.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include <iostream>
 
@@ -110,9 +109,9 @@ namespace RabbitMQ
 		switch (amqp_get_rpc_reply(conn_).reply_type)
 		{
 		case AMQP_RESPONSE_SERVER_EXCEPTION:
-			return { false, fmt::format("server exception: {}", amqp_get_rpc_reply(conn_).reply.id) };
+			return { false, std::format("server exception: {}", amqp_get_rpc_reply(conn_).reply.id) };
 		case AMQP_RESPONSE_LIBRARY_EXCEPTION:
-			return { false, fmt::format("library exception: {}", amqp_get_rpc_reply(conn_).reply.id) };
+			return { false, std::format("library exception: {}", amqp_get_rpc_reply(conn_).reply.id) };
 		case AMQP_RESPONSE_NONE:
 			return { false, "no response from server" };
 		default:
@@ -205,9 +204,9 @@ namespace RabbitMQ
 		switch (amqp_get_rpc_reply(conn_).reply_type)
 		{
 		case AMQP_RESPONSE_SERVER_EXCEPTION:
-			return { false, fmt::format("server exception: {}", amqp_get_rpc_reply(conn_).reply.id) };
+			return { false, std::format("server exception: {}", amqp_get_rpc_reply(conn_).reply.id) };
 		case AMQP_RESPONSE_LIBRARY_EXCEPTION:
-			return { false, fmt::format("library exception: {}", amqp_get_rpc_reply(conn_).reply.id) };
+			return { false, std::format("library exception: {}", amqp_get_rpc_reply(conn_).reply.id) };
 		case AMQP_RESPONSE_NONE:
 			return { false, "no response from server" };
 		default:

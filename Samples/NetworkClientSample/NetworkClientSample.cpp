@@ -9,8 +9,7 @@
 #include "Logger.h"
 #include "NetworkClient.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include <memory>
 #include <signal.h>
@@ -71,7 +70,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 					return { false, "client has no handle" };
 				}
 
-				Logger::handle().write(LogTypes::Information, fmt::format("received condition of connection: {}, by itself: {}", condition, by_itself));
+				Logger::handle().write(LogTypes::Information, std::format("received condition of connection: {}, by itself: {}", condition, by_itself));
 
 				if (!condition)
 				{
@@ -105,7 +104,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 					return { false, "client has no handle" };
 				}
 
-				Logger::handle().write(LogTypes::Information, fmt::format("received_binary: {}", message));
+				Logger::handle().write(LogTypes::Information, std::format("received_binary: {}", message));
 
 				return client_->send_message(message);
 			});
@@ -117,7 +116,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 					return { false, "client has no handle" };
 				}
 
-				Logger::handle().write(LogTypes::Information, fmt::format("received_binary: {}", message));
+				Logger::handle().write(LogTypes::Information, std::format("received_binary: {}", message));
 
 				return client_->send_message(message);
 			});
@@ -152,7 +151,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 
 		client_.reset();
 
-		Logger::handle().write(LogTypes::Error, fmt::format("cannot connect to server : {}:{}", server_ip_, server_port_));
+		Logger::handle().write(LogTypes::Error, std::format("cannot connect to server : {}:{}", server_ip_, server_port_));
 
 		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}

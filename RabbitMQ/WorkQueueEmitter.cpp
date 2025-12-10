@@ -2,8 +2,7 @@
 
 #include "Logger.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include <iostream>
 

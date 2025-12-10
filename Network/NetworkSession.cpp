@@ -8,8 +8,7 @@
 #include "Generator.h"
 #include "Encryptor.h"
 
-#include "fmt/xchar.h"
-#include "fmt/format.h"
+#include <format>
 
 #include "boost/json.hpp"
 #include <boost/asio/steady_timer.hpp>
@@ -69,7 +68,7 @@ namespace Network
 	{
 		stop();
 
-		Logger::handle().write(LogTypes::Sequence, fmt::format("destroyed NetworkSession on {}", id()));
+		Logger::handle().write(LogTypes::Sequence, std::format("destroyed NetworkSession on {}", id()));
 	}
 
 	auto NetworkSession::session_id(void) const -> SessionId { return session_id_; }
@@ -120,7 +119,7 @@ namespace Network
 		set_self_guard(shared_from_this());
 		condition(ConnectConditions::Waiting);
 
-		create_thread_pool(fmt::format("ThreadPool on NetworkSession on {}", id()));
+		create_thread_pool(std::format("ThreadPool on NetworkSession on {}", id()));
 
 		file_manager_->thread_pool(thread_pool());
 
@@ -149,7 +148,7 @@ namespace Network
 					// If not authenticated yet, expire the connection
 					if (self->state() != SessionState::Authenticated && self->condition() != ConnectConditions::Expired)
 					{
-						Utilities::Logger::handle().write(Utilities::LogTypes::Debug, fmt::format("handshake timeout on session [{}:{}]", self->id(), self->sub_id()));
+						Utilities::Logger::handle().write(Utilities::LogTypes::Debug, std::format("handshake timeout on session [{}:{}]", self->id(), self->sub_id()));
 						self->condition(ConnectConditions::Expired);
 					}
 				});
@@ -248,7 +247,7 @@ namespace Network
 		}
 		catch (const std::exception& e)
 		{
-			Utilities::Logger::handle().write(Utilities::LogTypes::Error, fmt::format("invalid connection json: {}", e.what()));
+			Utilities::Logger::handle().write(Utilities::LogTypes::Error, std::format("invalid connection json: {}", e.what()));
 			return { false, "invalid connection json" };
 		}
 
@@ -259,12 +258,12 @@ namespace Network
 
 		id(received_message.at("id").as_string().data());
 
-		Logger::handle().write(LogTypes::Debug, fmt::format("received connection message from NetworkClient: ({})", id()));
+		Logger::handle().write(LogTypes::Debug, std::format("received connection message from NetworkClient: ({})", id()));
 
 		if (!received_message.if_contains("registered_key") || !received_message.at("registered_key").is_string()
 			|| received_message.at("registered_key").as_string().data() != registered_key_)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("the registered key of the NetworkClient is not compatible with the server: ({})", id()));
+			Logger::handle().write(LogTypes::Error, std::format("the registered key of the NetworkClient is not compatible with the server: ({})", id()));
 
 			condition(ConnectConditions::Expired);
 
@@ -317,7 +316,7 @@ namespace Network
 
 		if (received_binary_callback_ == nullptr)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("no binary-callback on [{}:{}] state:{}", id(), sub_id(), to_string(state_)));
+			Logger::handle().write(LogTypes::Error, std::format("no binary-callback on [{}:{}] state:{}", id(), sub_id(), to_string(state_)));
 			return { false, "there is no callback to handle binary data" };
 		}
 
@@ -351,7 +350,7 @@ namespace Network
 
 		if (received_message_callback_ == nullptr)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("no message-callback on [{}:{}] state:{}", id(), sub_id(), to_string(state_)));
+			Logger::handle().write(LogTypes::Error, std::format("no message-callback on [{}:{}] state:{}", id(), sub_id(), to_string(state_)));
 			return { false, "there is no callback to handle message data" };
 		}
 
@@ -359,14 +358,14 @@ namespace Network
 		// Heartbeat handling
 		if (msg.rfind(k_heartbeat_ping, 0) == 0)
 		{
-			Logger::handle().write(LogTypes::Debug, fmt::format("received heartbeat:ping from [{}:{}]", id(), sub_id()));
+			Logger::handle().write(LogTypes::Debug, std::format("received heartbeat:ping from [{}:{}]", id(), sub_id()));
 			// Reply pong and swallow
 			send_message(k_heartbeat_pong);
 			return { true, std::nullopt };
 		}
 		if (msg.rfind(k_heartbeat_pong, 0) == 0)
 		{
-			Logger::handle().write(LogTypes::Debug, fmt::format("received heartbeat:pong from [{}:{}]", id(), sub_id()));
+			Logger::handle().write(LogTypes::Debug, std::format("received heartbeat:pong from [{}:{}]", id(), sub_id()));
 			last_pong_at_ = std::chrono::steady_clock::now();
 			missed_heartbeats_ = 0;
 			return { true, std::nullopt };
@@ -408,7 +407,7 @@ namespace Network
 
 		if ((FileModes)file_mode[0] == FileModes::Start)
 		{
-			Logger::handle().write(LogTypes::Debug, fmt::format("start receiving files [{}]: {} files", guid, file_count));
+			Logger::handle().write(LogTypes::Debug, std::format("start receiving files [{}]: {} files", guid, file_count));
 
 			return file_manager_->start(guid, file_count);
 		}
@@ -417,7 +416,7 @@ namespace Network
 
 		if ((FileModes)file_mode[0] == FileModes::Failure)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("cannot complete file receiving [{}]: index[{}] => {}", guid, file_count, message));
+			Logger::handle().write(LogTypes::Error, std::format("cannot complete file receiving [{}]: index[{}] => {}", guid, file_count, message));
 
 			return file_manager_->failure(guid, message);
 		}
@@ -426,12 +425,12 @@ namespace Network
 		auto temp_file_path = save_temp_path(file_data);
 		if (temp_file_path == std::nullopt)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("cannot complete file receiving [{}]: index[{}] => {}", guid, file_count, message));
+			Logger::handle().write(LogTypes::Error, std::format("cannot complete file receiving [{}]: index[{}] => {}", guid, file_count, message));
 
 			return file_manager_->failure(guid, message);
 		}
 
-		Logger::handle().write(LogTypes::Debug, fmt::format("completed file receiving [{}]: index[{}] => {}", guid, file_count, message));
+		Logger::handle().write(LogTypes::Debug, std::format("completed file receiving [{}]: index[{}] => {}", guid, file_count, message));
 
 		if (received_file_callback_)
 		{
@@ -524,13 +523,13 @@ namespace Network
 					if (elapsed >= static_cast<long long>(self->heartbeat_interval_sec_) * self->max_missed_heartbeats_)
 					{
 						Utilities::Logger::handle().write(Utilities::LogTypes::Error,
-														  fmt::format("heartbeat timeout on [{}:{}], elapsed {}s >= {}s; expiring", self->id(), self->sub_id(), elapsed,
+														  std::format("heartbeat timeout on [{}:{}], elapsed {}s >= {}s; expiring", self->id(), self->sub_id(), elapsed,
 																	  static_cast<long long>(self->heartbeat_interval_sec_) * self->max_missed_heartbeats_));
 						self->condition(ConnectConditions::Expired);
 						return;
 					}
 
-					Utilities::Logger::handle().write(Utilities::LogTypes::Debug, fmt::format("send heartbeat:ping to [{}:{}]", self->id(), self->sub_id()));
+					Utilities::Logger::handle().write(Utilities::LogTypes::Debug, std::format("send heartbeat:ping to [{}:{}]", self->id(), self->sub_id()));
 					self->send_message(k_heartbeat_ping);
 					// reschedule
 					self->start_heartbeat();

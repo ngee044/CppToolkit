@@ -3,8 +3,7 @@
 #include "Logger.h"
 #include "NetworkConstexpr.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include <algorithm>
 
@@ -92,7 +91,7 @@ namespace Network
 		size_t sent_size = socket_->send(boost::asio::buffer(start_code_.data(), start_code_.size()));
 		if (sent_size != start_code_.size())
 		{
-			return { false, fmt::format("cannot send start code : {} bytes", start_code_.size()) };
+			return { false, std::format("cannot send start code : {} bytes", start_code_.size()) };
 		}
 
 		return { true, std::nullopt };
@@ -103,7 +102,7 @@ namespace Network
 		size_t sent_size = socket_->send(boost::asio::buffer(&length, LENGTH_SIZE));
 		if (sent_size != sizeof(uint64_t))
 		{
-			return { false, fmt::format("cannot send length code : {} bytes", LENGTH_SIZE) };
+			return { false, std::format("cannot send length code : {} bytes", LENGTH_SIZE) };
 		}
 
 		return { true, std::nullopt };
@@ -121,7 +120,7 @@ namespace Network
 			temp = socket_->send(boost::asio::buffer(temp_buffer.data(), temp));
 			if (temp == 0)
 			{
-				return { false, fmt::format("cannot send data: sent [{}] / total [{}] bytes", temp, count) };
+				return { false, std::format("cannot send data: sent [{}] / total [{}] bytes", temp, count) };
 			}
 
 			index += temp;
@@ -135,7 +134,7 @@ namespace Network
 		size_t sent_size = socket_->send(boost::asio::buffer(end_code_.data(), end_code_.size()));
 		if (sent_size != end_code_.size())
 		{
-			return { false, fmt::format("cannot send end code : {} bytes", end_code_.size()) };
+			return { false, std::format("cannot send end code : {} bytes", end_code_.size()) };
 		}
 
 		return { true, std::nullopt };

@@ -1,9 +1,8 @@
 #include "Converter.h"
 
 #include <codecvt>
-
-#include "fmt/xchar.h"
-#include "fmt/format.h"
+#include <format>
+#include <string>
 
 #ifdef USE_ENCRYPT_MODULE
 #ifdef TEST
@@ -77,8 +76,7 @@ namespace Utilities
 
 		size_t offset = 0;
 		size_t last_offset = 0;
-		fmt::memory_buffer result;
-		result.clear();
+		std::string result;
 
 		while (true)
 		{
@@ -88,14 +86,15 @@ namespace Utilities
 				break;
 			}
 
-			fmt::format_to(back_inserter(result), "{}{}", source.substr(last_offset, offset - last_offset), target);
+			result += source.substr(last_offset, offset - last_offset);
+			result += target;
 
 			last_offset = offset + token.size();
 		}
 
 		if (last_offset != 0 && last_offset != std::string::npos)
 		{
-			fmt::format_to(back_inserter(result), "{}", source.substr(last_offset, offset - last_offset));
+			result += source.substr(last_offset, offset - last_offset);
 		}
 
 		if (last_offset == 0)
@@ -103,7 +102,7 @@ namespace Utilities
 			return source;
 		}
 
-		return std::string(result.begin(), result.end());
+		return result;
 	}
 
 	auto Converter::to_u32string(const std::u16string& value, std::locale target_locale) -> std::u32string

@@ -4,9 +4,7 @@
 #include "Logger.h"
 #include "ThreadWorker.h"
 
-#include "fmt/chrono.h"
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include <functional>
 
@@ -15,7 +13,7 @@ using namespace Utilities;
 namespace Thread
 {
 	ThreadPool::ThreadPool(const std::string& title)
-		: job_pool_(std::make_shared<JobPool>(fmt::format("JobPool on {}", title))), working_(false), thread_title_(title), pause_(false)
+		: job_pool_(std::make_shared<JobPool>(std::format("JobPool on {}", title))), working_(false), thread_title_(title), pause_(false)
 	{
 		job_pool_->notify_callback(std::bind(&ThreadPool::notify_callback, this, std::placeholders::_1));
 	}
@@ -27,7 +25,7 @@ namespace Thread
 		thread_workers_.clear();
 		job_pool_.reset();
 
-		Logger::handle().write(LogTypes::Debug, fmt::format("destroyed {}", thread_title_));
+		Logger::handle().write(LogTypes::Debug, std::format("destroyed {}", thread_title_));
 	}
 
 	auto ThreadPool::get_ptr(void) -> std::shared_ptr<ThreadPool> { return shared_from_this(); }
@@ -71,9 +69,9 @@ namespace Thread
 
 		worker->job_pool(job_pool_);
 		worker->pause(pause_.load());
-		worker->worker_title(fmt::format("{} ThreadWorker on {}", priority, thread_title_));
+		worker->worker_title(std::format("{} ThreadWorker on {}", priority, thread_title_));
 
-		Logger::handle().write(LogTypes::Parameter, fmt::format("pushed {} ThreadWorker on {}", priority, thread_title_));
+		Logger::handle().write(LogTypes::Parameter, std::format("pushed {} ThreadWorker on {}", priority, thread_title_));
 
 		if (working_.load())
 		{
@@ -262,7 +260,7 @@ namespace Thread
 
 	auto ThreadPool::notify_callback(const JobPriorities& priority) -> void
 	{
-		Logger::handle().write(LogTypes::Sequence, fmt::format("notify one for {} priority", priority_string(priority)));
+		Logger::handle().write(LogTypes::Sequence, std::format("notify one for {} priority", priority_string(priority)));
 
 		std::scoped_lock<std::mutex> lock(mutex_);
 

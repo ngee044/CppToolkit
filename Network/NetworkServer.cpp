@@ -6,8 +6,7 @@
 #include "ThreadWorker.h"
 #include "NetworkSession.h"
 
-#include "fmt/xchar.h"
-#include "fmt/format.h"
+#include <format>
 
 #include "boost/json.hpp"
 
@@ -42,7 +41,7 @@ namespace Network
 		drop_sessions();
 		destroy_io_context();
 
-		Logger::handle().write(LogTypes::Sequence, fmt::format("destroyed NetworkServer on {}", id()));
+		Logger::handle().write(LogTypes::Sequence, std::format("destroyed NetworkServer on {}", id()));
 	}
 
 	auto NetworkServer::get_ptr(void) -> std::shared_ptr<NetworkServer> { return shared_from_this(); }
@@ -264,7 +263,7 @@ namespace Network
 
 		if (seconds == 0)
 		{
-			Logger::handle().write(LogTypes::Debug, fmt::format("attempt to wait until stop NetworkServer on {}", id_));
+			Logger::handle().write(LogTypes::Debug, std::format("attempt to wait until stop NetworkServer on {}", id_));
 
 			future_status_.wait();
 
@@ -274,7 +273,7 @@ namespace Network
 			return { true, std::nullopt };
 		}
 
-		Logger::handle().write(LogTypes::Debug, fmt::format("attempt to wait on {} seconds or until NetworkServer for {} stops", id_, seconds));
+		Logger::handle().write(LogTypes::Debug, std::format("attempt to wait on {} seconds or until NetworkServer for {} stops", id_, seconds));
 
 		future_status_.wait_for(std::chrono::seconds(seconds));
 
@@ -291,7 +290,7 @@ namespace Network
 			return { false, "io_context is null" };
 		}
 
-		Logger::handle().write(LogTypes::Debug, fmt::format("attempt to stop NetworkServer on {}", id_));
+		Logger::handle().write(LogTypes::Debug, std::format("attempt to stop NetworkServer on {}", id_));
 
 		if (promise_status_ != nullptr && future_status_.valid())
 		{
@@ -472,7 +471,7 @@ namespace Network
 			acceptor_.reset();
 			lock.unlock();
 			destroy_io_context();
-			Logger::handle().write(LogTypes::Exception, fmt::format("cannot create acceptor on NetworkServer on {} => {}", id_, message.what()));
+			Logger::handle().write(LogTypes::Exception, std::format("cannot create acceptor on NetworkServer on {} => {}", id_, message.what()));
 
 			return false;
 		}
@@ -481,7 +480,7 @@ namespace Network
 			acceptor_.reset();
 			lock.unlock();
 			destroy_io_context();
-			Logger::handle().write(LogTypes::Exception, fmt::format("cannot create acceptor on NetworkServer on {} => {}", id_, message.what()));
+			Logger::handle().write(LogTypes::Exception, std::format("cannot create acceptor on NetworkServer on {} => {}", id_, message.what()));
 
 			return false;
 		}
@@ -490,7 +489,7 @@ namespace Network
 			acceptor_.reset();
 			lock.unlock();
 			destroy_io_context();
-			Logger::handle().write(LogTypes::Exception, fmt::format("cannot create acceptor on NetworkServer on {} => {}", id_, message.what()));
+			Logger::handle().write(LogTypes::Exception, std::format("cannot create acceptor on NetworkServer on {} => {}", id_, message.what()));
 
 			return false;
 		}
@@ -499,7 +498,7 @@ namespace Network
 			acceptor_.reset();
 			lock.unlock();
 			destroy_io_context();
-			Logger::handle().write(LogTypes::Exception, fmt::format("cannot create acceptor on NetworkServer on {} => unexpected error", id_));
+			Logger::handle().write(LogTypes::Exception, std::format("cannot create acceptor on NetworkServer on {} => unexpected error", id_));
 
 			return false;
 		}
@@ -551,7 +550,7 @@ namespace Network
 											  }
 											  lock.unlock();
 											  Logger::handle().write(LogTypes::Information,
-																   fmt::format("maintenance: sessions={} (heartbeat:{}s enabled:{})",
+																   std::format("maintenance: sessions={} (heartbeat:{}s enabled:{})",
 																		   sessions_.size(), heartbeat_interval_sec_, heartbeat_enabled_));
 											  // Reschedule
 											  start_maintenance_job();
@@ -599,7 +598,7 @@ namespace Network
 	{
 		destroy_thread_pool();
 
-		thread_pool_ = std::make_shared<ThreadPool>(fmt::format("ThreadPool on NetworkServer on {}", id_));
+		thread_pool_ = std::make_shared<ThreadPool>(std::format("ThreadPool on NetworkServer on {}", id_));
 		thread_pool_->push(std::make_shared<ThreadWorker>(std::vector<JobPriorities>{ JobPriorities::High }));
 		thread_pool_->push(std::make_shared<ThreadWorker>(std::vector<JobPriorities>{ JobPriorities::Normal }));
 		thread_pool_->push(std::make_shared<ThreadWorker>(std::vector<JobPriorities>{ JobPriorities::Low }));
@@ -668,7 +667,7 @@ namespace Network
 
 #ifdef _DEBUG
 				Logger::handle().write(
-					LogTypes::Debug, fmt::format("accepted new client: {}:{}", new_socket.remote_endpoint().address().to_string(), new_socket.remote_endpoint().port()));
+					LogTypes::Debug, std::format("accepted new client: {}:{}", new_socket.remote_endpoint().address().to_string(), new_socket.remote_endpoint().port()));
 #endif
 
 
@@ -728,12 +727,12 @@ namespace Network
 		}
 		catch (const std::exception& e)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("invalid connection json: {}", e.what()));
+			Logger::handle().write(LogTypes::Error, std::format("invalid connection json: {}", e.what()));
 			return { false, "invalid connection json" };
 		}
 
 		Logger::handle().write(LogTypes::Debug,
-							   fmt::format("received connection message from NetworkSession : [{}:{}] => {}", condition_message.at("id").as_string().data(),
+							   std::format("received connection message from NetworkSession : [{}:{}] => {}", condition_message.at("id").as_string().data(),
 										   condition_message.at("sub_id").as_string().data(), condition_message.at("condition").as_bool()));
 
 		if (!condition_message.at("condition").as_bool())
@@ -762,7 +761,7 @@ namespace Network
 			lock.unlock();
 		}
 
-		Logger::handle().write(LogTypes::Information, fmt::format("working session count : {}", sessions_.size()));
+		Logger::handle().write(LogTypes::Information, std::format("working session count : {}", sessions_.size()));
 
 		// Detailed session state counts
 		{
@@ -787,7 +786,7 @@ namespace Network
 			}
 
 			Logger::handle().write(LogTypes::Debug,
-								fmt::format("sessions by state - Create:{} Handshaking:{} Authenticated:{} InGame:{} Closing:{} Closed:{}",
+								std::format("sessions by state - Create:{} Handshaking:{} Authenticated:{} InGame:{} Closing:{} Closed:{}",
 										create_cnt, handshaking_cnt, authed_cnt, ingame_cnt, closing_cnt, closed_cnt));
 		}
 
@@ -802,7 +801,7 @@ namespace Network
 
 	auto NetworkServer::run(void) -> std::tuple<bool, std::optional<std::string>>
 	{
-		Logger::handle().write(LogTypes::Debug, fmt::format("started io_context on NetworkServer for {}", id_));
+		Logger::handle().write(LogTypes::Debug, std::format("started io_context on NetworkServer for {}", id_));
 
 		try
 		{
@@ -811,25 +810,25 @@ namespace Network
 		catch (const std::overflow_error& message)
 		{
 			io_context_.reset();
-			return { false, fmt::format("stop io_context on NetworkServer for {} => {}", id_, message.what()) };
+			return { false, std::format("stop io_context on NetworkServer for {} => {}", id_, message.what()) };
 		}
 		catch (const std::runtime_error& message)
 		{
 			io_context_.reset();
-			return { false, fmt::format("stop io_context on NetworkServer for {} => {}", id_, message.what()) };
+			return { false, std::format("stop io_context on NetworkServer for {} => {}", id_, message.what()) };
 		}
 		catch (const std::exception& message)
 		{
 			io_context_.reset();
-			return { false, fmt::format("stop io_context on NetworkServer for {} => {}", id_, message.what()) };
+			return { false, std::format("stop io_context on NetworkServer for {} => {}", id_, message.what()) };
 		}
 		catch (...)
 		{
 			io_context_.reset();
-			return { false, fmt::format("stop io_context on NetworkServer for {} => unexpected error", id_) };
+			return { false, std::format("stop io_context on NetworkServer for {} => unexpected error", id_) };
 		}
 
-		Logger::handle().write(LogTypes::Debug, fmt::format("stopped io_context on NetworkServer for {}", id_));
+		Logger::handle().write(LogTypes::Debug, std::format("stopped io_context on NetworkServer for {}", id_));
 
 		return { true, std::nullopt };
 	}

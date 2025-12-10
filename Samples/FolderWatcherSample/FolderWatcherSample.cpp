@@ -11,8 +11,7 @@
 #include "FolderWatcher.h"
 #include "ArgumentParser.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include "boost/json.hpp"
 #include "boost/json/parse.hpp"
@@ -45,7 +44,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	auto temp_path = std::filesystem::temp_directory_path(error_code);
 	if (error_code)
 	{
-		Logger::handle().write(LogTypes::Error, fmt::format("cannot get temp directory path: {}, {}", error_code.message(), temp_path.string()));
+		Logger::handle().write(LogTypes::Error, std::format("cannot get temp directory path: {}, {}", error_code.message(), temp_path.string()));
 
 		Logger::handle().stop();
 		Logger::destroy();
@@ -61,7 +60,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	auto [create_condition, create_message] = folder.create_folder(new_path.string());
 	if (!create_condition)
 	{
-		Logger::handle().write(LogTypes::Error, fmt::format("cannot create temp directory: {}, {}", create_message.value(), new_path.string()));
+		Logger::handle().write(LogTypes::Error, std::format("cannot create temp directory: {}, {}", create_message.value(), new_path.string()));
 
 		Logger::handle().stop();
 		Logger::destroy();
@@ -69,7 +68,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		return 0;
 	}
 
-	Logger::handle().write(LogTypes::Information, fmt::format("create temp directory: {}", new_path.string()));
+	Logger::handle().write(LogTypes::Information, std::format("create temp directory: {}", new_path.string()));
 
 	FolderWatcher::handle().set_callback(
 		[](const std::string& dir, const std::string& filename, efsw::Action action, const std::string&)
@@ -77,16 +76,16 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 			switch (action)
 			{
 			case efsw::Actions::Add:
-				Logger::handle().write(LogTypes::Information, fmt::format("{} has added on {}", filename, dir));
+				Logger::handle().write(LogTypes::Information, std::format("{} has added on {}", filename, dir));
 				break;
 			case efsw::Actions::Delete:
-				Logger::handle().write(LogTypes::Information, fmt::format("{} has deleted on {}", filename, dir));
+				Logger::handle().write(LogTypes::Information, std::format("{} has deleted on {}", filename, dir));
 				break;
 			case efsw::Actions::Modified:
-				Logger::handle().write(LogTypes::Information, fmt::format("{} has modified on {}", filename, dir));
+				Logger::handle().write(LogTypes::Information, std::format("{} has modified on {}", filename, dir));
 				break;
 			case efsw::Actions::Moved:
-				Logger::handle().write(LogTypes::Information, fmt::format("{} has moved on {}", filename, dir));
+				Logger::handle().write(LogTypes::Information, std::format("{} has moved on {}", filename, dir));
 				break;
 			}
 		});
@@ -99,7 +98,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	auto [create_condition2, create_message2] = folder.create_folder(new_path2.string());
 	if (!create_condition2)
 	{
-		Logger::handle().write(LogTypes::Error, fmt::format("cannot create sub temp directory: {}, {}", create_message2.value(), new_path2.string()));
+		Logger::handle().write(LogTypes::Error, std::format("cannot create sub temp directory: {}, {}", create_message2.value(), new_path2.string()));
 
 		Logger::handle().stop();
 		Logger::destroy();
@@ -107,7 +106,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		return 0;
 	}
 
-	Logger::handle().write(LogTypes::Information, fmt::format("create sub temp directory: {}", new_path2.string()));
+	Logger::handle().write(LogTypes::Information, std::format("create sub temp directory: {}", new_path2.string()));
 
 	std::filesystem::path new_file_path(new_path);
 	new_file_path.append("test.json");
@@ -116,7 +115,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	auto [open_condition, open_message] = file.open(new_file_path.string(), std::ios::out | std::ios::binary | std::ios::trunc);
 	if (!open_condition)
 	{
-		Logger::handle().write(LogTypes::Error, fmt::format("cannot create temp file: {}, {}", open_message.value(), new_file_path.string()));
+		Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: {}, {}", open_message.value(), new_file_path.string()));
 
 		Logger::handle().stop();
 		Logger::destroy();
@@ -129,7 +128,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	{
 		file.close();
 
-		Logger::handle().write(LogTypes::Error, fmt::format("cannot create temp file: {}", write_message.value()));
+		Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: {}", write_message.value()));
 
 		Logger::handle().stop();
 		Logger::destroy();
@@ -138,7 +137,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	}
 	file.close();
 
-	Logger::handle().write(LogTypes::Information, fmt::format("create temp file: {}", new_file_path.string()));
+	Logger::handle().write(LogTypes::Information, std::format("create temp file: {}", new_file_path.string()));
 
 	std::filesystem::path new_file_path2(new_path2);
 	new_file_path2.append("test.json");
@@ -146,7 +145,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	auto [open_condition2, open_message2] = file.open(new_file_path2.string(), std::ios::out | std::ios::binary | std::ios::trunc);
 	if (!open_condition2)
 	{
-		Logger::handle().write(LogTypes::Error, fmt::format("cannot create temp file: {}, {}", open_message2.value(), new_file_path2.string()));
+		Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: {}, {}", open_message2.value(), new_file_path2.string()));
 
 		Logger::handle().stop();
 		Logger::destroy();
@@ -159,7 +158,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	{
 		file.close();
 
-		Logger::handle().write(LogTypes::Error, fmt::format("cannot create temp file: {}", write_message2.value()));
+		Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: {}", write_message2.value()));
 
 		Logger::handle().stop();
 		Logger::destroy();
@@ -168,7 +167,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	}
 	file.close();
 
-	Logger::handle().write(LogTypes::Information, fmt::format("create temp file: {}", new_file_path2.string()));
+	Logger::handle().write(LogTypes::Information, std::format("create temp file: {}", new_file_path2.string()));
 
 	FolderWatcher::handle().stop();
 

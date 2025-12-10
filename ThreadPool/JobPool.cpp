@@ -5,8 +5,7 @@
 #include "Job.h"
 #include "Logger.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include <filesystem>
 
@@ -69,7 +68,7 @@ namespace Thread
 	{
 		if (!std::filesystem::is_directory(backup_folder))
 		{
-			Logger::handle().write(LogTypes::Debug, fmt::format("cannot get uncompleted jobs by unknown folder path : {}", backup_folder));
+			Logger::handle().write(LogTypes::Debug, std::format("cannot get uncompleted jobs by unknown folder path : {}", backup_folder));
 			return {};
 		}
 
@@ -99,7 +98,7 @@ namespace Thread
 			std::filesystem::remove(iterator->path().string(), ec);
 			if (ec)
 			{
-				Logger::handle().write(LogTypes::Error, fmt::format("cannot destroy a file : {} => {}", iterator->path().string(), ec.message()));
+				Logger::handle().write(LogTypes::Error, std::format("cannot destroy a file : {} => {}", iterator->path().string(), ec.message()));
 			}
 
 			if (source_data == std::nullopt)
@@ -151,7 +150,7 @@ namespace Thread
 			job_queues_.insert({ priority, queue });
 		}
 
-		Logger::handle().write(LogTypes::Parameter, fmt::format("contained job : {} [ {} ]", job->title(), priority_string(job->priority())));
+		Logger::handle().write(LogTypes::Parameter, std::format("contained job : {} [ {} ]", job->title(), priority_string(job->priority())));
 		lock.unlock();
 
 		if (notify_callback_)
@@ -190,12 +189,12 @@ namespace Thread
 			iter->second.pop_front();
 
 			Logger::handle().write(LogTypes::Parameter,
-								   fmt::format("consumed job : {} [ {} ] for {}", result->title(), priority_string(result->priority()), priority_string(priorities)));
+								   std::format("consumed job : {} [ {} ] for {}", result->title(), priority_string(result->priority()), priority_string(priorities)));
 
 			return result;
 		}
 
-		Logger::handle().write(LogTypes::Sequence, fmt::format("there is no pop job by priorities : {}", priority_string(priorities)));
+		Logger::handle().write(LogTypes::Sequence, std::format("there is no pop job by priorities : {}", priority_string(priorities)));
 
 		return nullptr;
 	}

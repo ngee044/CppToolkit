@@ -11,8 +11,7 @@
 #include "ThreadPool.h"
 #include "ThreadWorker.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include "boost/json.hpp"
 #include "boost/json/parse.hpp"
@@ -52,7 +51,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		auto [started, start_error] = pool->start();
 		if (!started)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("Failed to start a thread pool: {}", start_error.value()));
+			Logger::handle().write(LogTypes::Error, std::format("Failed to start a thread pool: {}", start_error.value()));
 			pool.reset();
 
 			continue;
@@ -61,24 +60,24 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		auto [removed_count, remove_error] = pool->remove_workers(JobPriorities::Normal);
 		if (removed_count == 0)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("Failed to remove a worker: {}", remove_error.value()));
+			Logger::handle().write(LogTypes::Error, std::format("Failed to remove a worker: {}", remove_error.value()));
 		}
 
 		auto [pushed_job, push_job_error] = pool->push(std::make_shared<Job>(JobPriorities::High,
 																			 [i]() -> std::tuple<bool, std::optional<std::string>>
 																			 {
-																				 Logger::handle().write(LogTypes::Information, fmt::format("High: {}", i));
+																				 Logger::handle().write(LogTypes::Information, std::format("High: {}", i));
 																				 return { true, std::nullopt };
 																			 }));
 		if (!pushed_job)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("Failed to push a job: {}", push_job_error.value()));
+			Logger::handle().write(LogTypes::Error, std::format("Failed to push a job: {}", push_job_error.value()));
 		}
 
 		auto [stopped, stop_error] = pool->stop();
 		if (!stopped)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("Failed to stop a thread pool: {}", stop_error.value()));
+			Logger::handle().write(LogTypes::Error, std::format("Failed to stop a thread pool: {}", stop_error.value()));
 		}
 
 		pool.reset();

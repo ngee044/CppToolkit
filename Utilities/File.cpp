@@ -4,8 +4,7 @@
 #include "Converter.h"
 #include "Compressor.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include <numeric>
 #include <filesystem>
@@ -61,10 +60,10 @@ namespace Utilities
 		{
 			if (!std::filesystem::exists(file_path_))
 			{
-				return { false, fmt::format("there is no file : {}", file_path_) };
+				return { false, std::format("there is no file : {}", file_path_) };
 			}
 
-			return { false, fmt::format("cannot open file : {}", file_path_) };
+			return { false, std::format("cannot open file : {}", file_path_) };
 		}
 
 		stream_.imbue(locale);
@@ -76,12 +75,12 @@ namespace Utilities
 	{
 		if (openmode_ & std::ios::in)
 		{
-			return { false, fmt::format("cannot write file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
+			return { false, std::format("cannot write file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
 		}
 
 		if (!stream_.is_open())
 		{
-			return { false, fmt::format("cannot write file by unopened condition : {}", file_path_) };
+			return { false, std::format("cannot write file by unopened condition : {}", file_path_) };
 		}
 
 		stream_.write((char*)bytes, (uint32_t)size);
@@ -94,12 +93,12 @@ namespace Utilities
 	{
 		if (openmode_ & std::ios::in)
 		{
-			return { false, fmt::format("cannot write file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
+			return { false, std::format("cannot write file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
 		}
 
 		if (!stream_.is_open())
 		{
-			return { false, fmt::format("cannot write file by unopened condition : {}", file_path_) };
+			return { false, std::format("cannot write file by unopened condition : {}", file_path_) };
 		}
 
 		stream_.write((char*)bytes.data(), (uint32_t)bytes.size());
@@ -112,12 +111,12 @@ namespace Utilities
 	{
 		if (openmode_ & std::ios::in)
 		{
-			return { false, fmt::format("cannot write file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
+			return { false, std::format("cannot write file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
 		}
 
 		if (!stream_.is_open())
 		{
-			return { false, fmt::format("cannot write file by unopened condition : {}", file_path_) };
+			return { false, std::format("cannot write file by unopened condition : {}", file_path_) };
 		}
 
 		std::vector<uint8_t> buffer(bytes.begin(), bytes.end());
@@ -131,12 +130,12 @@ namespace Utilities
 	{
 		if (openmode_ & std::ios::in)
 		{
-			return { false, fmt::format("cannot write file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
+			return { false, std::format("cannot write file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
 		}
 
 		if (!stream_.is_open())
 		{
-			return { false, fmt::format("cannot write file by unopened condition : {}", file_path_) };
+			return { false, std::format("cannot write file by unopened condition : {}", file_path_) };
 		}
 
 		std::string concatenated_message = std::accumulate(lines.begin(), lines.end(), std::string(),
@@ -162,12 +161,12 @@ namespace Utilities
 	{
 		if (openmode_ & std::ios::in)
 		{
-			return { false, fmt::format("cannot write file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
+			return { false, std::format("cannot write file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
 		}
 
 		if (!stream_.is_open())
 		{
-			return { false, fmt::format("cannot write file by unopened condition : {}", file_path_) };
+			return { false, std::format("cannot write file by unopened condition : {}", file_path_) };
 		}
 
 		std::string concatenated_message = std::accumulate(lines.begin(), lines.end(), std::string(),
@@ -193,12 +192,12 @@ namespace Utilities
 	{
 		if (openmode_ & std::ios::out)
 		{
-			return { std::nullopt, fmt::format("cannot read file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
+			return { std::nullopt, std::format("cannot read file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
 		}
 
 		if (!stream_.is_open())
 		{
-			return { std::nullopt, fmt::format("cannot read file by unopened condition : {}", file_path_) };
+			return { std::nullopt, std::format("cannot read file by unopened condition : {}", file_path_) };
 		}
 
 		stream_.seekg(0, std::ios::beg);
@@ -210,18 +209,18 @@ namespace Utilities
 	{
 		if (openmode_ & std::ios::out)
 		{
-			return { std::nullopt, fmt::format("cannot read file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
+			return { std::nullopt, std::format("cannot read file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
 		}
 
 		if (!stream_.is_open())
 		{
-			return { std::nullopt, fmt::format("cannot read file by unopened condition : {}", file_path_) };
+			return { std::nullopt, std::format("cannot read file by unopened condition : {}", file_path_) };
 		}
 
 		stream_.seekg(index, std::ios::beg);
 		if (stream_.fail())
 		{
-			return { std::nullopt, fmt::format("failed to seek position: {} in file: {}", index, file_path_) };
+			return { std::nullopt, std::format("failed to seek position: {} in file: {}", index, file_path_) };
 		}
 
 		std::vector<uint8_t> buffer(size);
@@ -235,12 +234,12 @@ namespace Utilities
 	{
 		if (openmode_ & std::ios::out)
 		{
-			return { std::nullopt, fmt::format("cannot read file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
+			return { std::nullopt, std::format("cannot read file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
 		}
 
 		if (!stream_.is_open())
 		{
-			return { std::nullopt, fmt::format("cannot read file by unopened condition : {}", file_path_) };
+			return { std::nullopt, std::format("cannot read file by unopened condition : {}", file_path_) };
 		}
 
 		stream_.seekg(0, std::ios::beg);
@@ -293,7 +292,7 @@ namespace Utilities
 		auto [compressed_bytes, compressed_message] = Compressor::compression(read_data.value(), block_bytes);
 		if (compressed_bytes == std::nullopt)
 		{
-			return { false, fmt::format("cannot compress file : {}", compressed_message.value()) };
+			return { false, std::format("cannot compress file : {}", compressed_message.value()) };
 		}
 
 		auto [open_condition2, open_message2] = source.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
@@ -333,7 +332,7 @@ namespace Utilities
 		auto [decompressed_bytes, decompressed_message] = Compressor::decompression(read_data.value(), block_bytes);
 		if (decompressed_bytes == std::nullopt)
 		{
-			return { false, fmt::format("cannot compress file : {}", decompressed_message.value()) };
+			return { false, std::format("cannot compress file : {}", decompressed_message.value()) };
 		}
 
 		auto [open_condition2, open_message2] = source.open(path, std::ios::out | std::ios::binary | std::ios::trunc);

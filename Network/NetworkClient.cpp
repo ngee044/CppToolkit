@@ -8,8 +8,7 @@
 #include "ConnectionJob.h"
 #include "ThreadWorker.h"
 
-#include "fmt/xchar.h"
-#include "fmt/format.h"
+#include <format>
 
 #include "boost/json.hpp"
 #include "boost/json/parse.hpp"
@@ -44,7 +43,7 @@ namespace Network
 		destroy_socket();
 		destroy_io_context();
 
-		Logger::handle().write(LogTypes::Sequence, fmt::format("destroyed NetworkClient on {}", id()));
+		Logger::handle().write(LogTypes::Sequence, std::format("destroyed NetworkClient on {}", id()));
 	}
 
 	auto NetworkClient::get_ptr(void) -> std::shared_ptr<NetworkClient> { return shared_from_this(); }
@@ -219,7 +218,7 @@ namespace Network
 
 		io_context_ = std::make_shared<boost::asio::io_context>();
 
-		create_thread_pool(fmt::format("ThreadPool on NetworkClient on {}", id()));
+		create_thread_pool(std::format("ThreadPool on NetworkClient on {}", id()));
 	}
 
 	auto NetworkClient::destroy_io_context(void) -> void
@@ -261,7 +260,7 @@ namespace Network
     {
         destroy_socket();
         Logger::handle().write(LogTypes::Exception,
-                               fmt::format("cannot create socket on NetworkClient on {} => {}:{} {}",
+                               std::format("cannot create socket on NetworkClient on {} => {}:{} {}",
                                            id(), ip, port, message.what()));
 
         return false;
@@ -270,7 +269,7 @@ namespace Network
     {
         destroy_socket();
         Logger::handle().write(LogTypes::Exception,
-                               fmt::format("cannot create socket on NetworkClient on {} => {}:{} {}",
+                               std::format("cannot create socket on NetworkClient on {} => {}:{} {}",
                                            id(), ip, port, message.what()));
 
         return false;
@@ -279,7 +278,7 @@ namespace Network
     {
         destroy_socket();
         Logger::handle().write(LogTypes::Exception,
-                               fmt::format("cannot create socket on NetworkClient on {} => {}:{} {}",
+                               std::format("cannot create socket on NetworkClient on {} => {}:{} {}",
                                            id(), ip, port, message.what()));
 
         return false;
@@ -288,7 +287,7 @@ namespace Network
     {
         destroy_socket();
         Logger::handle().write(LogTypes::Exception,
-                               fmt::format("cannot create socket on NetworkClient on {} => {}:{} unexpected error",
+                               std::format("cannot create socket on NetworkClient on {} => {}:{} unexpected error",
                                            id(), ip, port));
 
         return false;
@@ -301,7 +300,7 @@ namespace Network
 
 	auto NetworkClient::run(void) -> std::tuple<bool, std::optional<std::string>>
 	{
-		Logger::handle().write(LogTypes::Information, fmt::format("started io_context on NetworkClient on {}", id()));
+		Logger::handle().write(LogTypes::Information, std::format("started io_context on NetworkClient on {}", id()));
 
 		try
 		{
@@ -309,22 +308,22 @@ namespace Network
 		}
 		catch (const std::overflow_error& message)
 		{
-			return { false, fmt::format("restart io_context on NetworkClient for {} => {}", id(), message.what()) };
+			return { false, std::format("restart io_context on NetworkClient for {} => {}", id(), message.what()) };
 		}
 		catch (const std::runtime_error& message)
 		{
-			return { false, fmt::format("restart io_context on NetworkClient for {} => {}", id(), message.what()) };
+			return { false, std::format("restart io_context on NetworkClient for {} => {}", id(), message.what()) };
 		}
 		catch (const std::exception& message)
 		{
-			return { false, fmt::format("restart io_context on NetworkClient for {} => {}", id(), message.what()) };
+			return { false, std::format("restart io_context on NetworkClient for {} => {}", id(), message.what()) };
 		}
 		catch (...)
 		{
-			return { false, fmt::format("restart io_context on NetworkClient for {} => unexpected error", id()) };
+			return { false, std::format("restart io_context on NetworkClient for {} => unexpected error", id()) };
 		}
 
-		Logger::handle().write(LogTypes::Debug, fmt::format("stopped io_context on NetworkClient for {}", id()));
+		Logger::handle().write(LogTypes::Debug, std::format("stopped io_context on NetworkClient for {}", id()));
 
 		return { true, std::nullopt };
 	}
@@ -348,7 +347,7 @@ namespace Network
     }
     catch (const std::exception& e)
     {
-        Logger::handle().write(LogTypes::Error, fmt::format("invalid connection json on client: {}", e.what()));
+        Logger::handle().write(LogTypes::Error, std::format("invalid connection json on client: {}", e.what()));
         return { false, "invalid connection json" };
     }
 
@@ -379,7 +378,7 @@ namespace Network
 		}
 #endif
 
-    Logger::handle().write(LogTypes::Debug, fmt::format("received connection message: ({})", server_id_));
+    Logger::handle().write(LogTypes::Debug, std::format("received connection message: ({})", server_id_));
 
     if (!received_message.if_contains("condition") || !received_message.at("condition").is_bool() || !received_message.at("condition").as_bool())
     {
@@ -462,7 +461,7 @@ namespace Network
     // Heartbeat handling: reply pong (optional) and swallow regardless of user callback presence
     if (msg.rfind("heartbeat:ping", 0) == 0)
     {
-        Logger::handle().write(LogTypes::Debug, fmt::format("received heartbeat:ping from server [{}:{}]", id(), sub_id()));
+        Logger::handle().write(LogTypes::Debug, std::format("received heartbeat:ping from server [{}:{}]", id(), sub_id()));
         if (auto_pong_enabled_)
         {
             send_message("heartbeat:pong");
@@ -471,7 +470,7 @@ namespace Network
     }
     if (msg.rfind("heartbeat:pong", 0) == 0)
     {
-        Logger::handle().write(LogTypes::Debug, fmt::format("received heartbeat:pong from server [{}:{}]", id(), sub_id()));
+        Logger::handle().write(LogTypes::Debug, std::format("received heartbeat:pong from server [{}:{}]", id(), sub_id()));
         return { true, std::nullopt };
     }
 
@@ -510,7 +509,7 @@ namespace Network
 
 		if ((FileModes)file_mode[0] == FileModes::Start)
 		{
-			Logger::handle().write(LogTypes::Debug, fmt::format("start receiving files [{}]: {} files", guid, file_count));
+			Logger::handle().write(LogTypes::Debug, std::format("start receiving files [{}]: {} files", guid, file_count));
 
 			return file_manager_->start(guid, file_count);
 		}
@@ -519,7 +518,7 @@ namespace Network
 
 		if ((FileModes)file_mode[0] == FileModes::Failure)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("cannot complete file receiving [{}]: index[{}] => {}", guid, file_count, message));
+			Logger::handle().write(LogTypes::Error, std::format("cannot complete file receiving [{}]: index[{}] => {}", guid, file_count, message));
 
 			return file_manager_->failure(guid, message);
 		}
@@ -528,12 +527,12 @@ namespace Network
 		auto temp_file_path = save_temp_path(file_data);
 		if (temp_file_path == std::nullopt)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("cannot complete file receiving [{}]: index[{}] => {}", guid, file_count, message));
+			Logger::handle().write(LogTypes::Error, std::format("cannot complete file receiving [{}]: index[{}] => {}", guid, file_count, message));
 
 			return file_manager_->failure(guid, message);
 		}
 
-		Logger::handle().write(LogTypes::Debug, fmt::format("completed file receiving [{}]: index[{}] => {}", guid, file_count, message));
+		Logger::handle().write(LogTypes::Debug, std::format("completed file receiving [{}]: index[{}] => {}", guid, file_count, message));
 
 		if (received_file_callback_)
 		{

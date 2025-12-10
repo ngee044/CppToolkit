@@ -1,6 +1,6 @@
 #include "ConsumeInformationContainer.h"
 
-#include "fmt/format.h"
+#include <format>
 
 namespace RabbitMQ
 {
@@ -30,7 +30,7 @@ namespace RabbitMQ
 		auto iter = consume_informations_.find(information.get_queue_name());
 		if (iter != consume_informations_.end())
 		{
-			return { false, fmt::format("Consume information for queue '{}' already exists", information.get_queue_name()) };
+			return { false, std::format("Consume information for queue '{}' already exists", information.get_queue_name()) };
 		}
 
 		consume_informations_.insert({ information.get_queue_name(), information });
@@ -44,7 +44,7 @@ namespace RabbitMQ
 		auto iter = consume_informations_.find(queue_name);
 		if (iter == consume_informations_.end())
 		{
-			return { std::nullopt, fmt::format("Consume information for queue '{}' does not exist", queue_name) };
+			return { std::nullopt, std::format("Consume information for queue '{}' does not exist", queue_name) };
 		}
 
 		const auto information = iter->second;

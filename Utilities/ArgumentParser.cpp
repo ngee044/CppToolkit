@@ -1,7 +1,6 @@
 #include "ArgumentParser.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include "boost/dll.hpp"
 
@@ -145,7 +144,7 @@ namespace Utilities
 	{
 		std::filesystem::path program_path(argv[0]);
 		program_name_ = boost::dll::program_location().string();
-		program_folder_ = fmt::format("{}/", boost::dll::program_location().parent_path().string());
+		program_folder_ = std::format("{}/", boost::dll::program_location().parent_path().string());
 
 		std::vector<std::string> arguments;
 		for (int32_t index = 1; index < argc; ++index)
@@ -160,7 +159,7 @@ namespace Utilities
 	{
 		std::filesystem::path program_path(argv[0]);
 		program_name_ = boost::dll::program_location().string();
-		program_folder_ = fmt::format("{}/", boost::dll::program_location().parent_path().string());
+		program_folder_ = std::format("{}/", boost::dll::program_location().parent_path().string());
 
 		std::vector<std::string> arguments;
 		for (int32_t index = 1; index < argc; ++index)

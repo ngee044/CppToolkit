@@ -184,8 +184,7 @@ std::map<DateTimeFormats, std::string> datetime_types_
 #include "Logger.h"
 #include "ArgumentParser.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 using namespace Utilities;
 
@@ -209,7 +208,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 
 	for (int32_t i = 0; i < 10000; ++i)
 	{
-		Logger::handle().write(LogTypes::Information, fmt::format("Log test {}", i));
+		Logger::handle().write(LogTypes::Information, std::format("Log test {}", i));
 	}
 
 	Logger::handle().stop();

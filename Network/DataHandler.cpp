@@ -15,8 +15,7 @@
 #include "FileSendingJob.h"
 #include "NetworkConstexpr.h"
 
-#include "fmt/format.h"
-#include "fmt/xchar.h"
+#include <format>
 
 #include <filesystem>
 
@@ -51,7 +50,7 @@ namespace Network
 	{
 		destroy_receiving_buffers();
 
-		Logger::handle().write(LogTypes::Sequence, fmt::format("destroyed NetworkClient on {}", id()));
+		Logger::handle().write(LogTypes::Sequence, std::format("destroyed NetworkClient on {}", id()));
 	}
 
 	auto DataHandler::id(const std::string& new_id) -> void
@@ -102,7 +101,7 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 	{
 		if (condition_ != ConnectConditions::Confirmed)
 		{
-			return { false, fmt::format("cannot send binary due to connect condition on {}: not confirmed", id()) };
+			return { false, std::format("cannot send binary due to connect condition on {}: not confirmed", id()) };
 		}
 
 		std::vector<uint8_t> data;
@@ -116,7 +115,7 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 	{
 		if (condition_ != ConnectConditions::Confirmed)
 		{
-			return { false, fmt::format("cannot send message due to connect condition on {}: not confirmed", id()) };
+			return { false, std::format("cannot send message due to connect condition on {}: not confirmed", id()) };
 		}
 
 		return send(DataModes::Message, Converter::to_array(message));
@@ -126,7 +125,7 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 	{
 		if (condition_ != ConnectConditions::Confirmed)
 		{
-			return { false, fmt::format("cannot send files due to connect condition on {}: not confirmed", id()) };
+			return { false, std::format("cannot send files due to connect condition on {}: not confirmed", id()) };
 		}
 
 		std::string guid = Generator::guid();
@@ -196,7 +195,7 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 		{
 			temp_file.close();
 
-			Logger::handle().write(LogTypes::Error, fmt::format("cannot create temp file: ", open_message.value()));
+			Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: ", open_message.value()));
 
 			return std::nullopt;
 		}
@@ -206,7 +205,7 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 		{
 			temp_file.close();
 
-			Logger::handle().write(LogTypes::Error, fmt::format("cannot write temp file: ", write_message.value()));
+			Logger::handle().write(LogTypes::Error, std::format("cannot write temp file: ", write_message.value()));
 
 			return std::nullopt;
 		}
@@ -332,7 +331,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 		condition_ = new_condition;
 
 #ifdef _DEBUG
-		Logger::handle().write(LogTypes::Debug, fmt::format("connection condition : {}", (uint8_t)condition_));
+		Logger::handle().write(LogTypes::Debug, std::format("connection condition : {}", (uint8_t)condition_));
 #endif
 
 		if (condition_ == ConnectConditions::Expired)
@@ -347,17 +346,17 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 	{
 		if (socket_ == nullptr)
 		{
-			return { false, fmt::format("cannot send a message by null socket : mode[{}]", (uint8_t)mode) };
+			return { false, std::format("cannot send a message by null socket : mode[{}]", (uint8_t)mode) };
 		}
 
 		if (thread_pool_ == nullptr)
 		{
-			return { false, fmt::format("cannot send a message by null thread pool : mode[{}]", (uint8_t)mode) };
+			return { false, std::format("cannot send a message by null thread pool : mode[{}]", (uint8_t)mode) };
 		}
 
 		if (data.empty())
 		{
-			return { false, fmt::format("cannot send a message by null data : mode[{}]", (uint8_t)mode) };
+			return { false, std::format("cannot send a message by null data : mode[{}]", (uint8_t)mode) };
 		}
 
 		// Apply simple backpressure: cap total pending jobs except for Connection control messages
@@ -370,7 +369,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 				size_t pending = pool->job_pool()->job_count(all);
 				if (pending >= MAX_PENDING_SEND_JOBS)
 				{
-					return { false, fmt::format("backpressure: too many pending send jobs ({} >= {})", pending, MAX_PENDING_SEND_JOBS) };
+					return { false, std::format("backpressure: too many pending send jobs ({} >= {})", pending, MAX_PENDING_SEND_JOBS) };
 				}
 			}
 		}
@@ -417,7 +416,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 		if (matched_index == 4)
 		{
 #ifdef _DEBUG
-			Logger::handle().write(LogTypes::Debug, fmt::format("read start code : {} bytes", START_CODE_SIZE));
+			Logger::handle().write(LogTypes::Debug, std::format("read start code : {} bytes", START_CODE_SIZE));
 #endif
 
 			read_length_code();
@@ -441,7 +440,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 									if (ec)
 									{
 										condition(ConnectConditions::Expired);
-										Logger::handle().write(LogTypes::Debug, fmt::format("expired connection : {}", ec.message()));
+										Logger::handle().write(LogTypes::Debug, std::format("expired connection : {}", ec.message()));
 
 										return;
 									}
@@ -456,7 +455,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 									if (receiving_buffers_[0] != start_code_tag_[matched_index])
 									{
 #ifdef _DEBUG
-										Logger::handle().write(LogTypes::Error, fmt::format("received unknown data on network : {}", receiving_buffers_[0]));
+										Logger::handle().write(LogTypes::Error, std::format("received unknown data on network : {}", receiving_buffers_[0]));
 #endif
 
 										read_start_code();
@@ -506,7 +505,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 									if (ec)
 									{
 										condition(ConnectConditions::Expired);
-										Logger::handle().write(LogTypes::Debug, fmt::format("expired connection : {}", ec.message()));
+										Logger::handle().write(LogTypes::Debug, std::format("expired connection : {}", ec.message()));
 
 										return;
 									}
@@ -521,7 +520,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 									}
 
 #ifdef _DEBUG
-									Logger::handle().write(LogTypes::Debug, fmt::format("read length code : {} bytes", LENGTH_SIZE));
+									Logger::handle().write(LogTypes::Debug, std::format("read length code : {} bytes", LENGTH_SIZE));
 #endif
 
             uint64_t target_length = 0;
@@ -531,7 +530,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
             if (target_length > MAX_FRAME_SIZE)
             {
                 Logger::handle().write(LogTypes::Error,
-                                       fmt::format("drop frame: declared length {} exceeds MAX_FRAME_SIZE {}", target_length, MAX_FRAME_SIZE));
+                                       std::format("drop frame: declared length {} exceeds MAX_FRAME_SIZE {}", target_length, MAX_FRAME_SIZE));
                 condition(ConnectConditions::Expired);
                 return;
             }
@@ -588,7 +587,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 										if (ec)
 										{
 											condition(ConnectConditions::Expired);
-											Logger::handle().write(LogTypes::Debug, fmt::format("expired connection : {}", ec.message()));
+											Logger::handle().write(LogTypes::Debug, std::format("expired connection : {}", ec.message()));
 
 											return;
 										}
@@ -633,7 +632,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 									if (ec)
 									{
 										condition(ConnectConditions::Expired);
-										Logger::handle().write(LogTypes::Debug, fmt::format("expired connection : {}", ec.message()));
+										Logger::handle().write(LogTypes::Debug, std::format("expired connection : {}", ec.message()));
 
 										return;
 									}
@@ -641,7 +640,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 									received_data_.insert(received_data_.end(), receiving_buffers_, receiving_buffers_ + length);
 
 #ifdef _DEBUG
-									Logger::handle().write(LogTypes::Debug, fmt::format("read data : {} bytes", received_data_.size()));
+									Logger::handle().write(LogTypes::Debug, std::format("read data : {} bytes", received_data_.size()));
 #endif
 
 									read_end_code();
@@ -674,7 +673,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 		if (matched_index == end_code_tag_.size())
 		{
 #ifdef _DEBUG
-			Logger::handle().write(LogTypes::Debug, fmt::format("read end code : {} bytes", end_code_tag_.size()));
+			Logger::handle().write(LogTypes::Debug, std::format("read end code : {} bytes", end_code_tag_.size()));
 #endif
 
 			if (thread_pool_ != nullptr)
@@ -706,7 +705,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 									if (ec)
 									{
 										condition(ConnectConditions::Expired);
-										Logger::handle().write(LogTypes::Debug, fmt::format("expired connection : {}", ec.message()));
+										Logger::handle().write(LogTypes::Debug, std::format("expired connection : {}", ec.message()));
 
 										return;
 									}

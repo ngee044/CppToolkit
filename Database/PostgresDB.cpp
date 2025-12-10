@@ -2,8 +2,7 @@
 
 #include "Logger.h"
 
-#include "fmt/xchar.h"
-#include "fmt/format.h"
+#include <format>
 
 #include <regex>
 #include <sstream>
@@ -17,7 +16,7 @@ namespace Database
 		connection_ = PQconnectdb(conn_str.c_str());
 		if (PQstatus(connection_) != CONNECTION_OK)
 		{
-			Logger::handle().write(LogTypes::Error, fmt::format("cannot create PGconn: {}", PQerrorMessage(connection_)));
+			Logger::handle().write(LogTypes::Error, std::format("cannot create PGconn: {}", PQerrorMessage(connection_)));
 		}
 	}
 
@@ -27,7 +26,7 @@ namespace Database
 	{
 		if (PQstatus(connection_) != CONNECTION_OK)
 		{
-			return { false, fmt::format("there is no created PGconn: {}", PQerrorMessage(connection_)) };
+			return { false, std::format("there is no created PGconn: {}", PQerrorMessage(connection_)) };
 		}
 
 		PGresult* result = PQexec(connection_, sql_query.c_str());
@@ -48,7 +47,7 @@ namespace Database
 	{
 		if (PQstatus(connection_) != CONNECTION_OK)
 		{
-			return { std::nullopt, fmt::format("there is no created PGconn: {}", PQerrorMessage(connection_)) };
+			return { std::nullopt, std::format("there is no created PGconn: {}", PQerrorMessage(connection_)) };
 		}
 
 		PGresult* result = PQexec(connection_, sql_query.c_str());
@@ -98,21 +97,21 @@ namespace Database
 		}
 		PQclear(result);
 
-		return { result_data, fmt::format("there are selected rows: {}", result_data.size()) };
+		return { result_data, std::format("there are selected rows: {}", result_data.size()) };
 	}
 
 	auto PostgresDB::execute_command(const std::string& sql) -> std::tuple<bool, std::optional<std::string>> 
 	{
         if (!connection_)
 		{
-			return { false, fmt::format("there is no created PGconn: {}", PQerrorMessage(connection_)) };
+			return { false, std::format("there is no created PGconn: {}", PQerrorMessage(connection_)) };
 		}
 
         PGresult* postgre_result = PQexec(connection_, sql.c_str());
         if (PQresultStatus(postgre_result) != PGRES_COMMAND_OK)
         {
             auto error_message = PQerrorMessage(connection_);
-			std::string error = fmt::format("Error executing command: {}", error_message);
+			std::string error = std::format("Error executing command: {}", error_message);
 			Logger::handle().write(LogTypes::Error, error);
             PQclear(postgre_result);
             return { false, error };
@@ -137,7 +136,7 @@ namespace Database
 
         if (error != 0)
         {
-			Logger::handle().write(LogTypes::Error, fmt::format("Error escaping string: {}", PQerrorMessage(connection_)) );
+			Logger::handle().write(LogTypes::Error, std::format("Error escaping string: {}", PQerrorMessage(connection_)) );
         }
 
         return escaped;

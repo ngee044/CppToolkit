@@ -5,7 +5,7 @@
 #include "Converter.h"
 #include "ThreadWorker.h"
 
-#include "fmt/format.h"
+#include <format>
 
 #ifdef _WIN32
 #include "winsock.h"
@@ -85,7 +85,7 @@ namespace RabbitMQ
 									const bool& use_confirm_select, 
 									const std::optional<uint32_t>& expiration_millisecond) -> std::tuple<bool, std::optional<std::string>>
 	{
-		Logger::handle().write(LogTypes::Sequence, fmt::format("attempt to publish message: routing_key[{}] => {} bytes", routing_key, message.length()));
+		Logger::handle().write(LogTypes::Sequence, std::format("attempt to publish message: routing_key[{}] => {} bytes", routing_key, message.length()));
 
 		auto conn = amqp_new_connection();
 
@@ -121,20 +121,20 @@ namespace RabbitMQ
 		auto status = amqp_socket_open(socket, host_.c_str(), port_);
 		if (status != AMQP_STATUS_OK)
 		{
-			return { false, fmt::format("opening {} socket failed: {}", socket_type, status_message(static_cast<amqp_status_enum_>(status))) };
+			return { false, std::format("opening {} socket failed: {}", socket_type, status_message(static_cast<amqp_status_enum_>(status))) };
 		}
 
 		auto reply = amqp_login(conn, "/", AMQP_DEFAULT_MAX_CHANNELS, AMQP_DEFAULT_FRAME_SIZE, 0, AMQP_SASL_METHOD_PLAIN, user_name_.c_str(), password_.c_str());
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("logging in failed: {}", reply_message(reply)) };
+			return { false, std::format("logging in failed: {}", reply_message(reply)) };
 		}
 
 		amqp_channel_open(conn, target_channel_id);
 		reply = amqp_get_rpc_reply(conn);
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("opening channel failed: {}", reply_message(reply)) };
+			return { false, std::format("opening channel failed: {}", reply_message(reply)) };
 		}
 
 		if (exchange_mode.empty())
@@ -171,7 +171,7 @@ namespace RabbitMQ
 			auto confirm_reply = amqp_get_rpc_reply(conn);
 			if (confirm_reply.reply_type != AMQP_RESPONSE_NORMAL)
 			{
-				return { false, fmt::format("confirm select failed: {}", reply_message(confirm_reply)) };
+				return { false, std::format("confirm select failed: {}", reply_message(confirm_reply)) };
 			}
 		}
 
@@ -192,33 +192,33 @@ namespace RabbitMQ
 
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("failed to send message: {}", reply_message(reply)) };
+			return { false, std::format("failed to send message: {}", reply_message(reply)) };
 		}
 
 		if (status != AMQP_STATUS_OK)
 		{
-			return { false, fmt::format("failed to send message: {}", status_message(static_cast<amqp_status_enum_>(status))) };
+			return { false, std::format("failed to send message: {}", status_message(static_cast<amqp_status_enum_>(status))) };
 		}
 
-		Logger::handle().write(LogTypes::Sequence, fmt::format("published message: routing_key[{}] => {} bytes", routing_key, message.length()));
+		Logger::handle().write(LogTypes::Sequence, std::format("published message: routing_key[{}] => {} bytes", routing_key, message.length()));
 
 		amqp_channel_close(conn, target_channel_id, AMQP_REPLY_SUCCESS);
 		reply = amqp_get_rpc_reply(conn);
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("closing channel failed: {}", reply_message(reply)) };
+			return { false, std::format("closing channel failed: {}", reply_message(reply)) };
 		}
 
 		reply = amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("closing connection failed: {}", reply_message(reply)) };
+			return { false, std::format("closing connection failed: {}", reply_message(reply)) };
 		}
 
 		status = amqp_destroy_connection(conn);
 		if (status != AMQP_STATUS_OK)
 		{
-			return { false, fmt::format("destroying connection failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
+			return { false, std::format("destroying connection failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
 		}
 
 		conn = nullptr;
@@ -291,7 +291,7 @@ namespace RabbitMQ
 			}
 			catch (const std::exception& e)
 			{
-				return { false, fmt::format("creating TCP socket failed: {}", e.what()) };
+				return { false, std::format("creating TCP socket failed: {}", e.what()) };
 			}
 
 			if (!socket)
@@ -309,7 +309,7 @@ namespace RabbitMQ
 			}
 			catch (const std::exception& e)
 			{
-				return { false, fmt::format("creating SSL/TLS socket failed: {}", e.what()) };
+				return { false, std::format("creating SSL/TLS socket failed: {}", e.what()) };
 			}
 
 			if (!socket)
@@ -328,7 +328,7 @@ namespace RabbitMQ
 			}
 			catch (const std::exception& e)
 			{
-				return { false, fmt::format("SSL/TLS setup failed: {}", e.what()) };
+				return { false, std::format("SSL/TLS setup failed: {}", e.what()) };
 			}
 
 			socket_type = "SSL/TLS";
@@ -346,13 +346,13 @@ namespace RabbitMQ
 		amqp_rpc_reply_t reply = amqp_connection_close(conn_, AMQP_REPLY_SUCCESS);
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("closing connection failed: {}", reply_message(reply)) };
+			return { false, std::format("closing connection failed: {}", reply_message(reply)) };
 		}
 
 		int status = amqp_destroy_connection(conn_);
 		if (status != AMQP_STATUS_OK)
 		{
-			return { false, fmt::format("destroying connection failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
+			return { false, std::format("destroying connection failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
 		}
 
 		consume_information_container_.reset();
@@ -396,7 +396,7 @@ namespace RabbitMQ
 						auto [connected, connect_error] = reconnect();
 						if (!connected)
 						{
-							Logger::handle().write(LogTypes::Error, fmt::format("cannot reconnect to consume message: {}", connect_error.value()));
+							Logger::handle().write(LogTypes::Error, std::format("cannot reconnect to consume message: {}", connect_error.value()));
 							continue;
 						}
 
@@ -422,7 +422,7 @@ namespace RabbitMQ
 								continue;
 							}
 
-							Logger::handle().write(LogTypes::Sequence, fmt::format("attempt to reconnect due to: {}", reply_message(res)));
+							Logger::handle().write(LogTypes::Sequence, std::format("attempt to reconnect due to: {}", reply_message(res)));
 
 							reconnection = true;
 
@@ -444,7 +444,7 @@ namespace RabbitMQ
 						auto callback_opt = consume_information_container_->get_consume_callback(routing_key);
 						if (!callback_opt.has_value())
 						{
-							Logger::handle().write(LogTypes::Error, fmt::format("message consume error: routing key not found"));
+							Logger::handle().write(LogTypes::Error, std::format("message consume error: routing key not found"));
 
 							amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
 
@@ -457,7 +457,7 @@ namespace RabbitMQ
 							auto [result, result_error] = callback(routing_key, Converter::to_string(received_message), Converter::to_string(content_type));
 							if (!result)
 							{
-								Logger::handle().write(LogTypes::Error, fmt::format("message consume error: {}", result_error.value()));
+								Logger::handle().write(LogTypes::Error, std::format("message consume error: {}", result_error.value()));
 
 								amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
 							}
@@ -468,7 +468,7 @@ namespace RabbitMQ
 						}
 						catch (const std::exception& e)
 						{
-							Logger::handle().write(LogTypes::Exception, fmt::format("message consume exception: {}", e.what()));
+							Logger::handle().write(LogTypes::Exception, std::format("message consume exception: {}", e.what()));
 							reconnection = true;
 
 							amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
@@ -483,7 +483,7 @@ namespace RabbitMQ
 					}
 					catch (const std::exception& message)
 					{
-						Logger::handle().write(LogTypes::Exception, fmt::format("message consume exception: {}", message.what()));
+						Logger::handle().write(LogTypes::Exception, std::format("message consume exception: {}", message.what()));
 						reconnection = true;
 
 						amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
@@ -537,7 +537,7 @@ namespace RabbitMQ
 			status = amqp_ssl_socket_set_cacert(socket, ssl_options_.ca_cert().c_str());
 			if (status != AMQP_STATUS_OK)
 			{
-				return { false, fmt::format("setting CA certificate failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
+				return { false, std::format("setting CA certificate failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
 			}
 
 			if (!ssl_options_.engine().empty())
@@ -545,7 +545,7 @@ namespace RabbitMQ
 				status = amqp_set_ssl_engine(ssl_options_.engine().c_str());
 				if (status != AMQP_STATUS_OK)
 				{
-					return { false, fmt::format("setting SSL engine failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
+					return { false, std::format("setting SSL engine failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
 				}
 			}
 
@@ -558,7 +558,7 @@ namespace RabbitMQ
 			status = amqp_ssl_socket_set_key(socket, ssl_options_.client_cert().c_str(), ssl_options_.client_key().c_str());
 			if (status != AMQP_STATUS_OK)
 			{
-				return { false, fmt::format("setting client certificate and key failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
+				return { false, std::format("setting client certificate and key failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
 			}
 		}
 
@@ -570,13 +570,13 @@ namespace RabbitMQ
 		int status = amqp_socket_open(socket, host_.c_str(), port_);
 		if (status != AMQP_STATUS_OK)
 		{
-			return { false, fmt::format("opening {} socket failed: {}", socket_type, status_message(static_cast<amqp_status_enum_>(status))) };
+			return { false, std::format("opening {} socket failed: {}", socket_type, status_message(static_cast<amqp_status_enum_>(status))) };
 		}
 
 		auto reply = amqp_login(conn_, "/", AMQP_DEFAULT_MAX_CHANNELS, AMQP_DEFAULT_FRAME_SIZE, heartbeat, AMQP_SASL_METHOD_PLAIN, user_name_.c_str(), password_.c_str());
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("logging in failed: {}", reply_message(reply)) };
+			return { false, std::format("logging in failed: {}", reply_message(reply)) };
 		}
 
 		return { true, std::nullopt };
@@ -611,7 +611,7 @@ namespace RabbitMQ
 		auto reply = amqp_get_rpc_reply(conn_);
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("opening channel failed: {}", reply_message(reply)) };
+			return { false, std::format("opening channel failed: {}", reply_message(reply)) };
 		}
 
 		return { true, std::nullopt };
@@ -629,7 +629,7 @@ namespace RabbitMQ
 		auto reply = amqp_get_rpc_reply(conn_);
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("closing channel failed: {}", reply_message(reply)) };
+			return { false, std::format("closing channel failed: {}", reply_message(reply)) };
 		}
 
 		return { true, std::nullopt };
@@ -645,7 +645,7 @@ namespace RabbitMQ
 
 		if (declare_reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { std::nullopt, fmt::format("queue declaration failed: {}", reply_message(declare_reply)) };
+			return { std::nullopt, std::format("queue declaration failed: {}", reply_message(declare_reply)) };
 		}
 
 		return { std::string((char*)declare_result->queue.bytes, declare_result->queue.len), std::nullopt };
@@ -660,7 +660,7 @@ namespace RabbitMQ
 
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("deleting queue failed: {}", reply_message(reply)) };
+			return { false, std::format("deleting queue failed: {}", reply_message(reply)) };
 		}
 
 		return { true, std::nullopt };
@@ -680,7 +680,7 @@ namespace RabbitMQ
 
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("binding queue failed: {}", reply_message(reply)) };
+			return { false, std::format("binding queue failed: {}", reply_message(reply)) };
 		}
 
 		return { true, std::nullopt };
@@ -700,7 +700,7 @@ namespace RabbitMQ
 		}
 		catch (const std::bad_alloc& e)
 		{
-			return { false, fmt::format("thread pool creation failed: {}", e.what()) };
+			return { false, std::format("thread pool creation failed: {}", e.what()) };
 		}
 
 		thread_pool_->push(std::make_shared<ThreadWorker>(std::vector<JobPriorities>{ JobPriorities::Normal }));
@@ -820,7 +820,7 @@ namespace RabbitMQ
 			result = "SSL API is not implemented";
 			break;
 		default:
-			result = fmt::format("Unknown status: {}", static_cast<int>(status));
+			result = std::format("Unknown status: {}", static_cast<int>(status));
 			break;
 		}
 
@@ -840,7 +840,7 @@ namespace RabbitMQ
 			result = "the library got an EOF from the socket";
 			break;
 		case AMQP_RESPONSE_LIBRARY_EXCEPTION:
-			result = fmt::format("library exception: {}", status_message(static_cast<amqp_status_enum_>(reply.library_error)));
+			result = std::format("library exception: {}", status_message(static_cast<amqp_status_enum_>(reply.library_error)));
 			break;
 		case AMQP_RESPONSE_SERVER_EXCEPTION:
 		{
@@ -849,17 +849,17 @@ namespace RabbitMQ
 			case AMQP_CONNECTION_CLOSE_METHOD:
 			{
 				amqp_channel_close_t* m = (amqp_channel_close_t*)reply.reply.decoded;
-				result = fmt::format("server connection error {}h, message: {}", m->reply_code, std::string((char*)m->reply_text.bytes, m->reply_text.len));
+				result = std::format("server connection error {}h, message: {}", m->reply_code, std::string((char*)m->reply_text.bytes, m->reply_text.len));
 				break;
 			}
 			case AMQP_CHANNEL_CLOSE_METHOD:
 			{
 				amqp_channel_close_t* m = (amqp_channel_close_t*)reply.reply.decoded;
-				result = fmt::format("server channel error {}h, message: {}", m->reply_code, std::string((char*)m->reply_text.bytes, m->reply_text.len));
+				result = std::format("server channel error {}h, message: {}", m->reply_code, std::string((char*)m->reply_text.bytes, m->reply_text.len));
 				break;
 			}
 			default:
-				result = fmt::format("unknown server error, method id 0x%08X", reply.reply.id);
+				result = std::format("unknown server error, method id 0x{:08X}", reply.reply.id);
 				break;
 			}
 		}
@@ -879,7 +879,7 @@ namespace RabbitMQ
 
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("consuming_start failed: {}", reply_message(reply)) };
+			return { false, std::format("consuming_start failed: {}", reply_message(reply)) };
 		}
 
 		return { true, std::nullopt };
@@ -894,7 +894,7 @@ namespace RabbitMQ
 
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, fmt::format("consuming_stop failed: {}", reply_message(reply)) };
+			return { false, std::format("consuming_stop failed: {}", reply_message(reply)) };
 		}
 
 		return { true, std::nullopt };

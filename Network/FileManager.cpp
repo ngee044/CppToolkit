@@ -4,8 +4,7 @@
 #include "Logger.h"
 #include "Converter.h"
 
-#include "fmt/xchar.h"
-#include "fmt/format.h"
+#include <format>
 
 using namespace Utilities;
 
@@ -31,7 +30,7 @@ namespace Network
 		auto target = file_conditions_.find(guid);
 		if (target != file_conditions_.end())
 		{
-			return { false, fmt::format("cannot make file manager due to same guid: {}", guid) };
+			return { false, std::format("cannot make file manager due to same guid: {}", guid) };
 		}
 
 		file_conditions_.insert({ guid, { count, {}, {} } });
@@ -46,7 +45,7 @@ namespace Network
 		auto target = file_conditions_.find(guid);
 		if (target == file_conditions_.end())
 		{
-			return { false, fmt::format("cannot find same guid on file manager: {}", guid) };
+			return { false, std::format("cannot find same guid on file manager: {}", guid) };
 		}
 
 		target->second.failures.data.push_back(message);
@@ -62,7 +61,7 @@ namespace Network
 		auto target = file_conditions_.find(guid);
 		if (target == file_conditions_.end())
 		{
-			return { false, fmt::format("cannot find same guid on file manager: {}", guid) };
+			return { false, std::format("cannot find same guid on file manager: {}", guid) };
 		}
 
 		target->second.successes.data.push_back({ message, temp_file_path });
@@ -78,7 +77,7 @@ namespace Network
 		auto target = file_conditions_.find(guid);
 		if (target == file_conditions_.end())
 		{
-			return { false, fmt::format("cannot find same guid on file manager: {}", guid) };
+			return { false, std::format("cannot find same guid on file manager: {}", guid) };
 		}
 
 		size_t source_count = target->second.count;
@@ -104,7 +103,7 @@ namespace Network
 		auto target = file_conditions_.find(key);
 		if (target == file_conditions_.end())
 		{
-			return { false, fmt::format("cannot find same guid on file manager: {}", key) };
+			return { false, std::format("cannot find same guid on file manager: {}", key) };
 		}
 
 		if (callback_ == nullptr)
