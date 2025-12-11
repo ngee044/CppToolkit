@@ -15,6 +15,10 @@
 
 using namespace Utilities;
 
+#ifndef RABBITMQ_SSL_AVAILABLE
+#define RABBITMQ_SSL_AVAILABLE 0
+#endif
+
 namespace RabbitMQ
 {
 	RabbitMQBase::RabbitMQBase(const std::string& host, int port, const std::string& user_name, const std::string& password, const SSLOptions& ssl_options)
@@ -101,6 +105,7 @@ namespace RabbitMQ
 
 			socket_type = "TCP";
 		}
+#if RABBITMQ_SSL_AVAILABLE
 		else
 		{
 			socket = amqp_ssl_socket_new(conn);
@@ -117,6 +122,12 @@ namespace RabbitMQ
 
 			socket_type = "SSL/TLS";
 		}
+#else
+		else
+		{
+			return { false, "SSL/TLS requested, but rabbitmq-c in this build lacks SSL support" };
+		}
+#endif
 
 		auto status = amqp_socket_open(socket, host_.c_str(), port_);
 		if (status != AMQP_STATUS_OK)
@@ -301,6 +312,7 @@ namespace RabbitMQ
 
 			socket_type = "TCP";
 		}
+#if RABBITMQ_SSL_AVAILABLE
 		else
 		{
 			try
@@ -333,6 +345,12 @@ namespace RabbitMQ
 
 			socket_type = "SSL/TLS";
 		}
+#else
+		else
+		{
+			return { false, "SSL/TLS requested, but rabbitmq-c in this build lacks SSL support" };
+		}
+#endif
 
 		return basic_login(socket, socket_type, heartbeat);
 	}
@@ -526,6 +544,7 @@ namespace RabbitMQ
 		return { true, std::nullopt };
 	}
 
+#if RABBITMQ_SSL_AVAILABLE
 	auto RabbitMQBase::basic_ssl_setup(amqp_socket_t* socket) -> std::tuple<bool, std::optional<std::string>>
 	{
 		amqp_ssl_socket_set_verify_peer(socket, 0);
@@ -564,6 +583,12 @@ namespace RabbitMQ
 
 		return { true, std::nullopt };
 	}
+#else
+	auto RabbitMQBase::basic_ssl_setup(amqp_socket_t* /*socket*/) -> std::tuple<bool, std::optional<std::string>>
+	{
+		return { false, "SSL/TLS support is not available in rabbitmq-c for this build" };
+	}
+#endif
 
 	auto RabbitMQBase::basic_login(amqp_socket_t* socket, const std::string& socket_type, const int& heartbeat) -> std::tuple<bool, std::optional<std::string>>
 	{

@@ -12,12 +12,15 @@
 
 #if __has_include(<rabbitmq-c/ssl_socket.h>)
 	#include <rabbitmq-c/ssl_socket.h>
+	#define RABBITMQ_SSL_AVAILABLE 1
 #elif __has_include(<rabbitmq-c/amqp_ssl_socket.h>)
 	#include <rabbitmq-c/amqp_ssl_socket.h>
+	#define RABBITMQ_SSL_AVAILABLE 1
 #elif __has_include(<amqp_ssl_socket.h>)
 	#include <amqp_ssl_socket.h>
+	#define RABBITMQ_SSL_AVAILABLE 1
 #else
-	#error "Missing rabbitmq-c SSL socket header"
+	#define RABBITMQ_SSL_AVAILABLE 0
 #endif
 
 #if __has_include(<rabbitmq-c/tcp_socket.h>)
