@@ -60,7 +60,7 @@ namespace Thread
 	{
 		auto size = sizeof(int32_t);
 
-		data_.reserve(size);
+		data_.resize(size);
 		for (size_t i = 0; i < size; ++i)
 		{
 			data_[i] = (condition >> (i * 8)) & 0xFF;

@@ -494,7 +494,6 @@ namespace Utilities
 		}
 
 		return std::format("{:%Y-%m-%d}", std::chrono::system_clock::now());
-		return std::format("{:%Y-%m-%d}", std::chrono::system_clock::now());
 	}
 
 #pragma region Handle
