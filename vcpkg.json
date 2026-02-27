@@ -17,7 +17,6 @@
       "boost-asio",
       "boost-json",
       "boost-system",
-      "boost-container",
       "boost-filesystem",
       "libplist",
       "boost-process",
