@@ -24,6 +24,7 @@ namespace Utilities
 	{
 		message_types_.insert({ LogTypes::Exception, "EXCEPTION" });
 		message_types_.insert({ LogTypes::Error, "ERROR" });
+		message_types_.insert({ LogTypes::Warning, "WARNING" });
 		message_types_.insert({ LogTypes::Information, "INFORMATION" });
 		message_types_.insert({ LogTypes::Debug, "DEBUG" });
 		message_types_.insert({ LogTypes::Sequence, "SEQUENCE" });

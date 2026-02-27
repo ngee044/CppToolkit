@@ -165,7 +165,7 @@ namespace Thread
 	{
 		if (priorities.empty())
 		{
-			Logger::handle().write(LogTypes::Error, "cannot pop a job by empty priorities");
+			Logger::handle().write(LogTypes::Warning, "cannot pop a job by empty priorities");
 
 			return nullptr;
 		}

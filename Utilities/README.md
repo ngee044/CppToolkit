@@ -9,6 +9,7 @@ class LogTypes {
 	<<enumeration>>
 	Exception
 	Error
+	Warning
 	Information
 	Debug
 }

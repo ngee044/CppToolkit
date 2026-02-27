@@ -34,7 +34,7 @@ namespace Thread
 	{
 		if (job_pool_ == nullptr)
 		{
-			Logger::handle().write(LogTypes::Error, "cannot get uncompleted jobs by null job_pool");
+			Logger::handle().write(LogTypes::Warning, "cannot get uncompleted jobs by null job_pool");
 
 			return {};
 		}
@@ -56,7 +56,7 @@ namespace Thread
 	{
 		if (worker == nullptr)
 		{
-			Logger::handle().write(LogTypes::Error, "cannot push a null ThreadWorker");
+			Logger::handle().write(LogTypes::Warning, "cannot push a null ThreadWorker");
 
 			return;
 		}
@@ -128,7 +128,7 @@ namespace Thread
 	{
 		if (job_pool_ == nullptr)
 		{
-			Logger::handle().write(LogTypes::Error, "cannot lock null JobPool");
+			Logger::handle().write(LogTypes::Warning, "cannot lock null JobPool");
 
 			return;
 		}
@@ -140,7 +140,7 @@ namespace Thread
 	{
 		if (job_pool_ == nullptr)
 		{
-			Logger::handle().write(LogTypes::Error, "cannot check null JobPool");
+			Logger::handle().write(LogTypes::Warning, "cannot check null JobPool");
 
 			return false;
 		}

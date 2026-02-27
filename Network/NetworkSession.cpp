@@ -263,7 +263,7 @@ namespace Network
 		if (!received_message.if_contains("registered_key") || !received_message.at("registered_key").is_string()
 			|| received_message.at("registered_key").as_string().data() != registered_key_)
 		{
-			Logger::handle().write(LogTypes::Error, std::format("the registered key of the NetworkClient is not compatible with the server: ({})", id()));
+			Logger::handle().write(LogTypes::Warning, std::format("the registered key of the NetworkClient is not compatible with the server: ({})", id()));
 
 			condition(ConnectConditions::Expired);
 
@@ -316,7 +316,7 @@ namespace Network
 
 		if (received_binary_callback_ == nullptr)
 		{
-			Logger::handle().write(LogTypes::Error, std::format("no binary-callback on [{}:{}] state:{}", id(), sub_id(), to_string(state_)));
+			Logger::handle().write(LogTypes::Warning, std::format("no binary-callback on [{}:{}] state:{}", id(), sub_id(), to_string(state_)));
 			return { false, "there is no callback to handle binary data" };
 		}
 
@@ -350,7 +350,7 @@ namespace Network
 
 		if (received_message_callback_ == nullptr)
 		{
-			Logger::handle().write(LogTypes::Error, std::format("no message-callback on [{}:{}] state:{}", id(), sub_id(), to_string(state_)));
+			Logger::handle().write(LogTypes::Warning, std::format("no message-callback on [{}:{}] state:{}", id(), sub_id(), to_string(state_)));
 			return { false, "there is no callback to handle message data" };
 		}
 

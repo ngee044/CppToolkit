@@ -462,7 +462,7 @@ namespace RabbitMQ
 						auto callback_opt = consume_information_container_->get_consume_callback(routing_key);
 						if (!callback_opt.has_value())
 						{
-							Logger::handle().write(LogTypes::Error, std::format("message consume error: routing key not found"));
+							Logger::handle().write(LogTypes::Warning, std::format("message consume error: routing key not found"));
 
 							amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
 

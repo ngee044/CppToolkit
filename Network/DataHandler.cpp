@@ -455,7 +455,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 									if (receiving_buffers_[0] != start_code_tag_[matched_index])
 									{
 #ifdef _DEBUG
-										Logger::handle().write(LogTypes::Error, std::format("received unknown data on network : {}", receiving_buffers_[0]));
+										Logger::handle().write(LogTypes::Warning, std::format("received unknown data on network : {}", receiving_buffers_[0]));
 #endif
 
 										read_start_code();
@@ -512,7 +512,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 
 									if (length != LENGTH_SIZE)
 									{
-										Logger::handle().write(LogTypes::Error, "drop read data: not matched length code");
+										Logger::handle().write(LogTypes::Warning, "drop read data: not matched length code");
 
 										read_start_code();
 
@@ -594,7 +594,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 
 										if (length != buffer_size_)
 										{
-											Logger::handle().write(LogTypes::Error, "drop read data: not matched data length");
+											Logger::handle().write(LogTypes::Warning, "drop read data: not matched data length");
 
 											read_start_code();
 
@@ -712,7 +712,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 
 									if (length != 1 || receiving_buffers_[0] != end_code_tag_[matched_index])
 									{
-										Logger::handle().write(LogTypes::Error, "drop read data : not matched end code");
+										Logger::handle().write(LogTypes::Warning, "drop read data : not matched end code");
 
 										read_start_code();
 
