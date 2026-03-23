@@ -5,6 +5,7 @@
 #include "Job.h"
 #include "Logger.h"
 
+#include <expected>
 #include <format>
 
 #include <filesystem>
@@ -50,7 +51,7 @@ namespace Thread
 		job_queues_.clear();
 	}
 
-	auto JobPool::clear(const JobPriorities& priority) -> void
+	auto JobPool::clear(JobPriorities priority) -> void
 	{
 		std::scoped_lock<std::mutex> lock(mutex_);
 
@@ -112,16 +113,16 @@ namespace Thread
 		return result;
 	}
 
-	auto JobPool::push(std::shared_ptr<Job> job) -> std::tuple<bool, std::optional<std::string>>
+	auto JobPool::push(std::shared_ptr<Job> job) -> std::expected<void, std::string>
 	{
 		if (job == nullptr)
 		{
-			return { false, "cannot push empty job" };
+			return std::unexpected("cannot push empty job");
 		}
 
 		if (lock_condition_.load())
 		{
-			return { false, "the system is locked and new tasks cannot be created" };
+			return std::unexpected("the system is locked and new tasks cannot be created");
 		}
 
 		std::unique_lock<std::mutex> lock(mutex_);
@@ -135,7 +136,7 @@ namespace Thread
 		if (priority == JobPriorities::Low && qsize >= MAX_QUEUE_LOW)
 		{
 			lock.unlock();
-			return { false, "backpressure: low-priority queue is full" };
+			return std::unexpected("backpressure: low-priority queue is full");
 		}
 
 		if (iter != job_queues_.end())
@@ -158,7 +159,7 @@ namespace Thread
 			notify_callback_(priority);
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
 	auto JobPool::pop(const std::vector<JobPriorities>& priorities) -> std::shared_ptr<Job>
@@ -199,7 +200,7 @@ namespace Thread
 		return nullptr;
 	}
 
-	auto JobPool::notify_callback(const std::function<void(const JobPriorities&)>& callback) -> void { notify_callback_ = callback; }
+	auto JobPool::notify_callback(const std::function<void(JobPriorities)>& callback) -> void { notify_callback_ = callback; }
 
 	auto JobPool::job_pool_title(const std::string& title) -> void { job_pool_title_ = title; }
 
@@ -238,7 +239,7 @@ namespace Thread
 		return count;
 	}
 
-	auto JobPool::lock(const bool& condition) -> void { lock_condition_.store(condition); }
+	auto JobPool::lock(bool condition) -> void { lock_condition_.store(condition); }
 
 	auto JobPool::lock(void) -> const bool { return lock_condition_.load(); }
 } // namespace Thread

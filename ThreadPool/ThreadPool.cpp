@@ -4,6 +4,7 @@
 #include "Logger.h"
 #include "ThreadWorker.h"
 
+#include <expected>
 #include <format>
 
 #include <functional>
@@ -42,11 +43,11 @@ namespace Thread
 		return job_pool_->uncompleted_jobs(backup_folder);
 	}
 
-	auto ThreadPool::push(std::shared_ptr<Job> job) -> std::tuple<bool, std::optional<std::string>>
+	auto ThreadPool::push(std::shared_ptr<Job> job) -> std::expected<void, std::string>
 	{
 		if (job_pool_ == nullptr)
 		{
-			return { false, "cannot push a job into null JobPool" };
+			return std::unexpected("cannot push a job into null JobPool");
 		}
 
 		return job_pool_->push(job);
@@ -79,7 +80,7 @@ namespace Thread
 		}
 	}
 
-	auto ThreadPool::remove_workers(const JobPriorities& priority) -> std::tuple<size_t, std::optional<std::string>>
+	auto ThreadPool::remove_workers(JobPriorities priority) -> std::tuple<size_t, std::optional<std::string>>
 	{
 		if (job_pool_ == nullptr)
 		{
@@ -100,7 +101,7 @@ namespace Thread
 
 										  auto priorities = worker->priorities();
 										  auto new_end = std::remove_if(priorities.begin(), priorities.end(),
-																		[priority](const JobPriorities& target) { return target == priority; });
+																		[priority](JobPriorities target) { return target == priority; });
 										  priorities.erase(new_end, priorities.end());
 										  worker->priorities(priorities);
 
@@ -124,7 +125,7 @@ namespace Thread
 		return { removed_items.size(), std::nullopt };
 	}
 
-	auto ThreadPool::lock(const bool& lock_condition) -> void
+	auto ThreadPool::lock(bool lock_condition) -> void
 	{
 		if (job_pool_ == nullptr)
 		{
@@ -172,13 +173,13 @@ namespace Thread
 
 	auto ThreadPool::thread_title(void) -> const std::string { return thread_title_; }
 
-	auto ThreadPool::start(void) -> std::tuple<bool, std::optional<std::string>>
+	auto ThreadPool::start(void) -> std::expected<void, std::string>
 	{
 		std::scoped_lock<std::mutex> lock(mutex_);
 
 		if (working_.load())
 		{
-			return { false, "already started" };
+			return std::unexpected("already started");
 		}
 
 		for (auto& worker : thread_workers_)
@@ -188,19 +189,19 @@ namespace Thread
 				continue;
 			}
 
-			auto [started, start_error] = worker->start();
-			if (!started)
+			auto result = worker->start();
+			if (!result)
 			{
-				return { false, start_error };
+				return std::unexpected(result.error());
 			}
 		}
 
 		working_.store(true);
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto ThreadPool::pause(const bool& pause) -> void
+	auto ThreadPool::pause(bool pause) -> void
 	{
 		std::scoped_lock<std::mutex> lock(mutex_);
 
@@ -217,14 +218,14 @@ namespace Thread
 		}
 	}
 
-	auto ThreadPool::stop(const bool& stop_immediately) -> std::tuple<bool, std::optional<std::string>>
+	auto ThreadPool::stop(bool stop_immediately) -> std::expected<void, std::string>
 	{
 		{
 			std::scoped_lock<std::mutex> lock(mutex_);
 
 			if (!working_.load())
 			{
-				return { false, "not started" };
+				return std::unexpected("not started");
 			}
 
 			job_pool_->lock(true);
@@ -241,10 +242,10 @@ namespace Thread
 					continue;
 				}
 
-				auto [stopped, stop_error] = worker->stop();
-				if (!stopped)
+				auto result = worker->stop();
+				if (!result)
 				{
-					return { false, stop_error };
+					return std::unexpected(result.error());
 				}
 			}
 
@@ -253,12 +254,12 @@ namespace Thread
 
 		working_.store(false);
 
-		return { true, std::nullopt };
+		return {};
 	}
 
 	auto ThreadPool::job_pool(void) -> std::shared_ptr<JobPool> { return job_pool_; }
 
-	auto ThreadPool::notify_callback(const JobPriorities& priority) -> void
+	auto ThreadPool::notify_callback(JobPriorities priority) -> void
 	{
 		Logger::handle().write(LogTypes::Sequence, std::format("notify one for {} priority", priority_string(priority)));
 

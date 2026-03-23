@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <optional>
+#include <expected>
 #include <functional>
 
 namespace Thread
@@ -15,27 +16,27 @@ namespace Thread
 	class Job : public std::enable_shared_from_this<Job>
 	{
 	public:
-		Job(const JobPriorities& priority, const std::string& title = "Job", const bool& use_time_stamp = true);
-		Job(const JobPriorities& priority, const std::vector<uint8_t>& data, const std::string& title = "Job", const bool& use_time_stamp = true);
-		Job(const JobPriorities& priority,
-			const std::function<std::tuple<bool, std::optional<std::string>>(void)>& callback,
+		Job(JobPriorities priority, const std::string& title = "Job", bool use_time_stamp = true);
+		Job(JobPriorities priority, const std::vector<uint8_t>& data, const std::string& title = "Job", bool use_time_stamp = true);
+		Job(JobPriorities priority,
+			const std::function<std::expected<void, std::string>(void)>& callback,
 			const std::string& title = "Job",
-			const bool& use_time_stamp = true);
-		Job(const JobPriorities& priority,
-			const bool& condition,
-			const std::function<std::tuple<bool, std::optional<std::string>>(const bool&)>& callback,
+			bool use_time_stamp = true);
+		Job(JobPriorities priority,
+			bool condition,
+			const std::function<std::expected<void, std::string>(bool)>& callback,
 			const std::string& title = "Job",
-			const bool& use_time_stamp = true);
-		Job(const JobPriorities& priority,
-			const int32_t& condition,
-			const std::function<std::tuple<bool, std::optional<std::string>>(const int&)>& callback,
+			bool use_time_stamp = true);
+		Job(JobPriorities priority,
+			int32_t condition,
+			const std::function<std::expected<void, std::string>(const int&)>& callback,
 			const std::string& title = "Job",
-			const bool& use_time_stamp = true);
-		Job(const JobPriorities& priority,
+			bool use_time_stamp = true);
+		Job(JobPriorities priority,
 			const std::vector<uint8_t>& data,
-			const std::function<std::tuple<bool, std::optional<std::string>>(const std::vector<uint8_t>&)>& callback,
+			const std::function<std::expected<void, std::string>(const std::vector<uint8_t>&)>& callback,
 			const std::string& title = "Job",
-			const bool& use_time_stamp = true);
+			bool use_time_stamp = true);
 		virtual ~Job(void) = default;
 
 		auto get_ptr(void) -> std::shared_ptr<Job>;
@@ -48,7 +49,7 @@ namespace Thread
 
 		auto data(const std::vector<uint8_t>& data_array) -> void;
 
-		auto work(void) -> std::tuple<bool, std::optional<std::string>>;
+		auto work(void) -> std::expected<void, std::string>;
 
 		auto destroy(void) -> void;
 
@@ -62,10 +63,10 @@ namespace Thread
 		auto get_data(void) const -> const std::vector<uint8_t>&;
 		auto get_job_pool(void) -> std::shared_ptr<JobPool>;
 
-		virtual auto working(void) -> std::tuple<bool, std::optional<std::string>>;
+		virtual auto working(void) -> std::expected<void, std::string>;
 
 	private:
-		auto callback_safe_caller(const std::function<std::tuple<bool, std::optional<std::string>>()>& func) -> std::tuple<bool, std::optional<std::string>>;
+		auto callback_safe_caller(const std::function<std::expected<void, std::string>()>& func) -> std::expected<void, std::string>;
 
 	private:
 		std::string title_;
@@ -74,9 +75,9 @@ namespace Thread
 		std::string temporary_file_;
 		JobPriorities priority_;
 		std::weak_ptr<JobPool> job_pool_;
-		std::function<std::tuple<bool, std::optional<std::string>>(void)> callback1_;
-		std::function<std::tuple<bool, std::optional<std::string>>(const bool&)> callback2_;
-		std::function<std::tuple<bool, std::optional<std::string>>(const int&)> callback3_;
-		std::function<std::tuple<bool, std::optional<std::string>>(const std::vector<uint8_t>&)> callback4_;
+		std::function<std::expected<void, std::string>(void)> callback1_;
+		std::function<std::expected<void, std::string>(bool)> callback2_;
+		std::function<std::expected<void, std::string>(const int&)> callback3_;
+		std::function<std::expected<void, std::string>(const std::vector<uint8_t>&)> callback4_;
 	};
 } // namespace Thread

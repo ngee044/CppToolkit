@@ -11,14 +11,16 @@ class JobPriorities {
 	High
 	Normal
 	Low
+	LongTerm
 }
 
 class Job {
-	+ Job(const JobPriorities&, const string&)
-	+ Job(const JobPriorities&, const vector~uint8_t~&, const string&)
-	+ Job(const JobPriorities&, const function~bool(void)~&, const string&)
-	+ Job(const JobPriorities&, const bool&, const function~bool(const bool&)~&, const string&)
-	+ Job(const JobPriorities&, const vector~uint8_t~&, const function~bool(const vector~uint8_t~&)~&, const string&)
+	+ Job(JobPriorities, const string&, bool)
+	+ Job(JobPriorities, const vector~uint8_t~&, const string&, bool)
+	+ Job(JobPriorities, const function~expected~void, string~(void)~&, const string&, bool)
+	+ Job(JobPriorities, bool, const function~expected~void, string~(bool)~&, const string&, bool)
+	+ Job(JobPriorities, int32_t, const function~expected~void, string~(const int&)~&, const string&, bool)
+	+ Job(JobPriorities, const vector~uint8_t~&, const function~expected~void, string~(const vector~uint8_t~&)~&, const string&, bool)
 	~Job(void)*
 
 	+ get_ptr(void) shared_ptr~Job~
@@ -28,29 +30,36 @@ class Job {
 
 	+ title(const string& new_title) void
 	+ title(void) const string
-	
-	+ work(void) bool
-	
+
+	+ data(const vector~uint8_t~&) void
+
+	+ work(void) expected~void, string~
+
 	+ destroy(void) void
-	
-	+ to_json(void) string
+
+	+ to_json(void) const string
 
 	# save(const string& folder_name) void
 	# load(void) void
 
 	# get_data(void) vector~uint8_t~&
-	# job_pool(void) shared_ptr~JobPool~
+	# get_data(void) const vector~uint8_t~&
+	# get_job_pool(void) shared_ptr~JobPool~
 
-	# working(void)* bool
+	# working(void)* expected~void, string~
+
+	- callback_safe_caller(const function~expected~void, string~()~&) expected~void, string~
 
 	- string title_
+	- bool use_time_stamp_
 	- vector~uint8_t~ data_
 	- string temporary_file_
 	- JobPriorities priority_
 	- weak_ptr~JobPool~ job_pool_
-	- function~bool(void)~ callback1_
-	- function~bool(const bool&)~ callback2_
-	- function~bool(const vector~uint8_t~&)~ callback3_
+	- function~expected~void, string~(void)~ callback1_
+	- function~expected~void, string~(bool)~ callback2_
+	- function~expected~void, string~(const int&)~ callback3_
+	- function~expected~void, string~(const vector~uint8_t~&)~ callback4_
 }
 
 class JobPool {
@@ -60,59 +69,64 @@ class JobPool {
 	+ get_ptr(void) shared_ptr~JobPool~
 
 	+ clear(void) void
-	+ notify_empty(const JobPriorities&) void
-	+ uncompleted_jobs(const string& ) vector~vector~uint8_t~~
+	+ clear(JobPriorities) void
+	+ uncompleted_jobs(const string&) vector~vector~uint8_t~~
 
-	+ push(shared_ptr~Job~) bool
-	+ pop(const JobPriorities&) shared_ptr~Job~
+	+ push(shared_ptr~Job~) expected~void, string~
+	+ pop(const vector~JobPriorities~&) shared_ptr~Job~
 
-	+ notify_callback(const function~void(const JobPriorities&)~&) void
+	+ notify_callback(const function~void(JobPriorities)~&) void
 
-	+ priority_count(optional~JobPriorities~) size_t
+	+ job_pool_title(const string&) void
+	+ job_pool_title(void) const string
 
-	+ void lock(const bool& condition)
-	+ bool lock(void)
+	+ job_count(vector~JobPriorities~&) const size_t
+
+	+ lock(bool) void
+	+ lock(void) const bool
 
 	- mutex mutex_
-	- bool lock_condition_
-	- string thread_pool_title_
-	- function~void(const JobPriorities&)~ notify_callback_
+	- string job_pool_title_
+	- atomic_bool lock_condition_
+	- function~void(JobPriorities)~ notify_callback_
 	- map backup_extensions_
 	- map job_queues_
 }
 
 class ThreadWorker {
-	+ ThreadWorker(const JobPriorities&, const vector~JobPriorities~&)
+	+ ThreadWorker(const vector~JobPriorities~&, const string&)
 	+ ~ThreadWorker(void)*
 
 	+ get_ptr(void) shared_ptr~ThreadWorker~
 
-	+ start(void) void
-	+ notify_one(const JobPriorities&) void
-	+ stop(void) void
+	+ start(void) expected~void, string~
+	+ pause(bool) void
+	+ notify_one(JobPriorities) void
+	+ stop(void) expected~void, string~
 
 	+ job_pool(shared_ptr~JobPool~) void
-	
+
 	+ worker_title(const string&) void
 	+ worker_title(void) string
 
-	+ priority(void) const JobPriorities
+	+ priorities(void) const vector~JobPriorities~&
+	+ priorities(const vector~JobPriorities~&) void
 
 	- run(void) void
-	- do_run(shared_ptr<Job>) void
+	- do_run(shared_ptr~Job~) bool
 	- check_condition(void) bool
 
 	- has_job(void) bool
-	- current_job(shared_ptr~JobPool~, const JobPriorities&) shared_ptr~Job~
 
 	- mutex mutex_
-	- JobPriorities priority_
-	- atomic~bool~ thread_stop_
+	- atomic_bool pause_
+	- atomic_bool thread_stop_
+	- unique_ptr~promise~bool~~ promise_
 	- weak_ptr~JobPool~ job_pool_
 	- string thread_worker_title_
 	- condition_variable condition_
-	- shared_ptr~thread~ thread_
-	- vector~JobPriorities~ sub_priorities_
+	- unique_ptr~thread~ thread_
+	- vector~JobPriorities~ priorities_
 }
 
 class ThreadPool {
@@ -122,33 +136,38 @@ class ThreadPool {
 	+ get_ptr(void) shared_ptr~ThreadPool~
 
 	+ uncompleted_jobs(const string&) vector~vector~uint8_t~~
-	+ push(shared_ptr~Job~) bool
+	+ push(shared_ptr~Job~) expected~void, string~
 	+ push(shared_ptr~ThreadWorker~) void
-	
-	+ lock(const bool&) void
+	+ remove_workers(JobPriorities) tuple~size_t, optional~string~~
+
+	+ lock(bool) void
 	+ lock(void) bool
 
-	+ start(void) void
-	+ stop(const bool&) void
+	+ thread_title(const string&) void
+	+ thread_title(void) const string
+
+	+ start(void) expected~void, string~
+	+ pause(bool) void
+	+ stop(bool) expected~void, string~
 
 	+ job_pool(void) shared_ptr~JobPool~
 
-	# notify_callback(const JobPriorities&) void
+	# notify_callback(JobPriorities) void
 
-	- bool working_
+	- atomic_bool pause_
+	- atomic_bool working_
 	- mutex mutex_
-	- string thread_pool_title_
+	- string thread_title_
 	- shared_ptr~JobPool~ job_pool_
 	- vector~shared_ptr~ThreadWorker~~ thread_workers_
 }
 
 Job "1" --> "1" JobPriorities
 JobPool "1" o--> "0..n" Job
-ThreadWorker "1" --> "1" JobPriorities
 ThreadWorker "1..n" --> "1" JobPool
 ThreadPool "1" o--> "0..n" ThreadWorker
 ThreadPool "1" --> "1" JobPool
-``` 
+```
 
 
 - JobPool에서 사용된 두가지 map은 다음과 같은 자료형으로 구성됩니다.
@@ -272,7 +291,7 @@ auto parse_arguments(ArgumentParser& arguments) -> void
 	{
 		type_ = (LogTypes)int_target.value();
 	}
-	
+
 	auto bool_target = arguments.to_bool("--write_console_log");
 	if (bool_target != std::nullopt && *bool_target)
 	{

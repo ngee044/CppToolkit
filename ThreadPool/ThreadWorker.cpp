@@ -5,6 +5,7 @@
 #include "JobPool.h"
 #include "Logger.h"
 
+#include <expected>
 #include <format>
 
 using namespace Utilities;
@@ -20,7 +21,7 @@ namespace Thread
 
 	std::shared_ptr<ThreadWorker> ThreadWorker::get_ptr(void) { return shared_from_this(); }
 
-	auto ThreadWorker::start(void) -> std::tuple<bool, std::optional<std::string>>
+	auto ThreadWorker::start(void) -> std::expected<void, std::string>
 	{
 		stop();
 
@@ -28,12 +29,13 @@ namespace Thread
 
 		if (priorities_.empty())
 		{
-			return { false, "cannot start by empty priorities" };
+			return std::unexpected("cannot start by empty priorities");
 		}
 
 		thread_stop_.store(false);
 
-		std::future<bool> future = promise_.get_future();
+		promise_ = std::make_unique<std::promise<bool>>();
+		std::future<bool> future = promise_->get_future();
 
 		try
 		{
@@ -41,23 +43,23 @@ namespace Thread
 		}
 		catch (const std::bad_alloc& e)
 		{
-			return { false, "Failed to create thread instance." };
+			return std::unexpected("Failed to create thread instance.");
 		}
 
 		Logger::handle().write(LogTypes::Sequence, std::format("waiting for {} to start", thread_worker_title_));
 		future.wait();
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto ThreadWorker::pause(const bool& pause) -> void
+	auto ThreadWorker::pause(bool pause) -> void
 	{
 		std::scoped_lock<std::mutex> lock(mutex_);
 		pause_.store(pause);
 		condition_.notify_one();
 	}
 
-	auto ThreadWorker::notify_one(const JobPriorities& target) -> void
+	auto ThreadWorker::notify_one(JobPriorities target) -> void
 	{
 		if (thread_ == nullptr)
 		{
@@ -79,11 +81,11 @@ namespace Thread
 		condition_.notify_one();
 	}
 
-	auto ThreadWorker::stop(void) -> std::tuple<bool, std::optional<std::string>>
+	auto ThreadWorker::stop(void) -> std::expected<void, std::string>
 	{
 		if (thread_ == nullptr)
 		{
-			return { false, "Thread is not running." };
+			return std::unexpected("Thread is not running.");
 		}
 
 		if (thread_->joinable())
@@ -102,7 +104,7 @@ namespace Thread
 		}
 		thread_.reset();
 
-		return { true, std::nullopt };
+		return {};
 	}
 
 	auto ThreadWorker::job_pool(std::shared_ptr<JobPool> pool) -> void { job_pool_ = pool; }
@@ -122,7 +124,11 @@ namespace Thread
 	auto ThreadWorker::run(void) -> void
 	{
 		Logger::handle().write(LogTypes::Sequence, std::format("started thread for {}", thread_worker_title_));
-		promise_.set_value(true);
+		if (promise_)
+		{
+			promise_->set_value(true);
+			promise_.reset();
+		}
 
 		while (true)
 		{
@@ -187,11 +193,11 @@ namespace Thread
 	{
 		try
 		{
-			auto [result_condition, error_message] = job->work();
-			if (!result_condition)
+			auto result = job->work();
+			if (!result)
 			{
 				Logger::handle().write(LogTypes::Error, std::format("cannot complete {} [ {} ] on {} : {},\n{}", job->title(), priority_string(job->priority()),
-																	thread_worker_title_, error_message.value(), job->to_json()));
+																	thread_worker_title_, result.error(), job->to_json()));
 
 				return false;
 			}
