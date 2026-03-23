@@ -11,9 +11,9 @@ using namespace Utilities;
 namespace Network
 {
 	ConnectionJob::ConnectionJob(
-		const bool& condition,
-		const bool& by_itself,
-		const std::function<std::tuple<bool, std::optional<std::string>>(const bool&, const bool&)>& callback)
+		bool condition,
+		bool by_itself,
+		const std::function<std::expected<void, std::string>(bool, bool)>& callback)
 		: Job(JobPriorities::Normal, "ConnectionJob", true)
 		, condition_(condition)
 		, by_itself_(by_itself)
@@ -23,11 +23,11 @@ namespace Network
 
 	ConnectionJob::~ConnectionJob(void) {}
 
-	auto ConnectionJob::working(void) -> std::tuple<bool, std::optional<std::string>>
+	auto ConnectionJob::working(void) -> std::expected<void, std::string>
 	{
 		if (connection_callback_ == nullptr)
 		{
-			return { false, "cannot complete ConnectionJob with null callback" };
+			return std::unexpected("cannot complete ConnectionJob with null callback");
 		}
 
 		return connection_callback_(condition_, by_itself_);

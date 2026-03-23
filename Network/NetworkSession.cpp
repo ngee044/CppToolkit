@@ -14,6 +14,7 @@
 #include <boost/asio/steady_timer.hpp>
 
 #include <locale>
+#include <expected>
 #include <filesystem>
 
 using namespace Thread;
@@ -26,19 +27,19 @@ namespace Network
 
 #ifdef USE_ENCRYPT_MODULE
 	NetworkSession::NetworkSession(const std::string& session_id,
-								   const bool& encrypt,
-								   const uint16_t& high_priority_count,
-								   const uint16_t& normal_priority_count,
-								   const uint16_t& low_priority_count,
-								   const bool& heartbeat_enabled,
-								   const uint32_t& heartbeat_interval_sec)
+								   bool encrypt,
+								   uint16_t high_priority_count,
+								   uint16_t normal_priority_count,
+								   uint16_t low_priority_count,
+								   bool heartbeat_enabled,
+								   uint32_t heartbeat_interval_sec)
 #else
 	NetworkSession::NetworkSession(const std::string& session_id,
-								   const uint16_t& high_priority_count,
-								   const uint16_t& normal_priority_count,
-								   const uint16_t& low_priority_count,
-								   const bool& heartbeat_enabled,
-								   const uint32_t& heartbeat_interval_sec)
+								   uint16_t high_priority_count,
+								   uint16_t normal_priority_count,
+								   uint16_t low_priority_count,
+								   bool heartbeat_enabled,
+								   uint32_t heartbeat_interval_sec)
 #endif
 		: DataHandler(high_priority_count, normal_priority_count, low_priority_count)
 		, session_id_(0)
@@ -75,7 +76,7 @@ namespace Network
 
 	auto NetworkSession::state(void) const -> SessionState { return state_; }
 
-	auto NetworkSession::session_id(const SessionId& id) -> void
+	auto NetworkSession::session_id(SessionId id) -> void
 	{
 		std::scoped_lock<std::mutex> lock(mutex_);
 		session_id_ = id;
@@ -83,19 +84,19 @@ namespace Network
 
 	auto NetworkSession::get_ptr(void) -> std::shared_ptr<NetworkSession> { return shared_from_this(); }
 
-	auto NetworkSession::heartbeat(const bool& enable, const uint32_t& interval_sec) -> void
+	auto NetworkSession::heartbeat(bool enable, uint32_t interval_sec) -> void
 	{
 		heartbeat_enabled_ = enable;
 		heartbeat_interval_sec_ = interval_sec == 0 ? 1 : interval_sec;
 	}
 
-	auto NetworkSession::set_max_missed_heartbeats(const uint32_t& count) -> void
+	auto NetworkSession::set_max_missed_heartbeats(uint32_t count) -> void
 	{
 		// Minimum of 1 to avoid immediate expiration
 		max_missed_heartbeats_ = count == 0 ? 1 : count;
 	}
 
-	auto NetworkSession::start(std::shared_ptr<boost::asio::ip::tcp::socket> connected_socket, const size_t& socket_buffer_size) -> void
+	auto NetworkSession::start(std::shared_ptr<boost::asio::ip::tcp::socket> connected_socket, size_t socket_buffer_size) -> void
 	{
 		{
 			std::scoped_lock<std::mutex> lock(mutex_);
@@ -194,50 +195,50 @@ namespace Network
 
 	auto NetworkSession::register_key(const std::string& key) -> void { registered_key_ = key; }
 
-	auto NetworkSession::received_connection_callback(const std::function<std::tuple<bool, std::optional<std::string>>(const std::vector<uint8_t>&)>& callback) -> void
+	auto NetworkSession::received_connection_callback(const std::function<std::expected<void, std::string>(const std::vector<uint8_t>&)>& callback) -> void
 	{
 		received_connection_callback_ = callback;
 	}
 
 	auto NetworkSession::received_binary_callback(
-		const std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&, const std::vector<uint8_t>&)>&
+		const std::function<std::expected<void, std::string>(const std::string&, const std::string&, const std::string&, const std::vector<uint8_t>&)>&
 			callback) -> void
 	{
 		received_binary_callback_ = callback;
 	}
 
 	auto NetworkSession::received_message_callback(
-		const std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&)>& callback) -> void
+		const std::function<std::expected<void, std::string>(const std::string&, const std::string&, const std::string&)>& callback) -> void
 	{
 		received_message_callback_ = callback;
 	}
 
 	auto NetworkSession::received_file_callback(
-		const std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&, const std::vector<uint8_t>&)>&
+		const std::function<std::expected<void, std::string>(const std::string&, const std::string&, const std::string&, const std::vector<uint8_t>&)>&
 			callback) -> void
 	{
 		received_file_callback_ = callback;
 	}
 
 	auto NetworkSession::received_files_callback(
-		const std::function<std::tuple<bool, std::optional<std::string>>(
+		const std::function<std::expected<void, std::string>(
 			const std::string&, const std::string&, const std::vector<std::string>&, const std::vector<std::pair<std::string, std::string>>&)>& callback) -> void
 	{
 		received_files_callback_ = callback;
 	}
 
-	auto NetworkSession::disconnected(const bool& by_itself) -> void { response_connection(false); }
+	auto NetworkSession::disconnected(bool by_itself) -> void { response_connection(false); }
 
-	auto NetworkSession::received_connection(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkSession::received_connection(const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (condition() != ConnectConditions::Waiting)
 		{
-			return { false, "the line is not waiting for connection" };
+			return std::unexpected("the line is not waiting for connection");
 		}
 
 		if (data.empty())
 		{
-			return { false, "received empty data for connection" };
+			return std::unexpected("received empty data for connection");
 		}
 
 		boost::json::object received_message;
@@ -248,12 +249,12 @@ namespace Network
 		catch (const std::exception& e)
 		{
 			Utilities::Logger::handle().write(Utilities::LogTypes::Error, std::format("invalid connection json: {}", e.what()));
-			return { false, "invalid connection json" };
+			return std::unexpected("invalid connection json");
 		}
 
 		if (!received_message.if_contains("id") || !received_message.at("id").is_string())
 		{
-			return { false, "invalid connection message: missing id" };
+			return std::unexpected("invalid connection message: missing id");
 		}
 
 		id(received_message.at("id").as_string().data());
@@ -292,18 +293,18 @@ namespace Network
 		return response_connection(true);
 	}
 
-	auto NetworkSession::received_binary(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkSession::received_binary(const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (condition() != ConnectConditions::Confirmed)
 		{
 			condition(ConnectConditions::Expired);
 
-			return { false, "cannot handle binary message until receiving confirm message related to connection." };
+			return std::unexpected("cannot handle binary message until receiving confirm message related to connection.");
 		}
 
 		if (data.empty())
 		{
-			return { false, "cannot handle empty message." };
+			return std::unexpected("cannot handle empty message.");
 		}
 
 		size_t index = 0;
@@ -311,47 +312,47 @@ namespace Network
 		auto binary = Combiner::divide(data, index);
 		if (binary.empty())
 		{
-			return { false, "cannot handle empty binary message." };
+			return std::unexpected("cannot handle empty binary message.");
 		}
 
 		if (received_binary_callback_ == nullptr)
 		{
 			Logger::handle().write(LogTypes::Warning, std::format("no binary-callback on [{}:{}] state:{}", id(), sub_id(), to_string(state_)));
-			return { false, "there is no callback to handle binary data" };
+			return std::unexpected("there is no callback to handle binary data");
 		}
 
 		return received_binary_callback_(id(), sub_id(), message, binary);
 	}
 
-	auto NetworkSession::received_data(const DataModes& mode, const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkSession::received_data(DataModes mode, const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		auto iter = message_handlers_.find(mode);
 		if (iter == message_handlers_.end())
 		{
-			return { false, "there is no matched mode" };
+			return std::unexpected("there is no matched mode");
 		}
 
 		return iter->second(data);
 	}
 
-	auto NetworkSession::received_message(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkSession::received_message(const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (condition() != ConnectConditions::Confirmed)
 		{
 			condition(ConnectConditions::Expired);
 
-			return { false, "cannot handle normal message until receiving confirm message related to connection." };
+			return std::unexpected("cannot handle normal message until receiving confirm message related to connection.");
 		}
 
 		if (data.empty())
 		{
-			return { false, "cannot handle empty message." };
+			return std::unexpected("cannot handle empty message.");
 		}
 
 		if (received_message_callback_ == nullptr)
 		{
 			Logger::handle().write(LogTypes::Warning, std::format("no message-callback on [{}:{}] state:{}", id(), sub_id(), to_string(state_)));
-			return { false, "there is no callback to handle message data" };
+			return std::unexpected("there is no callback to handle message data");
 		}
 
 		auto msg = Converter::to_string(data);
@@ -361,31 +362,31 @@ namespace Network
 			Logger::handle().write(LogTypes::Debug, std::format("received heartbeat:ping from [{}:{}]", id(), sub_id()));
 			// Reply pong and swallow
 			send_message(k_heartbeat_pong);
-			return { true, std::nullopt };
+			return {};
 		}
 		if (msg.rfind(k_heartbeat_pong, 0) == 0)
 		{
 			Logger::handle().write(LogTypes::Debug, std::format("received heartbeat:pong from [{}:{}]", id(), sub_id()));
 			last_pong_at_ = std::chrono::steady_clock::now();
 			missed_heartbeats_ = 0;
-			return { true, std::nullopt };
+			return {};
 		}
 
 		return received_message_callback_(id(), sub_id(), msg);
 	}
 
-	auto NetworkSession::received_file(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkSession::received_file(const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (condition() != ConnectConditions::Confirmed)
 		{
 			condition(ConnectConditions::Expired);
 
-			return { false, "cannot handle file message until receiving confirm message related to connection." };
+			return std::unexpected("cannot handle file message until receiving confirm message related to connection.");
 		}
 
 		if (data.empty())
 		{
-			return { false, "cannot handle empty file message." };
+			return std::unexpected("cannot handle empty file message.");
 		}
 
 		size_t index = 0;
@@ -395,13 +396,13 @@ namespace Network
 
 		if (file_mode.empty())
 		{
-			return { false, "invalid file message: missing mode" };
+			return std::unexpected("invalid file message: missing mode");
 		}
 
 		size_t file_count = 0;
 		if (file_index.size() != sizeof(size_t))
 		{
-			return { false, "invalid file message: bad index length" };
+			return std::unexpected("invalid file message: bad index length");
 		}
 		memcpy(&file_count, file_index.data(), sizeof(size_t));
 
@@ -441,17 +442,17 @@ namespace Network
 	}
 
 	auto NetworkSession::received_files(const std::vector<std::string>& failures, const std::vector<std::pair<std::string, std::string>>& successes)
-		-> std::tuple<bool, std::optional<std::string>>
+		-> std::expected<void, std::string>
 	{
 		if (received_files_callback_ == nullptr)
 		{
-			return { false, "there is no callback to handle received files" };
+			return std::unexpected("there is no callback to handle received files");
 		}
 
 		return received_files_callback_(id(), sub_id(), failures, successes);
 	}
 
-	auto NetworkSession::response_connection(const bool& condition) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkSession::response_connection(bool condition) -> std::expected<void, std::string>
 	{
 #ifdef USE_ENCRYPT_MODULE
 		if (encrypt_mode())
@@ -484,7 +485,7 @@ namespace Network
 
 		if (received_connection_callback_ == nullptr)
 		{
-			return { false, "there is no callback to handle connection" };
+			return std::unexpected("there is no callback to handle connection");
 		}
 
 		return received_connection_callback_(array_data);

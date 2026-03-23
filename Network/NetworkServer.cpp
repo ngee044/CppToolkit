@@ -12,12 +12,14 @@
 
 #include <functional>
 #include <chrono>
+#include <expected>
 
+using namespace Thread;
 using namespace Utilities;
 
 namespace Network
 {
-	NetworkServer::NetworkServer(const std::string& id, const uint16_t& high_priority_count, const uint16_t& normal_priority_count, const uint16_t& low_priority_count)
+	NetworkServer::NetworkServer(const std::string& id, uint16_t high_priority_count, uint16_t normal_priority_count, uint16_t low_priority_count)
 		: id_(id)
 		, high_priority_count_(high_priority_count)
 		, normal_priority_count_(normal_priority_count)
@@ -38,6 +40,7 @@ namespace Network
 
 	NetworkServer::~NetworkServer(void)
 	{
+		stop_maintenance_job();
 		drop_sessions();
 		destroy_io_context();
 
@@ -51,32 +54,32 @@ namespace Network
 	auto NetworkServer::id(void) const -> std::string { return id_; }
 
 #ifdef USE_ENCRYPT_MODULE
-	auto NetworkServer::encrypt_mode(const bool& mode) -> void { encrypt_mode_ = mode; }
+	auto NetworkServer::encrypt_mode(bool mode) -> void { encrypt_mode_ = mode; }
 
 	auto NetworkServer::encrypt_mode(void) -> const bool { return encrypt_mode_; }
 #endif
 
 	auto NetworkServer::register_key(const std::string& key) -> void { registered_key_ = key; }
 
-	auto NetworkServer::heartbeat_mode(const bool& enable, const uint32_t& interval_sec) -> void
+	auto NetworkServer::heartbeat_mode(bool enable, uint32_t interval_sec) -> void
 	{
 		heartbeat_enabled_ = enable;
 		heartbeat_interval_sec_ = interval_sec == 0 ? 1 : interval_sec;
 	}
 
-	auto NetworkServer::heartbeat_tolerance(const uint32_t& missed_count) -> void
+	auto NetworkServer::heartbeat_tolerance(uint32_t missed_count) -> void
 	{
 		// Minimum of 1 to avoid immediate expiration
 		heartbeat_missed_tolerance_ = missed_count == 0 ? 1 : missed_count;
 	}
 
-	auto NetworkServer::maintenance_interval(const uint32_t& interval_sec) -> void
+	auto NetworkServer::maintenance_interval(uint32_t interval_sec) -> void
 	{
 		// Minimum of 1 second
 		maintenance_interval_sec_ = interval_sec == 0 ? 1 : interval_sec;
 	}
 
-	auto NetworkServer::start(const uint16_t& port, const size_t& socket_buffer_size) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkServer::start(uint16_t port, size_t socket_buffer_size) -> std::expected<void, std::string>
 	{
 		stop();
 
@@ -86,7 +89,7 @@ namespace Network
 		{
 			stop();
 
-			return { false, "" };
+			return std::unexpected("");
 		}
 
 		// Make sure the context starts to run AFTER calling async_accept on acceptor
@@ -94,13 +97,13 @@ namespace Network
 		start_main_job();
 		start_maintenance_job();
 
-		return { true, std::nullopt };
+		return {};
 	}
 
 	auto NetworkServer::send_binary(const std::vector<uint8_t>& binary,
 									const std::string& message,
 									const std::string& id,
-									const std::string& sub_id) -> std::tuple<bool, std::optional<std::string>>
+									const std::string& sub_id) -> std::expected<void, std::string>
 	{
 		// Take a snapshot of current sessions to avoid iterating while unlocked reference mutates
 		std::vector<std::shared_ptr<NetworkSession>> snapshot;
@@ -118,10 +121,10 @@ namespace Network
 
 			if (id.empty())
 			{
-				auto [send_result, send_error] = session->send_binary(binary, message);
+				auto send_result = session->send_binary(binary, message);
 				if (!send_result)
 				{
-					return { send_result, send_error };
+					return std::unexpected(send_result.error());
 				}
 
 				continue;
@@ -137,17 +140,17 @@ namespace Network
 				continue;
 			}
 
-			auto [send_result, send_error] = session->send_binary(binary, message);
+			auto send_result = session->send_binary(binary, message);
 			if (!send_result)
 			{
-				return { send_result, send_error };
+				return std::unexpected(send_result.error());
 			}
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto NetworkServer::send_message(const std::string& message, const std::string& id, const std::string& sub_id) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkServer::send_message(const std::string& message, const std::string& id, const std::string& sub_id) -> std::expected<void, std::string>
 	{
 		std::vector<std::shared_ptr<NetworkSession>> snapshot;
 		{
@@ -164,10 +167,10 @@ namespace Network
 
 			if (id.empty())
 			{
-				auto [send_result, send_error] = session->send_message(message);
+				auto send_result = session->send_message(message);
 				if (!send_result)
 				{
-					return { send_result, send_error };
+					return std::unexpected(send_result.error());
 				}
 
 				continue;
@@ -183,19 +186,19 @@ namespace Network
 				continue;
 			}
 
-			auto [send_result, send_error] = session->send_message(message);
+			auto send_result = session->send_message(message);
 			if (!send_result)
 			{
-				return { send_result, send_error };
+				return std::unexpected(send_result.error());
 			}
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
 	auto NetworkServer::send_files(const std::vector<std::pair<std::string, std::string>>& file_informations,
 								   const std::string& id,
-								   const std::string& sub_id) -> std::tuple<bool, std::optional<std::string>>
+								   const std::string& sub_id) -> std::expected<void, std::string>
 	{
 		std::vector<std::shared_ptr<NetworkSession>> snapshot;
 		{
@@ -212,10 +215,10 @@ namespace Network
 
 			if (id.empty())
 			{
-				auto [send_result, send_error] = session->send_files(file_informations);
+				auto send_result = session->send_files(file_informations);
 				if (!send_result)
 				{
-					return { send_result, send_error };
+					return std::unexpected(send_result.error());
 				}
 
 				continue;
@@ -231,110 +234,104 @@ namespace Network
 				continue;
 			}
 
-			auto [send_result, send_error] = session->send_files(file_informations);
+			auto send_result = session->send_files(file_informations);
 			if (!send_result)
 			{
-				return { send_result, send_error };
+				return std::unexpected(send_result.error());
 			}
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto NetworkServer::wait_stop(const uint32_t& seconds) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkServer::wait_stop(uint32_t seconds) -> std::expected<void, std::string>
 	{
 		if (io_context_ == nullptr)
 		{
-			return { false, "io_context is null" };
+			return std::unexpected("io_context is null");
 		}
 
-		if (promise_status_ == nullptr)
-		{
-			promise_status_ = std::make_unique<std::promise<bool>>();
-		}
-
+		promise_status_ = std::make_unique<std::promise<bool>>();
 		future_status_ = promise_status_->get_future();
-		if (!future_status_.valid())
-		{
-			promise_status_.reset();
-
-			return { false, "cannot wait to stop due to invalid future status" };
-		}
 
 		if (seconds == 0)
 		{
 			Logger::handle().write(LogTypes::Debug, std::format("attempt to wait until stop NetworkServer on {}", id_));
 
 			future_status_.wait();
-
-			drop_sessions();
-			destroy_io_context();
-
-			return { true, std::nullopt };
 		}
-
-		Logger::handle().write(LogTypes::Debug, std::format("attempt to wait on {} seconds or until NetworkServer for {} stops", id_, seconds));
-
-		future_status_.wait_for(std::chrono::seconds(seconds));
-
-		drop_sessions();
-		destroy_io_context();
-
-		return { true, std::nullopt };
-	}
-
-	auto NetworkServer::stop(void) -> std::tuple<bool, std::optional<std::string>>
-	{
-		if (io_context_ == nullptr)
+		else
 		{
-			return { false, "io_context is null" };
-		}
+			Logger::handle().write(LogTypes::Debug, std::format("attempt to wait on {} seconds or until NetworkServer for {} stops", id_, seconds));
 
-		Logger::handle().write(LogTypes::Debug, std::format("attempt to stop NetworkServer on {}", id_));
-
-		if (promise_status_ != nullptr && future_status_.valid())
-		{
-			promise_status_->set_value(true);
-			promise_status_.reset();
-
-			return { true, std::nullopt };
+			future_status_.wait_for(std::chrono::seconds(seconds));
 		}
 
 		stop_maintenance_job();
 		drop_sessions();
 		destroy_io_context();
 
-		return { true, std::nullopt };
+		return {};
+	}
+
+	auto NetworkServer::stop(void) -> std::expected<void, std::string>
+	{
+		if (io_context_ == nullptr)
+		{
+			return std::unexpected("io_context is null");
+		}
+
+		Logger::handle().write(LogTypes::Debug, std::format("attempt to stop NetworkServer on {}", id_));
+
+		if (promise_status_ != nullptr)
+		{
+			try
+			{
+				promise_status_->set_value(true);
+			}
+			catch (const std::future_error&)
+			{
+			}
+			promise_status_.reset();
+
+			return {};
+		}
+
+		stop_maintenance_job();
+		drop_sessions();
+		destroy_io_context();
+
+		return {};
 	}
 
 	auto NetworkServer::received_connection_callback(
-		const std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const bool&)>& callback) -> void
+		const std::function<std::expected<void, std::string>(const std::string&, const std::string&, bool)>& callback) -> void
 	{
 		received_connection_callback_ = callback;
 	}
 
 	auto NetworkServer::received_binary_callback(
-		const std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&, const std::vector<uint8_t>&)>&
+		const std::function<std::expected<void, std::string>(const std::string&, const std::string&, const std::string&, const std::vector<uint8_t>&)>&
 			callback) -> void
 	{
 		received_binary_callback_ = callback;
 	}
 
 	auto NetworkServer::received_message_callback(
-		const std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&)>& callback) -> void
+		const std::function<std::expected<void, std::string>(const std::string&, const std::string&, const std::string&)>& callback) -> void
 	{
 		received_message_callback_ = callback;
 	}
 
 	auto NetworkServer::received_file_callback(
-		const std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&, const std::vector<uint8_t>&)>&
+		const std::function<std::expected<void, std::string>(const std::string&, const std::string&, const std::string&, const std::vector<uint8_t>&)>&
 			callback) -> void
 	{
 		received_file_callback_ = callback;
 	}
 
 	auto NetworkServer::received_files_callback(
-		const std::function<std::tuple<bool, std::optional<std::string>>(
+		const std::function<std::expected<void, std::string>(
 			const std::string&, const std::string&, const std::vector<std::string>&, const std::vector<std::pair<std::string, std::string>>&)>& callback) -> void
 	{
 		received_files_callback_ = callback;
@@ -392,35 +389,37 @@ namespace Network
 		sessions.clear();
 	}
 
-	auto NetworkServer::received_connection(const std::vector<uint8_t>& condition) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkServer::received_connection(const std::vector<uint8_t>& condition) -> std::expected<void, std::string>
 	{
 		if (thread_pool_ == nullptr)
 		{
-			return { false, "there is no thread pool handle" };
+			return std::unexpected("there is no thread pool handle");
 		}
 
-		return thread_pool_->push(std::make_shared<Job>(JobPriorities::Normal, condition,
+		auto push_result = thread_pool_->push(std::make_shared<Job>(JobPriorities::Normal, condition,
 														std::bind(&NetworkServer::received_connection_handler, this, std::placeholders::_1), "received_connection_job"));
+		if (!push_result) { return std::unexpected(push_result.error()); }
+		return {};
 	}
 
 	auto NetworkServer::received_binary(const std::string& id,
 										const std::string& sub_id,
 										const std::string& message,
-										const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+										const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (received_binary_callback_ == nullptr)
 		{
-			return { false, "there is no callback to handle received binary" };
+			return std::unexpected("there is no callback to handle received binary");
 		}
 
 		return received_binary_callback_(id, sub_id, message, data);
 	}
 
-	auto NetworkServer::received_message(const std::string& id, const std::string& sub_id, const std::string& message) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkServer::received_message(const std::string& id, const std::string& sub_id, const std::string& message) -> std::expected<void, std::string>
 	{
 		if (received_message_callback_ == nullptr)
 		{
-			return { false, "there is no callback to handle received message" };
+			return std::unexpected("there is no callback to handle received message");
 		}
 
 		return received_message_callback_(id, sub_id, message);
@@ -429,11 +428,11 @@ namespace Network
 	auto NetworkServer::received_file(const std::string& id,
 									  const std::string& sub_id,
 									  const std::string& message,
-									  const std::vector<uint8_t>& file_path) -> std::tuple<bool, std::optional<std::string>>
+									  const std::vector<uint8_t>& file_path) -> std::expected<void, std::string>
 	{
 		if (received_file_callback_ == nullptr)
 		{
-			return { false, "there is no callback to handle received file" };
+			return std::unexpected("there is no callback to handle received file");
 		}
 
 		return received_file_callback_(id, sub_id, message, file_path);
@@ -442,17 +441,17 @@ namespace Network
 	auto NetworkServer::received_files(const std::string& id,
 									   const std::string& sub_id,
 									   const std::vector<std::string>& failures,
-									   const std::vector<std::pair<std::string, std::string>>& successes) -> std::tuple<bool, std::optional<std::string>>
+									   const std::vector<std::pair<std::string, std::string>>& successes) -> std::expected<void, std::string>
 	{
 		if (received_files_callback_ == nullptr)
 		{
-			return { false, "there is no callback to handle received files" };
+			return std::unexpected("there is no callback to handle received files");
 		}
 
 		return received_files_callback_(id, sub_id, failures, successes);
 	}
 
-	auto NetworkServer::create_io_context(const uint16_t& port) -> bool
+	auto NetworkServer::create_io_context(uint16_t port) -> bool
 	{
 		destroy_io_context();
 
@@ -718,7 +717,7 @@ namespace Network
 			});
 	}
 
-	auto NetworkServer::received_connection_handler(const std::vector<uint8_t>& condition) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkServer::received_connection_handler(const std::vector<uint8_t>& condition) -> std::expected<void, std::string>
 	{
 		boost::json::object condition_message;
 		try
@@ -728,7 +727,7 @@ namespace Network
 		catch (const std::exception& e)
 		{
 			Logger::handle().write(LogTypes::Error, std::format("invalid connection json: {}", e.what()));
-			return { false, "invalid connection json" };
+			return std::unexpected("invalid connection json");
 		}
 
 		Logger::handle().write(LogTypes::Debug,
@@ -792,14 +791,14 @@ namespace Network
 
 		if (received_connection_callback_ == nullptr)
 		{
-			return { false, "there is no callback to handle received connection" };
+			return std::unexpected("there is no callback to handle received connection");
 		}
 
 		return received_connection_callback_(condition_message.at("id").as_string().data(), condition_message.at("sub_id").as_string().data(),
 											 condition_message.at("condition").as_bool());
 	}
 
-	auto NetworkServer::run(void) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkServer::run(void) -> std::expected<void, std::string>
 	{
 		Logger::handle().write(LogTypes::Debug, std::format("started io_context on NetworkServer for {}", id_));
 
@@ -810,26 +809,26 @@ namespace Network
 		catch (const std::overflow_error& message)
 		{
 			io_context_.reset();
-			return { false, std::format("stop io_context on NetworkServer for {} => {}", id_, message.what()) };
+			return std::unexpected(std::format("stop io_context on NetworkServer for {} => {}", id_, message.what()));
 		}
 		catch (const std::runtime_error& message)
 		{
 			io_context_.reset();
-			return { false, std::format("stop io_context on NetworkServer for {} => {}", id_, message.what()) };
+			return std::unexpected(std::format("stop io_context on NetworkServer for {} => {}", id_, message.what()));
 		}
 		catch (const std::exception& message)
 		{
 			io_context_.reset();
-			return { false, std::format("stop io_context on NetworkServer for {} => {}", id_, message.what()) };
+			return std::unexpected(std::format("stop io_context on NetworkServer for {} => {}", id_, message.what()));
 		}
 		catch (...)
 		{
 			io_context_.reset();
-			return { false, std::format("stop io_context on NetworkServer for {} => unexpected error", id_) };
+			return std::unexpected(std::format("stop io_context on NetworkServer for {} => unexpected error", id_));
 		}
 
 		Logger::handle().write(LogTypes::Debug, std::format("stopped io_context on NetworkServer for {}", id_));
 
-		return { true, std::nullopt };
+		return {};
 	}
 }

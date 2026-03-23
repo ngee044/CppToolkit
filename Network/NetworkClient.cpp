@@ -15,6 +15,7 @@
 
 #include <locale>
 #include <string>
+#include <expected>
 
 using namespace Thread;
 using namespace Utilities;
@@ -22,9 +23,9 @@ using namespace Utilities;
 namespace Network
 {
 	NetworkClient::NetworkClient(const std::string& client_id,
-								 const uint16_t& high_priority_count,
-								 const uint16_t& normal_priority_count,
-								 const uint16_t& low_priority_count)
+								 uint16_t high_priority_count,
+								 uint16_t normal_priority_count,
+								 uint16_t low_priority_count)
 		: DataHandler(high_priority_count, normal_priority_count, low_priority_count)
 		, io_context_(nullptr)
 		, promise_status_(nullptr)
@@ -48,7 +49,7 @@ namespace Network
 
 	auto NetworkClient::get_ptr(void) -> std::shared_ptr<NetworkClient> { return shared_from_this(); }
 
-	auto NetworkClient::start(const std::string& ip, const uint16_t& port, const size_t& socket_buffer_size) -> bool
+	auto NetworkClient::start(const std::string& ip, uint16_t port, size_t socket_buffer_size) -> bool
 	{
 		destroy_socket();
 		destroy_io_context();
@@ -66,6 +67,7 @@ namespace Network
 
 		condition(ConnectConditions::Waiting);
 
+		set_self_guard(shared_from_this());
 		read_start_code();
 
 		request_connection();
@@ -81,40 +83,26 @@ namespace Network
 		return true;
 	}
 
-	auto NetworkClient::wait_stop(const uint32_t& seconds) -> void
+	auto NetworkClient::wait_stop(uint32_t seconds) -> void
 	{
 		if (io_context_ == nullptr)
 		{
 			return;
 		}
 
-		if (promise_status_ == nullptr)
-		{
-			promise_status_ = std::make_unique<std::promise<bool>>();
-		}
-
+		promise_status_ = std::make_unique<std::promise<bool>>();
 		future_status_ = promise_status_->get_future();
-		if (!future_status_.valid())
-		{
-			promise_status_.reset();
-			return;
-		}
 
 		Logger::handle().write(LogTypes::Sequence, "attempt to call wait_stop on NetworkClient");
 
 		if (seconds == 0)
 		{
 			future_status_.wait();
-
-			file_manager_->thread_pool(nullptr);
-
-			destroy_socket();
-			destroy_io_context();
-
-			return;
 		}
-
-		future_status_.wait_for(std::chrono::seconds(seconds));
+		else
+		{
+			future_status_.wait_for(std::chrono::seconds(seconds));
+		}
 
 		file_manager_->thread_pool(nullptr);
 
@@ -133,9 +121,15 @@ namespace Network
 
 		condition(ConnectConditions::Expired, true);
 
-		if (promise_status_ != nullptr && future_status_.valid())
+		if (promise_status_ != nullptr)
 		{
-			promise_status_->set_value(true);
+			try
+			{
+				promise_status_->set_value(true);
+			}
+			catch (const std::future_error&)
+			{
+			}
 			promise_status_.reset();
 
 			return;
@@ -149,36 +143,36 @@ namespace Network
 
 	auto NetworkClient::register_key(const std::string& key) -> void { registered_key_ = key; }
 
-	auto NetworkClient::received_connection_callback(const std::function<std::tuple<bool, std::optional<std::string>>(const bool&, const bool&)>& callback) -> void
+	auto NetworkClient::received_connection_callback(const std::function<std::expected<void, std::string>(bool, bool)>& callback) -> void
 	{
 		received_connection_callback_ = callback;
 	}
 
 	auto NetworkClient::received_binary_callback(
-		const std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::vector<uint8_t>&)>& callback) -> void
+		const std::function<std::expected<void, std::string>(const std::string&, const std::vector<uint8_t>&)>& callback) -> void
 	{
 		received_binary_callback_ = callback;
 	}
 
-	auto NetworkClient::received_message_callback(const std::function<std::tuple<bool, std::optional<std::string>>(const std::string&)>& callback) -> void
+	auto NetworkClient::received_message_callback(const std::function<std::expected<void, std::string>(const std::string&)>& callback) -> void
 	{
 		received_message_callback_ = callback;
 	}
 
 	auto NetworkClient::received_file_callback(
-		const std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::vector<uint8_t>&)>& callback) -> void
+		const std::function<std::expected<void, std::string>(const std::string&, const std::vector<uint8_t>&)>& callback) -> void
 	{
 		received_file_callback_ = callback;
 	}
 
 	auto NetworkClient::received_files_callback(
-		const std::function<std::tuple<bool, std::optional<std::string>>(const std::vector<std::string>&, const std::vector<std::pair<std::string, std::string>>&)>&
+		const std::function<std::expected<void, std::string>(const std::vector<std::string>&, const std::vector<std::pair<std::string, std::string>>&)>&
 			callback) -> void
 	{
 		received_files_callback_ = callback;
 	}
 
-	auto NetworkClient::disconnected(const bool& by_itself) -> void
+	auto NetworkClient::disconnected(bool by_itself) -> void
 	{
 		key("");
 		iv("");
@@ -189,17 +183,17 @@ namespace Network
 		}
 	}
 
-	auto NetworkClient::received_data(const DataModes& mode, const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkClient::received_data(DataModes mode, const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (condition() == ConnectConditions::Expired)
 		{
-			return { false, "the line has expired" };
+			return std::unexpected("the line has expired");
 		}
 
 		auto iter = message_handlers_.find(mode);
 		if (iter == message_handlers_.end())
 		{
-			return { false, "there is no matched mode" };
+			return std::unexpected("there is no matched mode");
 		}
 
 		return iter->second(data);
@@ -236,7 +230,7 @@ namespace Network
 		destroy_thread_pool();
 	}
 
-	auto NetworkClient::create_socket(const std::string& ip, const uint16_t& port) -> bool
+	auto NetworkClient::create_socket(const std::string& ip, uint16_t port) -> bool
 	{
 		destroy_socket();
 
@@ -298,7 +292,7 @@ namespace Network
 		return true;
 	}
 
-	auto NetworkClient::run(void) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkClient::run(void) -> std::expected<void, std::string>
 	{
 		Logger::handle().write(LogTypes::Information, std::format("started io_context on NetworkClient on {}", id()));
 
@@ -308,36 +302,36 @@ namespace Network
 		}
 		catch (const std::overflow_error& message)
 		{
-			return { false, std::format("restart io_context on NetworkClient for {} => {}", id(), message.what()) };
+			return std::unexpected(std::format("restart io_context on NetworkClient for {} => {}", id(), message.what()));
 		}
 		catch (const std::runtime_error& message)
 		{
-			return { false, std::format("restart io_context on NetworkClient for {} => {}", id(), message.what()) };
+			return std::unexpected(std::format("restart io_context on NetworkClient for {} => {}", id(), message.what()));
 		}
 		catch (const std::exception& message)
 		{
-			return { false, std::format("restart io_context on NetworkClient for {} => {}", id(), message.what()) };
+			return std::unexpected(std::format("restart io_context on NetworkClient for {} => {}", id(), message.what()));
 		}
 		catch (...)
 		{
-			return { false, std::format("restart io_context on NetworkClient for {} => unexpected error", id()) };
+			return std::unexpected(std::format("restart io_context on NetworkClient for {} => unexpected error", id()));
 		}
 
 		Logger::handle().write(LogTypes::Debug, std::format("stopped io_context on NetworkClient for {}", id()));
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto NetworkClient::received_connection(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkClient::received_connection(const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (condition() != ConnectConditions::Waiting)
 		{
-			return { false, "the line is not waiting for connection" };
+			return std::unexpected("the line is not waiting for connection");
 		}
 
 		if (data.empty())
 		{
-			return { false, "received empty data for connection" };
+			return std::unexpected("received empty data for connection");
 		}
 
     boost::json::object received_message;
@@ -348,16 +342,16 @@ namespace Network
     catch (const std::exception& e)
     {
         Logger::handle().write(LogTypes::Error, std::format("invalid connection json on client: {}", e.what()));
-        return { false, "invalid connection json" };
+        return std::unexpected("invalid connection json");
     }
 
     if (!received_message.if_contains("id") || !received_message.at("id").is_string())
     {
-        return { false, "invalid connection response: missing id" };
+        return std::unexpected("invalid connection response: missing id");
     }
     if (!received_message.if_contains("sub_id") || !received_message.at("sub_id").is_string())
     {
-        return { false, "invalid connection response: missing sub_id" };
+        return std::unexpected("invalid connection response: missing sub_id");
     }
 
     server_id_ = received_message.at("id").as_string();
@@ -396,7 +390,7 @@ namespace Network
 				}
 			}
 
-        return { false, "connection has expired by server" };
+        return std::unexpected("connection has expired by server");
     }
 
     condition(ConnectConditions::Confirmed);
@@ -410,21 +404,21 @@ namespace Network
 			}
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto NetworkClient::received_binary(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkClient::received_binary(const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (condition() != ConnectConditions::Confirmed)
 		{
 			condition(ConnectConditions::Expired);
 
-			return { false, "cannot handle binary message until receiving confirm message related to connection." };
+			return std::unexpected("cannot handle binary message until receiving confirm message related to connection.");
 		}
 
 		if (data.empty())
 		{
-			return { false, "cannot handle empty message." };
+			return std::unexpected("cannot handle empty message.");
 		}
 
 		size_t index = 0;
@@ -432,29 +426,29 @@ namespace Network
 		auto binary = Combiner::divide(data, index);
 		if (binary.empty())
 		{
-			return { false, "cannot handle empty binary message." };
+			return std::unexpected("cannot handle empty binary message.");
 		}
 
 		if (received_binary_callback_ == nullptr)
 		{
-			return { false, "there is no callback to handle binary data" };
+			return std::unexpected("there is no callback to handle binary data");
 		}
 
 		return received_binary_callback_(message, binary);
 	}
 
-	auto NetworkClient::received_message(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkClient::received_message(const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (condition() != ConnectConditions::Confirmed)
 		{
 			condition(ConnectConditions::Expired);
 
-			return { false, "cannot handle normal message until receiving confirm message related to connection." };
+			return std::unexpected("cannot handle normal message until receiving confirm message related to connection.");
 		}
 
 		if (data.empty())
 		{
-			return { false, "cannot handle empty message." };
+			return std::unexpected("cannot handle empty message.");
 		}
 
     auto msg = Converter::to_string(data);
@@ -466,34 +460,34 @@ namespace Network
         {
             send_message("heartbeat:pong");
         }
-        return { true, std::nullopt };
+        return {};
     }
     if (msg.rfind("heartbeat:pong", 0) == 0)
     {
         Logger::handle().write(LogTypes::Debug, std::format("received heartbeat:pong from server [{}:{}]", id(), sub_id()));
-        return { true, std::nullopt };
+        return {};
     }
 
     if (received_message_callback_ == nullptr)
     {
-        return { false, "there is no callback to handle message data" };
+        return std::unexpected("there is no callback to handle message data");
     }
 
     return received_message_callback_(msg);
 	}
 
-	auto NetworkClient::received_file(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto NetworkClient::received_file(const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (condition() != ConnectConditions::Confirmed)
 		{
 			condition(ConnectConditions::Expired);
 
-			return { false, "cannot handle file message until receiving confirm message related to connection." };
+			return std::unexpected("cannot handle file message until receiving confirm message related to connection.");
 		}
 
 		if (data.empty())
 		{
-			return { false, "cannot handle empty file message." };
+			return std::unexpected("cannot handle empty file message.");
 		}
 
 		size_t index = 0;
@@ -543,11 +537,11 @@ namespace Network
 	}
 
 	auto NetworkClient::received_files(const std::vector<std::string>& failures,
-									   const std::vector<std::pair<std::string, std::string>>& successes) -> std::tuple<bool, std::optional<std::string>>
+									   const std::vector<std::pair<std::string, std::string>>& successes) -> std::expected<void, std::string>
 	{
 		if (received_files_callback_ == nullptr)
 		{
-			return { false, "there is no callback to handle received files" };
+			return std::unexpected("there is no callback to handle received files");
 		}
 
 		return received_files_callback_(failures, successes);

@@ -16,14 +16,16 @@
 #include "NetworkConstexpr.h"
 
 #include <format>
+#include <expected>
 
 #include <filesystem>
 
+using namespace Thread;
 using namespace Utilities;
 
 namespace Network
 {
-	DataHandler::DataHandler(const uint16_t& high_priority_count, const uint16_t& normal_priority_count, const uint16_t& low_priority_count)
+	DataHandler::DataHandler(uint16_t high_priority_count, uint16_t normal_priority_count, uint16_t low_priority_count)
 		: high_priority_count_(high_priority_count)
 		, normal_priority_count_(normal_priority_count)
 		, low_priority_count_(low_priority_count)
@@ -73,7 +75,7 @@ auto DataHandler::set_self_guard(const std::weak_ptr<void>& self) -> void { self
 
 auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 
-	auto DataHandler::start_code(const char& code1, const char& code2, const char& code3, const char& code4) -> void
+	auto DataHandler::start_code(char code1, char code2, char code3, char code4) -> void
 	{
 		start_code_tag_.clear();
 
@@ -83,7 +85,7 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 		start_code_tag_.push_back(code4);
 	}
 
-	auto DataHandler::end_code(const char& code1, const char& code2, const char& code3, const char& code4) -> void
+	auto DataHandler::end_code(char code1, char code2, char code3, char code4) -> void
 	{
 		end_code_tag_.clear();
 
@@ -97,11 +99,11 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 	auto DataHandler::encrypt_mode(void) -> const bool { return encrypt_mode_; }
 #endif
 
-	auto DataHandler::send_binary(const std::vector<uint8_t>& binary, const std::string& message) -> std::tuple<bool, std::optional<std::string>>
+	auto DataHandler::send_binary(const std::vector<uint8_t>& binary, const std::string& message) -> std::expected<void, std::string>
 	{
 		if (condition_ != ConnectConditions::Confirmed)
 		{
-			return { false, std::format("cannot send binary due to connect condition on {}: not confirmed", id()) };
+			return std::unexpected(std::format("cannot send binary due to connect condition on {}: not confirmed", id()));
 		}
 
 		std::vector<uint8_t> data;
@@ -111,21 +113,21 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 		return send(DataModes::Binary, data);
 	}
 
-	auto DataHandler::send_message(const std::string& message) -> std::tuple<bool, std::optional<std::string>>
+	auto DataHandler::send_message(const std::string& message) -> std::expected<void, std::string>
 	{
 		if (condition_ != ConnectConditions::Confirmed)
 		{
-			return { false, std::format("cannot send message due to connect condition on {}: not confirmed", id()) };
+			return std::unexpected(std::format("cannot send message due to connect condition on {}: not confirmed", id()));
 		}
 
 		return send(DataModes::Message, Converter::to_array(message));
 	}
 
-	auto DataHandler::send_files(const std::vector<std::pair<std::string, std::string>>& file_informations) -> std::tuple<bool, std::optional<std::string>>
+	auto DataHandler::send_files(const std::vector<std::pair<std::string, std::string>>& file_informations) -> std::expected<void, std::string>
 	{
 		if (condition_ != ConnectConditions::Confirmed)
 		{
-			return { false, std::format("cannot send files due to connect condition on {}: not confirmed", id()) };
+			return std::unexpected(std::format("cannot send files due to connect condition on {}: not confirmed", id()));
 		}
 
 		std::string guid = Generator::guid();
@@ -139,10 +141,10 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 		Combiner::append(start_code, { (uint8_t)FileModes::Start });
 		Combiner::append(start_code, file_count);
 
-		auto [start_result, start_error] = send(DataModes::File, start_code);
+		auto start_result = send(DataModes::File, start_code);
 		if (!start_result)
 		{
-			return { start_result, start_error };
+			return std::unexpected(start_result.error());
 		}
 
 		size_t index = 0;
@@ -158,19 +160,19 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 			Combiner::append(file_data, Converter::to_array(file_path));
 			Combiner::append(file_data, Converter::to_array(message));
 
-			auto [push_result, push_error] = thread_pool_->push(std::dynamic_pointer_cast<Job>(
+			auto push_result = thread_pool_->push(std::dynamic_pointer_cast<Job>(
 				std::make_shared<FileSendingJob>(file_data, std::bind(&DataHandler::send, this, std::placeholders::_1, std::placeholders::_2))));
 			if (!push_result)
 			{
-				return { push_result, push_error };
+				return std::unexpected(push_result.error());
 			}
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
 #ifdef USE_ENCRYPT_MODULE
-	auto DataHandler::encrypt_mode(const bool& mode) -> void { encrypt_mode_ = mode; }
+	auto DataHandler::encrypt_mode(bool mode) -> void { encrypt_mode_ = mode; }
 
 	auto DataHandler::key(const std::string& key_value) -> void { key_ = key_value; }
 
@@ -190,22 +192,22 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 		std::string temp_file_path = temp_path.string();
 
 		File temp_file;
-		const auto [open_condition, open_message] = temp_file.open(temp_file_path, std::ios::out | std::ios::binary | std::ios::app, std::locale());
-		if (!open_condition)
+		auto open_result = temp_file.open(temp_file_path, std::ios::out | std::ios::binary | std::ios::app, std::locale());
+		if (!open_result)
 		{
 			temp_file.close();
 
-			Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: ", open_message.value()));
+			Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: {}", open_result.error()));
 
 			return std::nullopt;
 		}
 
-		const auto [write_condition, write_message] = temp_file.write_bytes(data);
-		if (!write_condition)
+		auto write_result = temp_file.write_bytes(data);
+		if (!write_result)
 		{
 			temp_file.close();
 
-			Logger::handle().write(LogTypes::Error, std::format("cannot write temp file: ", write_message.value()));
+			Logger::handle().write(LogTypes::Error, std::format("cannot write temp file: {}", write_result.error()));
 
 			return std::nullopt;
 		}
@@ -259,7 +261,7 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 		thread_pool_.reset();
 	}
 
-	auto DataHandler::buffer_size(const size_t& size) -> void
+	auto DataHandler::buffer_size(size_t size) -> void
 	{
 		if (buffer_size_ != size || receiving_buffers_ == nullptr)
 		{
@@ -321,7 +323,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 		strand_.reset();
 	}
 
-	auto DataHandler::condition(const ConnectConditions& new_condition, const bool& by_itself) -> void
+	auto DataHandler::condition(ConnectConditions new_condition, bool by_itself) -> void
 	{
 		if (condition_ == new_condition)
 		{
@@ -342,21 +344,21 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 
 	auto DataHandler::condition(void) -> const ConnectConditions { return condition_; }
 
-	auto DataHandler::send(const DataModes& mode, const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto DataHandler::send(DataModes mode, const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (socket_ == nullptr)
 		{
-			return { false, std::format("cannot send a message by null socket : mode[{}]", (uint8_t)mode) };
+			return std::unexpected(std::format("cannot send a message by null socket : mode[{}]", (uint8_t)mode));
 		}
 
 		if (thread_pool_ == nullptr)
 		{
-			return { false, std::format("cannot send a message by null thread pool : mode[{}]", (uint8_t)mode) };
+			return std::unexpected(std::format("cannot send a message by null thread pool : mode[{}]", (uint8_t)mode));
 		}
 
 		if (data.empty())
 		{
-			return { false, std::format("cannot send a message by null data : mode[{}]", (uint8_t)mode) };
+			return std::unexpected(std::format("cannot send a message by null data : mode[{}]", (uint8_t)mode));
 		}
 
 		// Apply simple backpressure: cap total pending jobs except for Connection control messages
@@ -369,7 +371,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 				size_t pending = pool->job_pool()->job_count(all);
 				if (pending >= MAX_PENDING_SEND_JOBS)
 				{
-					return { false, std::format("backpressure: too many pending send jobs ({} >= {})", pending, MAX_PENDING_SEND_JOBS) };
+					return std::unexpected(std::format("backpressure: too many pending send jobs ({} >= {})", pending, MAX_PENDING_SEND_JOBS));
 				}
 			}
 		}
@@ -381,19 +383,26 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 #ifdef USE_ENCRYPT_MODULE
 		if (mode == DataModes::Connection)
 		{
-			return thread_pool_->push(
+			auto result = thread_pool_->push(
 				std::make_shared<Job>(JobPriorities::High, sending_data, std::bind(&DataHandler::compress_message, this, std::placeholders::_1), "compress_message"));
+			return result;
 		}
 
-		return thread_pool_->push(
-			std::make_shared<Job>(JobPriorities::Normal, sending_data, std::bind(&DataHandler::encrypt_message, this, std::placeholders::_1), "encrypt_message"));
+		{
+			auto result = thread_pool_->push(
+				std::make_shared<Job>(JobPriorities::Normal, sending_data, std::bind(&DataHandler::encrypt_message, this, std::placeholders::_1), "encrypt_message"));
+			return result;
+		}
 #else
-		return thread_pool_->push(
-			std::make_shared<Job>(JobPriorities::High, sending_data, std::bind(&DataHandler::compress_message, this, std::placeholders::_1), "compress_message"));
+		{
+			auto result = thread_pool_->push(
+				std::make_shared<Job>(JobPriorities::High, sending_data, std::bind(&DataHandler::compress_message, this, std::placeholders::_1), "compress_message"));
+			return result;
+		}
 #endif
 	}
 
-	auto DataHandler::read_start_code(const uint8_t& matched_index) -> void
+	auto DataHandler::read_start_code(uint8_t matched_index) -> void
 	{
 		if (condition() == ConnectConditions::Expired)
 		{
@@ -549,7 +558,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 		}
 	}
 
-	auto DataHandler::read_data(const size_t& remained_data_length) -> void
+	auto DataHandler::read_data(size_t remained_data_length) -> void
 	{
 		if (condition() == ConnectConditions::Expired)
 		{
@@ -657,7 +666,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 		}
 	}
 
-	auto DataHandler::read_end_code(const uint8_t& matched_index) -> void
+	auto DataHandler::read_end_code(uint8_t matched_index) -> void
 	{
 		if (condition() == ConnectConditions::Expired)
 		{
@@ -733,7 +742,7 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 		}
 	}
 
-	auto DataHandler::create_receiving_buffers(const size_t& size) -> void
+	auto DataHandler::create_receiving_buffers(size_t size) -> void
 	{
 		destroy_receiving_buffers();
 
@@ -752,16 +761,16 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 		receiving_buffers_ = nullptr;
 	}
 
-	auto DataHandler::compress_message(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto DataHandler::compress_message(const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (condition() == ConnectConditions::Expired)
 		{
-			return { false, "connection has expired" };
+			return std::unexpected("connection has expired");
 		}
 
 		if (thread_pool_ == nullptr)
 		{
-			return { false, "thread pool has no handle" };
+			return std::unexpected("thread pool has no handle");
 		}
 
 		auto [buffer, message] = Compressor::compression(data);
@@ -770,19 +779,21 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 			buffer = data;
 		}
 
-		return thread_pool_->push(std::dynamic_pointer_cast<Job>(std::make_shared<SendingJob>(socket_, start_code_tag_, buffer.value(), end_code_tag_, buffer_size_)));
+		auto result = thread_pool_->push(std::dynamic_pointer_cast<Job>(std::make_shared<SendingJob>(socket_, start_code_tag_, buffer.value(), end_code_tag_, buffer_size_)));
+		if (!result) { return std::unexpected(result.error()); }
+		return {};
 	}
 
-	auto DataHandler::decompress_message(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto DataHandler::decompress_message(const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (condition() == ConnectConditions::Expired)
 		{
-			return { false, "connection has expired" };
+			return std::unexpected("connection has expired");
 		}
 
 		if (thread_pool_ == nullptr)
 		{
-			return { false, "thread pool has no handle" };
+			return std::unexpected("thread pool has no handle");
 		}
 
 		auto [buffer, message] = Compressor::decompression(data);
@@ -792,31 +803,38 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 		}
 
 #ifdef USE_ENCRYPT_MODULE
-		return thread_pool_->push(
-			std::make_shared<Job>(JobPriorities::Normal, buffer.value(), std::bind(&DataHandler::decrypt_message, this, std::placeholders::_1), "decrypt_message"));
+		{
+			auto result = thread_pool_->push(
+				std::make_shared<Job>(JobPriorities::Normal, buffer.value(), std::bind(&DataHandler::decrypt_message, this, std::placeholders::_1), "decrypt_message"));
+			return result;
+		}
 #else
-		return thread_pool_->push(std::dynamic_pointer_cast<Job>(
-			std::make_shared<ReceivingJob>(buffer.value(), std::bind(&DataHandler::received_data, this, std::placeholders::_1, std::placeholders::_2))));
+		{
+			auto result = thread_pool_->push(std::dynamic_pointer_cast<Job>(
+				std::make_shared<ReceivingJob>(buffer.value(), std::bind(&DataHandler::received_data, this, std::placeholders::_1, std::placeholders::_2))));
+			return result;
+		}
 #endif
 	}
 
 #ifdef USE_ENCRYPT_MODULE
-	auto DataHandler::encrypt_message(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto DataHandler::encrypt_message(const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (condition() == ConnectConditions::Expired)
 		{
-			return { false, "connection has expired" };
+			return std::unexpected("connection has expired");
 		}
 
 		if (thread_pool_ == nullptr)
 		{
-			return { false, "thread pool has no handle" };
+			return std::unexpected("thread pool has no handle");
 		}
 
 		if (!encrypt_mode_)
 		{
-			return thread_pool_->push(
+			auto result = thread_pool_->push(
 				std::make_shared<Job>(JobPriorities::High, data, std::bind(&DataHandler::compress_message, this, std::placeholders::_1), "compress_message"));
+			return result;
 		}
 
 		auto [buffer, message] = Encryptor::encryption(data, key(), iv());
@@ -825,26 +843,30 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 			buffer = data;
 		}
 
-		return thread_pool_->push(
-			std::make_shared<Job>(JobPriorities::High, buffer.value(), std::bind(&DataHandler::compress_message, this, std::placeholders::_1), "compress_message"));
+		{
+			auto result = thread_pool_->push(
+				std::make_shared<Job>(JobPriorities::High, buffer.value(), std::bind(&DataHandler::compress_message, this, std::placeholders::_1), "compress_message"));
+			return result;
+		}
 	}
 
-	auto DataHandler::decrypt_message(const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+	auto DataHandler::decrypt_message(const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
 		if (condition() == ConnectConditions::Expired)
 		{
-			return { false, "connection has expired" };
+			return std::unexpected("connection has expired");
 		}
 
 		if (thread_pool_ == nullptr)
 		{
-			return { false, "thread pool has no handle" };
+			return std::unexpected("thread pool has no handle");
 		}
 
 		if (!encrypt_mode_)
 		{
-			return thread_pool_->push(std::dynamic_pointer_cast<Job>(
+			auto result = thread_pool_->push(std::dynamic_pointer_cast<Job>(
 				std::make_shared<ReceivingJob>(data, std::bind(&DataHandler::received_data, this, std::placeholders::_1, std::placeholders::_2))));
+			return result;
 		}
 
 		auto [buffer, message] = Encryptor::decryption(data, key(), iv());
@@ -853,8 +875,11 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 			buffer = data;
 		}
 
-		return thread_pool_->push(std::dynamic_pointer_cast<Job>(
-			std::make_shared<ReceivingJob>(buffer.value(), std::bind(&DataHandler::received_data, this, std::placeholders::_1, std::placeholders::_2))));
+		{
+			auto result = thread_pool_->push(std::dynamic_pointer_cast<Job>(
+				std::make_shared<ReceivingJob>(buffer.value(), std::bind(&DataHandler::received_data, this, std::placeholders::_1, std::placeholders::_2))));
+			return result;
+		}
 	}
 #endif
 }

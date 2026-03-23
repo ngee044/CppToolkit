@@ -3,6 +3,7 @@
 #include "Job.h"
 #include "DataModes.h"
 
+#include <expected>
 #include <functional>
 
 namespace Network
@@ -11,15 +12,15 @@ namespace Network
 	{
 	public:
 		FileSendingJob(const std::vector<uint8_t>& file_information,
-					   const std::function<std::tuple<bool, std::optional<std::string>>(
-						   const DataModes&, const std::vector<uint8_t>&)>& callback);
+					   const std::function<std::expected<void, std::string>(
+						   DataModes, const std::vector<uint8_t>&)>& callback);
 		virtual ~FileSendingJob(void);
 
 	private:
-		auto working(void) -> std::tuple<bool, std::optional<std::string>> override;
+		auto working(void) -> std::expected<void, std::string> override;
 
 	private:
-		std::function<std::tuple<bool, std::optional<std::string>>(const DataModes&, const std::vector<uint8_t>&)>
+		std::function<std::expected<void, std::string>(DataModes, const std::vector<uint8_t>&)>
 			sending_callback_;
 	};
 }
