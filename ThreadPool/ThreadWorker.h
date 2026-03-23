@@ -4,6 +4,7 @@
 
 #include <tuple>
 #include <atomic>
+#include <expected>
 #include <memory>
 #include <string>
 #include <thread>
@@ -24,10 +25,10 @@ namespace Thread
 
 		auto get_ptr(void) -> std::shared_ptr<ThreadWorker>;
 
-		auto start(void) -> std::tuple<bool, std::optional<std::string>>;
-		auto pause(const bool& pause) -> void;
-		auto notify_one(const JobPriorities& target) -> void;
-		auto stop(void) -> std::tuple<bool, std::optional<std::string>>;
+		auto start(void) -> std::expected<void, std::string>;
+		auto pause(bool pause) -> void;
+		auto notify_one(JobPriorities target) -> void;
+		auto stop(void) -> std::expected<void, std::string>;
 
 		auto job_pool(std::shared_ptr<JobPool> pool) -> void;
 
@@ -50,7 +51,7 @@ namespace Thread
 		std::atomic_bool pause_;
 		std::atomic_bool thread_stop_;
 
-		std::promise<bool> promise_;
+		std::unique_ptr<std::promise<bool>> promise_;
 
 		std::weak_ptr<JobPool> job_pool_;
 		std::string thread_worker_title_;

@@ -12,7 +12,7 @@ namespace Redis
 	public:
 		TLSOptions(void);
 
-		auto use_tls(const bool& value) -> TLSOptions&;
+		auto use_tls(bool value) -> TLSOptions&;
 		auto use_tls() const -> bool;
 
 		auto ca_cert(const std::string& value) -> TLSOptions&;
@@ -24,7 +24,7 @@ namespace Redis
 		auto client_key(const std::string& value) -> TLSOptions&;
 		auto client_key() const -> const std::string&;
 
-		auto verify_peer(const bool& value) -> TLSOptions&;
+		auto verify_peer(bool value) -> TLSOptions&;
 		auto verify_peer() const -> bool;
 
 	private:

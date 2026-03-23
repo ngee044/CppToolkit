@@ -8,7 +8,7 @@
 
 namespace Utilities
 {
-	auto Compressor::compression(const std::vector<uint8_t>& original_data, const uint16_t& block_bytes)
+	auto Compressor::compression(const std::vector<uint8_t>& original_data, uint16_t block_bytes)
 		-> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>
 	{
 		if (original_data.empty())
@@ -94,7 +94,7 @@ namespace Utilities
 							 (((double)compressed_data.size() / (double)original_data.size()) * 100)) };
 	}
 
-	auto Compressor::decompression(const std::vector<uint8_t>& compressed_data, const uint16_t& block_bytes)
+	auto Compressor::decompression(const std::vector<uint8_t>& compressed_data, uint16_t block_bytes)
 		-> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>
 	{
 		if (compressed_data.empty())
@@ -121,7 +121,7 @@ namespace Utilities
 		compress_buffer.reserve(compress_size);
 		std::vector<uint8_t> decompressed_data;
 
-		LZ4_setStreamDecode(&lz4StreamDecode_body, NULL, 0);
+		LZ4_setStreamDecode(&lz4StreamDecode_body, nullptr, 0);
 
 		while (true)
 		{

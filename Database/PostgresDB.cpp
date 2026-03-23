@@ -11,7 +11,7 @@ using namespace Utilities;
 
 namespace Database
 {
-	PostgresDB::PostgresDB(const std::string& conn_str) : connection_(NULL)
+	PostgresDB::PostgresDB(const std::string& conn_str) : connection_(nullptr)
 	{
 		connection_ = PQconnectdb(conn_str.c_str());
 		if (PQstatus(connection_) != CONNECTION_OK)
@@ -22,11 +22,11 @@ namespace Database
 
 	PostgresDB::~PostgresDB() { PQfinish(connection_); }
 
-	auto PostgresDB::execute_query(const std::string& sql_query) -> std::tuple<bool, std::optional<std::string>>
+	auto PostgresDB::execute_query(const std::string& sql_query) -> std::expected<void, std::string>
 	{
 		if (PQstatus(connection_) != CONNECTION_OK)
 		{
-			return { false, std::format("there is no created PGconn: {}", PQerrorMessage(connection_)) };
+			return std::unexpected(std::format("there is no created PGconn: {}", PQerrorMessage(connection_)));
 		}
 
 		PGresult* result = PQexec(connection_, sql_query.c_str());
@@ -35,19 +35,19 @@ namespace Database
 			std::string error = PQerrorMessage(connection_);
 			PQclear(result);
 
-			return { false, error };
+			return std::unexpected(error);
 		}
 		PQclear(result);
 
-		return { true, std::nullopt };
+		return {};
 	}
 
 	auto PostgresDB::execute_query_and_get_result(const std::string& sql_query)
-		-> std::tuple<std::optional<std::vector<std::vector<std::variant<int, double, std::string, std::vector<std::string>>>>>, std::optional<std::string>>
+		-> std::expected<std::vector<std::vector<std::variant<int, double, std::string, std::vector<std::string>>>>, std::string>
 	{
 		if (PQstatus(connection_) != CONNECTION_OK)
 		{
-			return { std::nullopt, std::format("there is no created PGconn: {}", PQerrorMessage(connection_)) };
+			return std::unexpected(std::format("there is no created PGconn: {}", PQerrorMessage(connection_)));
 		}
 
 		PGresult* result = PQexec(connection_, sql_query.c_str());
@@ -56,7 +56,7 @@ namespace Database
 			std::string error = PQerrorMessage(connection_);
 			PQclear(result);
 
-			return { std::nullopt, error };
+			return std::unexpected(error);
 		}
 
 		int field_count = PQnfields(result);
@@ -70,6 +70,7 @@ namespace Database
 				if (PQgetisnull(result, row_index, field_index))
 				{
 					current_row.emplace_back("");
+					continue;
 				}
 
 				Oid fieldType = PQftype(result, field_index);
@@ -97,14 +98,14 @@ namespace Database
 		}
 		PQclear(result);
 
-		return { result_data, std::format("there are selected rows: {}", result_data.size()) };
+		return result_data;
 	}
 
-	auto PostgresDB::execute_command(const std::string& sql) -> std::tuple<bool, std::optional<std::string>> 
+	auto PostgresDB::execute_command(const std::string& sql) -> std::expected<void, std::string>
 	{
         if (!connection_)
 		{
-			return { false, std::format("there is no created PGconn: {}", PQerrorMessage(connection_)) };
+			return std::unexpected(std::format("there is no created PGconn: {}", PQerrorMessage(connection_)));
 		}
 
         PGresult* postgre_result = PQexec(connection_, sql.c_str());
@@ -114,11 +115,11 @@ namespace Database
 			std::string error = std::format("Error executing command: {}", error_message);
 			Logger::handle().write(LogTypes::Error, error);
             PQclear(postgre_result);
-            return { false, error };
+            return std::unexpected(error);
         }
-		
+
         PQclear(postgre_result);
-        return { true, std::nullopt };
+        return {};
 	}
 
 	auto PostgresDB::escape_string(const std::string input) -> std::string 
@@ -127,12 +128,11 @@ namespace Database
 		{
 			return input;
 		}
-        char* buffer = new char[input.size() * 2 + 1];
+        std::vector<char> buffer(input.size() * 2 + 1);
         int error = 0;
-        size_t len = PQescapeStringConn(connection_, buffer, input.c_str(), input.size(), &error);
+        size_t len = PQescapeStringConn(connection_, buffer.data(), input.c_str(), input.size(), &error);
 
-        std::string escaped(buffer, len);
-        delete[] buffer;
+        std::string escaped(buffer.data(), len);
 
         if (error != 0)
         {

@@ -34,15 +34,15 @@ namespace Utilities
 
 	Logger::~Logger(void) { stop(); }
 
-	void Logger::life_cycle(const uint16_t& cycle) { life_cycle_period_ = cycle; }
+	void Logger::life_cycle(uint16_t cycle) { life_cycle_period_ = cycle; }
 
 	uint16_t Logger::life_cycle(void) const { return life_cycle_period_; }
 
-	void Logger::max_file_size(const size_t& size) { max_file_size_.store(size); }
+	void Logger::max_file_size(size_t size) { max_file_size_.store(size); }
 
 	size_t Logger::max_file_size(void) const { return max_file_size_.load(); }
 
-	void Logger::max_lines(const size_t& line_count) { max_lines_ = line_count; }
+	void Logger::max_lines(size_t line_count) { max_lines_ = line_count; }
 
 	size_t Logger::max_lines(void) const { return max_lines_; }
 
@@ -85,11 +85,11 @@ namespace Utilities
 
 	LogTypes Logger::console_mode(void) const { return console_mode_; }
 
-	void Logger::database_mode(const bool& mode) { database_mode_ = mode; }
+	void Logger::database_mode(bool mode) { database_mode_ = mode; }
 
 	bool Logger::database_mode(void) const { return database_mode_; }
 
-	void Logger::write_interval(const uint16_t& milli_seconds) { write_interval_ = milli_seconds; }
+	void Logger::write_interval(uint16_t milli_seconds) { write_interval_ = milli_seconds; }
 
 	uint16_t Logger::write_interval(void) const { return write_interval_; }
 
@@ -360,8 +360,8 @@ namespace Utilities
 		if (max_lines_ == 0)
 		{
 			File file;
-			const auto [condition, message] = file.open(target_path, std::ios::out | std::ios::app, locale_);
-			if (condition)
+			auto open_result = file.open(target_path, std::ios::out | std::ios::app, locale_);
+			if (open_result)
 			{
 				file.write_lines(messages);
 				file.close();
@@ -372,8 +372,8 @@ namespace Utilities
 
 		File file;
 		std::deque<std::string> read_lines;
-		const auto [condition, open_message] = file.open(target_path, std::ios::in, locale_);
-		if (condition)
+		auto open_result = file.open(target_path, std::ios::in, locale_);
+		if (open_result)
 		{
 			const auto [file_lines, read_message] = file.read_lines();
 			file.close();

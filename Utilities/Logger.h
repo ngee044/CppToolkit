@@ -23,13 +23,13 @@ namespace Utilities
 	public:
 		~Logger(void);
 
-		auto life_cycle(const uint16_t& cycle) -> void;
+		auto life_cycle(uint16_t cycle) -> void;
 		auto life_cycle(void) const -> uint16_t;
 
-		auto max_file_size(const size_t& size) -> void;
+		auto max_file_size(size_t size) -> void;
 		auto max_file_size(void) const -> size_t;
 
-		auto max_lines(const size_t& line_count) -> void;
+		auto max_lines(size_t line_count) -> void;
 		auto max_lines(void) const -> size_t;
 
 		auto locale_mode(const std::locale& mode) -> void;
@@ -44,10 +44,10 @@ namespace Utilities
 		auto console_mode(const LogTypes& mode) -> void;
 		auto console_mode(void) const -> LogTypes;
 
-		auto database_mode(const bool& mode) -> void;
+		auto database_mode(bool mode) -> void;
 		auto database_mode(void) const -> bool;
 
-		auto write_interval(const uint16_t& milli_seconds) -> void;
+		auto write_interval(uint16_t milli_seconds) -> void;
 		auto write_interval(void) const -> uint16_t;
 
 		auto set_notification_for_database(const std::function<bool(const std::string&, const std::vector<std::string>&)>& notification) -> void;

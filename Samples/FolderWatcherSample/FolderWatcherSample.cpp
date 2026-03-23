@@ -19,6 +19,7 @@
 #include <tuple>
 #include <string>
 #include <vector>
+#include <expected>
 #include <optional>
 #include <filesystem>
 
@@ -57,10 +58,10 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 
 	Folder folder;
 	folder.delete_folder(new_path.string());
-	auto [create_condition, create_message] = folder.create_folder(new_path.string());
-	if (!create_condition)
+	auto create_result = folder.create_folder(new_path.string());
+	if (!create_result)
 	{
-		Logger::handle().write(LogTypes::Error, std::format("cannot create temp directory: {}, {}", create_message.value(), new_path.string()));
+		Logger::handle().write(LogTypes::Error, std::format("cannot create temp directory: {}, {}", create_result.error(), new_path.string()));
 
 		Logger::handle().stop();
 		Logger::destroy();
@@ -95,10 +96,10 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	std::filesystem::path new_path2(new_path);
 	new_path2.append("test_folder");
 
-	auto [create_condition2, create_message2] = folder.create_folder(new_path2.string());
-	if (!create_condition2)
+	auto create_result2 = folder.create_folder(new_path2.string());
+	if (!create_result2)
 	{
-		Logger::handle().write(LogTypes::Error, std::format("cannot create sub temp directory: {}, {}", create_message2.value(), new_path2.string()));
+		Logger::handle().write(LogTypes::Error, std::format("cannot create sub temp directory: {}, {}", create_result2.error(), new_path2.string()));
 
 		Logger::handle().stop();
 		Logger::destroy();
@@ -112,10 +113,10 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	new_file_path.append("test.json");
 
 	File file;
-	auto [open_condition, open_message] = file.open(new_file_path.string(), std::ios::out | std::ios::binary | std::ios::trunc);
-	if (!open_condition)
+	auto open_result = file.open(new_file_path.string(), std::ios::out | std::ios::binary | std::ios::trunc);
+	if (!open_result)
 	{
-		Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: {}, {}", open_message.value(), new_file_path.string()));
+		Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: {}, {}", open_result.error(), new_file_path.string()));
 
 		Logger::handle().stop();
 		Logger::destroy();
@@ -123,12 +124,12 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		return 0;
 	}
 
-	auto [write_condition, write_message] = file.write_bytes(Converter::to_array("compressed_bytes"));
-	if (!write_condition)
+	auto write_result = file.write_bytes(Converter::to_array("compressed_bytes"));
+	if (!write_result)
 	{
 		file.close();
 
-		Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: {}", write_message.value()));
+		Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: {}", write_result.error()));
 
 		Logger::handle().stop();
 		Logger::destroy();
@@ -142,10 +143,10 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	std::filesystem::path new_file_path2(new_path2);
 	new_file_path2.append("test.json");
 
-	auto [open_condition2, open_message2] = file.open(new_file_path2.string(), std::ios::out | std::ios::binary | std::ios::trunc);
-	if (!open_condition2)
+	auto open_result2 = file.open(new_file_path2.string(), std::ios::out | std::ios::binary | std::ios::trunc);
+	if (!open_result2)
 	{
-		Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: {}, {}", open_message2.value(), new_file_path2.string()));
+		Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: {}, {}", open_result2.error(), new_file_path2.string()));
 
 		Logger::handle().stop();
 		Logger::destroy();
@@ -153,12 +154,12 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		return 0;
 	}
 
-	auto [write_condition2, write_message2] = file.write_bytes(Converter::to_array("compressed_bytes"));
-	if (!write_condition2)
+	auto write_result2 = file.write_bytes(Converter::to_array("compressed_bytes"));
+	if (!write_result2)
 	{
 		file.close();
 
-		Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: {}", write_message2.value()));
+		Logger::handle().write(LogTypes::Error, std::format("cannot create temp file: {}", write_result2.error()));
 
 		Logger::handle().stop();
 		Logger::destroy();

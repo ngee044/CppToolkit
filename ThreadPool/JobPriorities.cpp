@@ -3,7 +3,7 @@
 #include <format>
 namespace Thread
 {
-	auto priority_string(const JobPriorities& priority) -> const std::string
+	auto priority_string(JobPriorities priority) -> const std::string
 	{
 		switch (priority)
 		{

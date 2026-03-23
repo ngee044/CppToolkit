@@ -13,52 +13,52 @@ namespace Utilities
 
 	Folder::~Folder(void) { }
 
-	auto Folder::create_folder(const std::string& target_path) -> std::tuple<bool, std::optional<std::string>>
+	auto Folder::create_folder(const std::string& target_path) -> std::expected<void, std::string>
 	{
 		if (target_path.empty())
 		{
-			return { false, "target path is empty" };
+			return std::unexpected("target path is empty");
 		}
 
 		std::filesystem::path target(target_path);
 		if (std::filesystem::exists(target))
 		{
-			return { false, "target folder already exists" };
+			return std::unexpected("target folder already exists");
 		}
 
 		std::error_code error_code;
 		if (!std::filesystem::create_directories(target, error_code))
 		{
-			return { false, error_code.message() };
+			return std::unexpected(error_code.message());
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto Folder::delete_folder(const std::string& target_path) -> std::tuple<bool, std::optional<std::string>>
+	auto Folder::delete_folder(const std::string& target_path) -> std::expected<void, std::string>
 	{
 		if (target_path.empty())
 		{
-			return { false, "target path is empty" };
+			return std::unexpected("target path is empty");
 		}
 
 		std::filesystem::path target(target_path);
 		if (!std::filesystem::exists(target))
 		{
-			return { false, "there is no target folder" };
+			return std::unexpected("there is no target folder");
 		}
 
 		std::error_code error_code;
 		auto deleted_count = std::filesystem::remove_all(target, error_code);
 		if (deleted_count == 0)
 		{
-			return { false, error_code.message() };
+			return std::unexpected(error_code.message());
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto Folder::get_folders(const std::string& target_path, const bool& search_sub_folder) -> std::tuple<std::optional<std::vector<std::string>>, std::optional<std::string>>
+	auto Folder::get_folders(const std::string& target_path, bool search_sub_folder) -> std::tuple<std::optional<std::vector<std::string>>, std::optional<std::string>>
 	{
 		std::vector<std::string> result;
 
@@ -99,7 +99,7 @@ namespace Utilities
 		return { result, std::nullopt };
 	}
 
-	auto Folder::get_files(const std::string& target_path, const bool& search_sub_folder, const std::vector<std::string>& extensions) -> std::tuple<std::optional<std::vector<std::string>>, std::optional<std::string>>
+	auto Folder::get_files(const std::string& target_path, bool search_sub_folder, const std::vector<std::string>& extensions) -> std::tuple<std::optional<std::vector<std::string>>, std::optional<std::string>>
 	{
 		std::vector<std::string> result;
 
@@ -136,7 +136,9 @@ namespace Utilities
 				continue;
 			}
 
-			if (extensions.empty() || std::find(extensions.begin(), extensions.end(), entry.path().extension().string()) != extensions.end())
+			auto ext = entry.path().extension().string();
+			if (extensions.empty() || std::find(extensions.begin(), extensions.end(), ext) != extensions.end()
+				|| (!ext.empty() && ext[0] == '.' && std::find(extensions.begin(), extensions.end(), ext.substr(1)) != extensions.end()))
 			{
 				result.push_back(entry.path().string());
 			}
@@ -145,42 +147,42 @@ namespace Utilities
 		return { result, std::nullopt };
 	}
 
-	
+
 	auto Folder::compression(const std::string& target_path,
 							 const std::string& source_path,
-							 const bool& search_sub_folder,
+							 bool search_sub_folder,
 							 const std::vector<std::string>& extensions,
-							 const uint16_t& block_bytes)
-		-> std::tuple<bool, std::optional<std::string>>
+							 uint16_t block_bytes)
+		-> std::expected<void, std::string>
 	{
 		Folder folder;
 		auto [search_files, search_message] = folder.get_files(source_path, search_sub_folder, extensions);
 		if (!search_files.has_value())
 		{
-			return { false, search_message };
+			return std::unexpected(search_message.value_or("unknown search error"));
 		}
 
 		File target_file;
-		auto [open_condition2, open_message2] = target_file.open(target_path, std::ios::out | std::ios::binary | std::ios::trunc);
-		if (!open_condition2)
+		auto open_result2 = target_file.open(target_path, std::ios::out | std::ios::binary | std::ios::trunc);
+		if (!open_result2)
 		{
-			return { open_condition2, open_message2 };
+			return std::unexpected(open_result2.error());
 		}
 
 		for (const auto& search_file : search_files.value())
 		{
 			File source;
-			auto [open_condition, open_message] = source.open(search_file, std::ios::in | std::ios::binary);
-			if (!open_condition)
+			auto open_result = source.open(search_file, std::ios::in | std::ios::binary);
+			if (!open_result)
 			{
-				return { open_condition, open_message };
+				return std::unexpected(open_result.error());
 			}
 
 			auto [read_data, read_message] = source.read_bytes();
 			if (read_data == std::nullopt)
 			{
 				source.close();
-				return { false, read_message };
+				return std::unexpected(read_message.value_or("unknown read error"));
 			}
 			source.close();
 
@@ -194,41 +196,41 @@ namespace Utilities
 			const int32_t size = sizeof(size_t);
 			temp = source_data.size();
 
-			auto [write_condition, write_message] = target_file.write_bytes((uint8_t*)&temp, size);
-			if (!write_condition)
+			auto write_result = target_file.write_bytes((uint8_t*)&temp, size);
+			if (!write_result)
 			{
 				target_file.close();
-				return { write_condition, write_message };
+				return std::unexpected(write_result.error());
 			}
 
-			auto [write_condition2, write_message2] = target_file.write_bytes(source_data);
-			if (!write_condition2)
+			auto write_result2 = target_file.write_bytes(source_data);
+			if (!write_result2)
 			{
 				target_file.close();
-				return { write_condition2, write_message2 };
+				return std::unexpected(write_result2.error());
 			}
 		}
-		
+
 		target_file.close();
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto Folder::decompression(const std::string& target_path, const std::string& source_path, const uint16_t& block_bytes)
-		-> std::tuple<bool, std::optional<std::string>>
+	auto Folder::decompression(const std::string& target_path, const std::string& source_path, uint16_t block_bytes)
+		-> std::expected<void, std::string>
 	{
 		File source;
-		auto [open_condition, open_message] = source.open(source_path, std::ios::in | std::ios::binary);
-		if (!open_condition)
+		auto open_result = source.open(source_path, std::ios::in | std::ios::binary);
+		if (!open_result)
 		{
-			return { open_condition, open_message };
+			return std::unexpected(open_result.error());
 		}
 
 		auto [read_data, read_message] = source.read_bytes();
 		if (read_data == std::nullopt)
 		{
 			source.close();
-			return { false, read_message };
+			return std::unexpected(read_message.value_or("unknown read error"));
 		}
 		source.close();
 
@@ -254,21 +256,21 @@ namespace Utilities
 			new_path.append(file_path);
 
 			File new_file;
-			auto [open_condition2, open_message2] = new_file.open(new_path.string(), std::ios::out | std::ios::binary | std::ios::trunc);
-			if (!open_condition2)
+			auto open_result2 = new_file.open(new_path.string(), std::ios::out | std::ios::binary | std::ios::trunc);
+			if (!open_result2)
 			{
-				return { open_condition2, open_message2 };
+				return std::unexpected(open_result2.error());
 			}
 
-			auto [write_condition, write_message] = new_file.write_bytes(file_data);
-			if (!write_condition)
+			auto write_result = new_file.write_bytes(file_data);
+			if (!write_result)
 			{
 				source.close();
-				return { write_condition, write_message };
+				return std::unexpected(write_result.error());
 			}
 			source.close();
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 }

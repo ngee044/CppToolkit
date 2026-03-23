@@ -5,7 +5,9 @@
 #include "Converter.h"
 
 #include <format>
+#include <expected>
 
+using namespace Thread;
 using namespace Utilities;
 
 namespace Network
@@ -17,35 +19,35 @@ namespace Network
 	auto FileManager::thread_pool(std::shared_ptr<ThreadPool> pool) -> void { thread_pool_ = pool; }
 
 	auto FileManager::received_files_callback(
-		const std::function<std::tuple<bool, std::optional<std::string>>(const std::vector<std::string>&, const std::vector<std::pair<std::string, std::string>>&)>&
+		const std::function<std::expected<void, std::string>(const std::vector<std::string>&, const std::vector<std::pair<std::string, std::string>>&)>&
 			callback) -> void
 	{
 		callback_ = callback;
 	}
 
-	auto FileManager::start(const std::string& guid, const size_t& count) -> std::tuple<bool, std::optional<std::string>>
+	auto FileManager::start(const std::string& guid, size_t count) -> std::expected<void, std::string>
 	{
 		std::scoped_lock<std::mutex> lock(mutex_);
 
 		auto target = file_conditions_.find(guid);
 		if (target != file_conditions_.end())
 		{
-			return { false, std::format("cannot make file manager due to same guid: {}", guid) };
+			return std::unexpected(std::format("cannot make file manager due to same guid: {}", guid));
 		}
 
 		file_conditions_.insert({ guid, { count, {}, {} } });
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto FileManager::failure(const std::string& guid, const std::string& message) -> std::tuple<bool, std::optional<std::string>>
+	auto FileManager::failure(const std::string& guid, const std::string& message) -> std::expected<void, std::string>
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
 
 		auto target = file_conditions_.find(guid);
 		if (target == file_conditions_.end())
 		{
-			return { false, std::format("cannot find same guid on file manager: {}", guid) };
+			return std::unexpected(std::format("cannot find same guid on file manager: {}", guid));
 		}
 
 		target->second.failures.data.push_back(message);
@@ -54,14 +56,14 @@ namespace Network
 		return check_condition(guid);
 	}
 
-	auto FileManager::success(const std::string& guid, const std::string& message, const std::string& temp_file_path) -> std::tuple<bool, std::optional<std::string>>
+	auto FileManager::success(const std::string& guid, const std::string& message, const std::string& temp_file_path) -> std::expected<void, std::string>
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
 
 		auto target = file_conditions_.find(guid);
 		if (target == file_conditions_.end())
 		{
-			return { false, std::format("cannot find same guid on file manager: {}", guid) };
+			return std::unexpected(std::format("cannot find same guid on file manager: {}", guid));
 		}
 
 		target->second.successes.data.push_back({ message, temp_file_path });
@@ -70,14 +72,14 @@ namespace Network
 		return check_condition(guid);
 	}
 
-	auto FileManager::check_condition(const std::string& guid) -> std::tuple<bool, std::optional<std::string>>
+	auto FileManager::check_condition(const std::string& guid) -> std::expected<void, std::string>
 	{
 		std::scoped_lock<std::mutex> lock(mutex_);
 
 		auto target = file_conditions_.find(guid);
 		if (target == file_conditions_.end())
 		{
-			return { false, std::format("cannot find same guid on file manager: {}", guid) };
+			return std::unexpected(std::format("cannot find same guid on file manager: {}", guid));
 		}
 
 		size_t source_count = target->second.count;
@@ -87,14 +89,16 @@ namespace Network
 
 		if (source_count != target_count)
 		{
-			return { true, std::nullopt };
+			return {};
 		}
 
-		return thread_pool_->push(std::make_shared<Job>(JobPriorities::Low, Converter::to_array(guid),
+		auto push_result = thread_pool_->push(std::make_shared<Job>(JobPriorities::Low, Converter::to_array(guid),
 														std::bind(&FileManager::check_condition_callback, this, std::placeholders::_1), "check_condition_callback"));
+		if (!push_result) { return std::unexpected(push_result.error()); }
+		return {};
 	}
 
-	auto FileManager::check_condition_callback(const std::vector<uint8_t>& guid) -> std::tuple<bool, std::optional<std::string>>
+	auto FileManager::check_condition_callback(const std::vector<uint8_t>& guid) -> std::expected<void, std::string>
 	{
 		std::unique_lock<std::mutex> lock(mutex_);
 
@@ -103,14 +107,14 @@ namespace Network
 		auto target = file_conditions_.find(key);
 		if (target == file_conditions_.end())
 		{
-			return { false, std::format("cannot find same guid on file manager: {}", key) };
+			return std::unexpected(std::format("cannot find same guid on file manager: {}", key));
 		}
 
 		if (callback_ == nullptr)
 		{
 			file_conditions_.erase(target);
 
-			return { true, std::nullopt };
+			return {};
 		}
 
 		auto failure_array = target->second.failures.data;

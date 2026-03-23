@@ -7,6 +7,7 @@
 #include "ArgumentParser.h"
 
 #include <format>
+#include <expected>
 
 #include <string>
 #include <vector>
@@ -120,14 +121,14 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 
 	if (operation_ == "select")
 	{
-		auto [rows, error] = database_->execute_query_and_get_result(query_);
-		if (error.has_value())
+		auto query_result = database_->execute_query_and_get_result(query_);
+		if (!query_result)
 		{
-			Logger::handle().write(LogTypes::Error, std::format("Query execution failed: {}", *error));
+			Logger::handle().write(LogTypes::Error, std::format("Query execution failed: {}", query_result.error()));
 		}
 		else
 		{
-			for (const auto& row : rows.value())
+			for (const auto& row : query_result.value())
 			{
 				std::string row_string;
 				for (const auto& column : row)
@@ -151,16 +152,16 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 
 			if (!output_file_.empty())
 			{
-				write_result_to_file(output_file_, rows.value());
+				write_result_to_file(output_file_, query_result.value());
 			}
 		}
 	}
 	else
 	{
-		auto [success, error] = database_->execute_query(query_);
-		if (!success)
+		auto query_result = database_->execute_query(query_);
+		if (!query_result)
 		{
-			Logger::handle().write(LogTypes::Error, std::format("Query execution failed: {}", *error));
+			Logger::handle().write(LogTypes::Error, std::format("Query execution failed: {}", query_result.error()));
 		}
 		else
 		{
@@ -246,8 +247,8 @@ auto parse_arguments(ArgumentParser& arguments) -> void
 auto read_query_from_file(const std::string& filename) -> std::tuple<std::optional<std::string>, std::optional<std::string>>
 {
 	File file;
-	auto [opened, open_error] = file.open(filename, std::ios::binary | std::ios::in);
-	if (!opened)
+	auto open_result = file.open(filename, std::ios::binary | std::ios::in);
+	if (!open_result)
 	{
 		return { std::nullopt, std::format("Failed to open query file: {}", filename) };
 	}
@@ -264,8 +265,8 @@ auto read_query_from_file(const std::string& filename) -> std::tuple<std::option
 auto write_result_to_file(const std::string& filename, const std::vector<std::vector<std::variant<int, double, std::string, std::vector<std::string>>>>& rows) -> void
 {
 	File file;
-	auto [opened, open_error] = file.open(filename, std::ios::binary | std::ios::out);
-	if (!opened)
+	auto open_result = file.open(filename, std::ios::binary | std::ios::out);
+	if (!open_result)
 	{
 		Logger::handle().write(LogTypes::Error, std::format("Failed to open output file: {}", filename));
 		return;

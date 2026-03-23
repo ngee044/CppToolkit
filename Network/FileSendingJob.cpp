@@ -13,25 +13,25 @@ using namespace Utilities;
 namespace Network
 {
 	FileSendingJob::FileSendingJob(const std::vector<uint8_t>& file_information,
-								   const std::function<std::tuple<bool, std::optional<std::string>>(
-									   const DataModes&, const std::vector<uint8_t>&)>& callback)
+								   const std::function<std::expected<void, std::string>(
+									   DataModes, const std::vector<uint8_t>&)>& callback)
 		: Job(JobPriorities::Low, file_information, "FileSendingJob"), sending_callback_(callback)
 	{
 	}
 
 	FileSendingJob::~FileSendingJob(void) {}
 
-	auto FileSendingJob::working(void) -> std::tuple<bool, std::optional<std::string>>
+	auto FileSendingJob::working(void) -> std::expected<void, std::string>
 	{
 		if (sending_callback_ == nullptr)
 		{
-			return { false, "cannot complete FileSendingJob with null callback" };
+			return std::unexpected("cannot complete FileSendingJob with null callback");
 		}
 
 		auto file_information = get_data();
 		if (file_information.empty())
 		{
-			return { false, "cannot complete FileSendingJob with null data" };
+			return std::unexpected("cannot complete FileSendingJob with null data");
 		}
 
 		size_t index = 0;

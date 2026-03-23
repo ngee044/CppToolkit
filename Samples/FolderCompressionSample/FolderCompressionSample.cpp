@@ -95,10 +95,10 @@ auto compress_folder() -> bool
 		return false;
 	}
 
-	auto [compress_condition, compress_message] = Folder::compression(compressed_file, source_folder, true, file_extensions_);
-	if (!compress_condition)
+	auto compress_result = Folder::compression(compressed_file, source_folder, true, file_extensions_);
+	if (!compress_result)
 	{
-		Logger::handle().write(LogTypes::Error, std::format("Cannot compress folder: {}", compress_message.value()));
+		Logger::handle().write(LogTypes::Error, std::format("Cannot compress folder: {}", compress_result.error()));
 		return false;
 	}
 
@@ -120,10 +120,10 @@ auto decompress_file() -> bool
 		return false;
 	}
 
-	auto [decompress_condition, decompress_message] = Folder::decompression(destination_folder, compressed_file);
-	if (!decompress_condition)
+	auto decompress_result = Folder::decompression(destination_folder, compressed_file);
+	if (!decompress_result)
 	{
-		Logger::handle().write(LogTypes::Error, std::format("Cannot decompress file: {}", decompress_message.value()));
+		Logger::handle().write(LogTypes::Error, std::format("Cannot decompress file: {}", decompress_result.error()));
 		return false;
 	}
 

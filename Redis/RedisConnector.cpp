@@ -20,7 +20,7 @@ namespace Redis
 
 	RedisConnector::~RedisConnector() { disconnect(); }
 
-	auto RedisConnector::connect(void) -> std::tuple<bool, std::optional<std::string>>
+	auto RedisConnector::connect(void) -> std::expected<void, std::string>
 	{
 		try
 		{
@@ -36,35 +36,35 @@ namespace Redis
 
 			redis_ = std::make_shared<sw::redis::Redis>(connection_options_);
 
-			return { true, std::nullopt };
+			return {};
 		}
 		catch (const sw::redis::Error& err)
 		{
 			redis_.reset();
 
-			return { false, std::format("cannot connect: {}", err.what()) };
+			return std::unexpected(std::format("cannot connect: {}", err.what()));
 		}
 	}
 
-	auto RedisConnector::disconnect(void) -> std::tuple<bool, std::optional<std::string>>
+	auto RedisConnector::disconnect(void) -> std::expected<void, std::string>
 	{
 		try
 		{
 			if (redis_ == nullptr)
 			{
-				return { true, std::nullopt };
+				return {};
 			}
 
 			redis_->subscriber().unsubscribe();
 			redis_.reset();
 
-			return { true, std::nullopt };
+			return {};
 		}
 		catch (const std::exception& err)
 		{
 			redis_.reset();
 
-			return { false, std::format("cannot disconnect: {}", err.what()) };
+			return std::unexpected(std::format("cannot disconnect: {}", err.what()));
 		}
 	}
 

@@ -5,6 +5,7 @@
 #include <variant>
 #include <tuple>
 #include <optional>
+#include <expected>
 
 namespace Database
 {
@@ -21,9 +22,9 @@ namespace Database
 		DatabaseInterface() = default;
 		virtual ~DatabaseInterface() = default;
 
-		virtual auto execute_query(const std::string& sql) -> std::tuple<bool, std::optional<std::string>> = 0;
+		virtual auto execute_query(const std::string& sql) -> std::expected<void, std::string> = 0;
 		virtual auto execute_query_and_get_result(const std::string& sql)
-			-> std::tuple<std::optional<std::vector<std::vector<std::variant<int, double, std::string, std::vector<std::string>>>>>, std::optional<std::string>>
+			-> std::expected<std::vector<std::vector<std::variant<int, double, std::string, std::vector<std::string>>>>, std::string>
 			= 0;
 	};
 }

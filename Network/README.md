@@ -5,7 +5,7 @@
 ``` mermaid
 classDiagram
 
-class ConnectCondition{
+class ConnectConditions{
 	<<enumeration>>
 	None
 	Waiting
@@ -21,88 +21,74 @@ class DataModes{
 	Connection
 }
 
+class FileModes{
+	<<enumeration>>
+	Start
+	Success
+	Failure
+}
+
+class SessionState{
+	<<enumeration>>
+	Create
+	Handshaking
+	Authenticated
+	InGame
+	Closing
+	Closed
+}
+
 class DataHandler {
-	+ DataHandler(const uint16_t&, const uint16_t&, const uint16_t&)
+	+ DataHandler(uint16_t, uint16_t, uint16_t)
 	+ ~DataHandler(void)*
 
-	+ id(const u32string& new_id) void
-	+ id(const u16string& new_id) void
-	+ id(const wstring& new_id) void
 	+ id(const string& new_id) void
 
 	+ id(void) const string
 	+ sub_id(void) const string
 
-	+ start_code(const char&, const char&, const char&, const char&) void
-	+ end_code(const char&, const char&, const char&, const char&) void
+	+ start_code(char, char, char, char) void
+	+ end_code(char, char, char, char) void
 
-	+ condition(const ConnectConditions&, const bool&) void
+	+ condition(ConnectConditions, bool) void
 	+ condition(void) const ConnectConditions
 
-	+ send_binary(const vector~uint8_t~&)bool
+	+ send_binary(const vector~uint8_t~&, const string&) expected~void, string~
+	+ send_message(const string&) expected~void, string~
+	+ send_files(const vector~pair~string, string~~&) expected~void, string~
 
-	+ send_message(const u32string&) bool
-	+ send_message(const u16string&) bool
-	+ send_message(const wstring&) bool
-	+ send_message(const string&) bool
-
-	+ send_file(const u32string&) bool
-	+ send_file(const u16string&) bool
-	+ send_file(const wstring&) bool
-	+ send_file(const string&) bool
-
-	# encrypt_mode(const bool&) void
-
-	# key(const u32string&) void
-	# key(const u16string&) void
-	# key(const wstring&) void
-	# key(const string&) void
-	# key(void) const string
-
-	# iv(const u32string&) void
-	# iv(const u16string&) void
-	# iv(const wstring&) void
-	# iv(const string&) void
-	# iv(void) const string
-
-	# sub_id(const u32string&) void
-	# sub_id(const u16string&) void
-	# sub_id(const wstring&) void
 	# sub_id(const string&) void
 
+	# set_self_guard(const weak_ptr~void~&) void
+	# alive(void) bool
+	# strand(void) shared_ptr~strand~
+
 	# create_thread_pool(const string&) void
-	# thread_pool(void) shared_ptr~ThreadPool~
+	# thread_pool(void) shared_ptr~Thread::ThreadPool~
 	# destroy_thread_pool(void) void
 
-	# buffer_size(const size_t&) void
+	# buffer_size(size_t) void
 	# buffer_size(void) const size_t
 
 	# socket(shared_ptr~socket~) void
 	# socket(void) shared_ptr~socket~
 	# destroy_socket(void) void
 
-	# sub_priorities_for_high(void) vector~JobPriorities~&
-	# sub_priorities_for_normal(void) vector~JobPriorities~&
-	# sub_priorities_for_low(void) vector~JobPriorities~&
+	# send(DataModes, const vector~uint8_t~&) expected~void, string~
 
-	# send(const DataModes&, const vector~uint8_t~&) bool
+	# read_start_code(uint8_t) void
+	# read_length_code(void) void
+	# read_data(size_t) void
+	# read_end_code(uint8_t) void
 
-	# read_start_code(const uint8_t&) void
-	# read_legnth_code(void) void
-	# read_data(const size_t&) void
-	# read_end_code(const uint8_t&) void
-  
-	# disconnected(void)* void
-	# received_message(const DataModes& mode, const vector~uint8_t~& data)* bool
+	# disconnected(bool)* void
+	# received_data(DataModes, const vector~uint8_t~&)* expected~void, string~
 
-	- create_receiving_buffers(const size_t& size) void
+	- create_receiving_buffers(size_t) void
 	- destroy_receiving_buffers(void) void
 
-	- compress_message(const vector~uint8_t~&) bool
-	- decompress_message(const vector~uint8_t~&) bool
-
-	- encrypt_message(const vector~uint8_t~&) bool
-	- decrypt_message(const vector~uint8_t~&) bool
+	- compress_message(const vector~uint8_t~&) expected~void, string~
+	- decompress_message(const vector~uint8_t~&) expected~void, string~
 
 	# mutex mutex_
 
@@ -114,17 +100,10 @@ class DataHandler {
 	- uint16_t normal_priority_count_
 	- uint16_t low_priority_count_
 
-	- string key_
-	- string iv_
-
-	- bool encrypt_mode_
-
-	- vector~JobPriorities~ sub_priorities_for_high_
-	- vector~JobPriorities~ sub_priorities_for_normal_
-	- vector~JobPriorities~ sub_priorities_for_low_
-
-	- shared_ptr~ThreadPool~ thread_pool_
+	- shared_ptr~Thread::ThreadPool~ thread_pool_
 	- shared_ptr~socket~ socket_
+	- shared_ptr~strand~ strand_
+	- weak_ptr~void~ self_guard_
 
 	- uint8_t* receiving_buffers_
 	- vector~uint8_t~ start_code_tag_
@@ -133,193 +112,255 @@ class DataHandler {
 }
 
 class NetworkClient {
-	+ NetworkClient(const u32string&, const uint16_t&, const uint16_t&, const uint16_t&);
-	+ NetworkClient(const u16string&, const uint16_t&, const uint16_t&, const uint16_t&);
-	+ NetworkClient(const wstring&, const uint16_t&, const uint16_t&, const uint16_t&);
-	+ NetworkClient(const string&, const uint16_t&, const uint16_t&, const uint16_t&);
+	+ NetworkClient(const string&, uint16_t, uint16_t, uint16_t);
 	+ ~NetworkClient(void)*
 
-	+ get_ptr(void) shared_ptr~NetworkClient~ 
-  
-	+ start(const u32string&, const uint16_t&) void
-	+ start(const u16string&, const uint16_t&) void
-	+ start(const wstring&, const uint16_t&) void
-	+ start(const string&, const uint16_t&) void
-	+ wait_stop(const uint32_t&) void
+	+ get_ptr(void) shared_ptr~NetworkClient~
+
+	+ auto_pong(bool) void
+
+	+ start(const string&, uint16_t, size_t) bool
+	+ wait_stop(uint32_t) void
 	+ stop(void) void
 
-	+ register_key(const u32string&) void
-	+ register_key(const u16string&) void
-	+ register_key(const wstring&) void
 	+ register_key(const string&) void
-  
-	+ received_connection_callback(const function~bool(const bool&)~&) void
-	+ received_binary_callback(const function~bool(const vector~uint8_t~&)~&) void
-	+ received_message_callback(const function~bool(const string&)~&) void
-	+ received_file_callback(const function~bool(const string&, const vector~uint8_t~&)~&) void
 
-	# disconnected(void) void
-	# received_message(const DataModes& mode, const vector~uint8_t~& data) bool
+	+ received_connection_callback(const function~expected~void, string~(bool, bool)~&) void
+	+ received_binary_callback(const function~expected~void, string~(const string&, const vector~uint8_t~&)~&) void
+	+ received_message_callback(const function~expected~void, string~(const string&)~&) void
+	+ received_file_callback(const function~expected~void, string~(const string&, const vector~uint8_t~&)~&) void
+	+ received_files_callback(const function~expected~void, string~(const vector~string~&, const vector~pair~string, string~~&)~&) void
+
+	# disconnected(bool) void
+	# received_data(DataModes, const vector~uint8_t~&) expected~void, string~
 	# request_connection(void) void
 
 	- create_io_context(void) void
 	- destroy_io_context(void) void
 
-	- create_socket(const string& ip, const uint16_t& port) bool
-	- run(void) bool
+	- create_socket(const string&, uint16_t) bool
+	- run(void) expected~void, string~
 
-	- binary_message(const vector~uint8_t~& data) bool
-	- normal_message(const vector~uint8_t~& data) bool
-	- file_message(const vector~uint8_t~& data) bool
-	- connection_message(const vector~uint8_t~& data) bool
+	- received_connection(const vector~uint8_t~&) expected~void, string~
+	- received_binary(const vector~uint8_t~&) expected~void, string~
+	- received_message(const vector~uint8_t~&) expected~void, string~
+	- received_file(const vector~uint8_t~&) expected~void, string~
+	- received_files(const vector~string~&, const vector~pair~string, string~~&) expected~void, string~
 
 	- string server_id_
 	- string registered_key_
 
+	- unique_ptr~FileManager~ file_manager_
+
 	- shared_ptr~io_context~ io_context_
-	- map~DataModes, const function~bool(const vector~uint8_t~&)~~ message_handlers_
+	- map~DataModes, const function~expected~void, string~(const vector~uint8_t~&)~~ message_handlers_
 
 	- future~bool~ future_status_
-	- optional~promise~bool~~ promise_status_
+	- unique_ptr~promise~bool~~ promise_status_
 
-	- function~bool(const bool&)~ received_connection_callback_
-	- function~bool(const vector~uint8_t~&)~ received_binary_callback_
-	- function~bool(const string&)~ received_message_callback_
-	- function~bool(const string&, const vector~uint8_t~&)~ received_file_callback_
+	- function~expected~void, string~(bool, bool)~ received_connection_callback_
+	- function~expected~void, string~(const string&)~ received_message_callback_
+	- function~expected~void, string~(const string&, const vector~uint8_t~&)~ received_file_callback_
+	- function~expected~void, string~(const string&, const vector~uint8_t~&)~ received_binary_callback_
+	- function~expected~void, string~(const vector~string~&, const vector~pair~string, string~~&)~ received_files_callback_
+
+	- bool auto_pong_enabled_
 }
 
 class NetworkSession {
-	+ NetworkSession(const string&, const bool&, const uint16_t&, const uint16_t&, const uint16_t&);
+	+ NetworkSession(const string&, uint16_t, uint16_t, uint16_t, bool, uint32_t);
 	+ ~NetworkSession(void)*
 
+	+ session_id(void) SessionId
+	+ session_id(SessionId) void
+	+ state(void) SessionState
 	+ get_ptr(void) shared_ptr~NetworkSession~
-  
-	+ start(shared_ptr~socket~ ) void
+
+	+ heartbeat(bool, uint32_t) void
+	+ set_max_missed_heartbeats(uint32_t) void
+
+	+ start(shared_ptr~socket~, size_t) void
 	+ stop(void) void
-  
-	+ register_key(const string& key) void
-  
-	+ received_connection_callback(const function~bool(const vector~uint8_t~&)~&) void
-	+ received_binary_callback(const function~bool(const string&, const string&, const vector~uint8_t~&)~&) void
-	+ received_message_callback(const function~bool(const string&, const string&, const string&)~&) void
-	+ received_file_callback(const function~bool(const string&, const string&, const string&, const vector~uint8_t~&)~&) void
 
-	# disconnected(void) void
-	# received_message(const DataModes& mode, const vector~uint8_t~& data) bool
+	+ register_key(const string&) void
 
-	- binary_message(const vector~uint8_t~& data) bool
-	- normal_message(const vector~uint8_t~& data) bool
-	- file_message(const vector~uint8_t~& data) bool
-	- connection_message(const vector~uint8_t~& data) bool
+	+ received_connection_callback(const function~expected~void, string~(const vector~uint8_t~&)~&) void
+	+ received_binary_callback(const function~expected~void, string~(const string&, const string&, const string&, const vector~uint8_t~&)~&) void
+	+ received_message_callback(const function~expected~void, string~(const string&, const string&, const string&)~&) void
+	+ received_file_callback(const function~expected~void, string~(const string&, const string&, const string&, const vector~uint8_t~&)~&) void
+	+ received_files_callback(const function~expected~void, string~(const string&, const string&, const vector~string~&, const vector~pair~string, string~~&)~&) void
 
-	- response_connection(const bool& condition) bool
+	# disconnected(bool) void
+	# received_data(DataModes, const vector~uint8_t~&) expected~void, string~
 
+	- received_connection(const vector~uint8_t~&) expected~void, string~
+	- received_binary(const vector~uint8_t~&) expected~void, string~
+	- received_message(const vector~uint8_t~&) expected~void, string~
+	- received_file(const vector~uint8_t~&) expected~void, string~
+	- received_files(const vector~string~&, const vector~pair~string, string~~&) expected~void, string~
+
+	- response_connection(bool) expected~void, string~
+	- start_heartbeat(void) void
+	- stop_heartbeat(void) void
+
+	- SessionId session_id_
+	- SessionState state_
 	- string server_id_
 	- string registered_key_
-	- map~DataModes, const function~bool(const vector~uint8_t~&)~~ message_handlers_
+	- map~DataModes, const function~expected~void, string~(const vector~uint8_t~&)~~ message_handlers_
 
-	- function~bool(const vector~uint8_t~&)~ received_connection_callback_
-	- function~bool(const string&, const string&, const vector~uint8_t~&)~ received_binary_callback_
-	- function~bool(const string&, const string&, const string&)~ received_message_callback_
-	- function~bool(const string&, const string&, const string&, const vector~uint8_t~&)~ received_file_callback_
+	- unique_ptr~FileManager~ file_manager_
+
+	- shared_ptr~steady_timer~ handshake_timer_
+	- atomic~bool~ stopped_
+
+	- bool heartbeat_enabled_
+	- uint32_t heartbeat_interval_sec_
+	- shared_ptr~steady_timer~ heartbeat_timer_
+
+	- time_point last_pong_at_
+	- uint32_t missed_heartbeats_
+	- uint32_t max_missed_heartbeats_
+
+	- function~expected~void, string~(const vector~uint8_t~&)~ received_connection_callback_
+	- function~expected~void, string~(const string&, const string&, const string&)~ received_message_callback_
+	- function~expected~void, string~(const string&, const string&, const string&, const vector~uint8_t~&)~ received_file_callback_
+	- function~expected~void, string~(const string&, const string&, const string&, const vector~uint8_t~&)~ received_binary_callback_
+	- function~expected~void, string~(const string&, const string&, const vector~string~&, const vector~pair~string, string~~&)~ received_files_callback_
 }
 
 class NetworkServer {
-	+ NetworkServer(const u32string&, const uint16_t&, const uint16_t&, const uint16_t&);
-	+ NetworkServer(const u16string&, const uint16_t&, const uint16_t&, const uint16_t&);
-	+ NetworkServer(const wstring&, const uint16_t&, const uint16_t&, const uint16_t&);
-	+ NetworkServer(const string&, const uint16_t&, const uint16_t&, const uint16_t&);
+	+ NetworkServer(const string&, uint16_t, uint16_t, uint16_t);
 	+ ~NetworkServer(void)*
-	
+
 	+ get_ptr(void) shared_ptr~NetworkServer~
 
-	+ id(const u32string& new_id) void
-	+ id(const u16string& new_id) void
-	+ id(const wstring& new_id) void
-	+ id(const string& new_id) void
+	+ id(const string&) void
 
 	+ id(void) const string
 
-	+ encrypt_mode(const bool&) void
-	+ encrypt_mode(void) const bool
-
-	+ register_key(const u32string&) void
-	+ register_key(const u16string&) void
-	+ register_key(const wstring&) void
 	+ register_key(const string&) void
-	
-	+ start(const uint16_t&) void
-	+ send_binary(const vector~uint8_t~&, const string&, const string&) bool
-	+ send_message(const string&, const string&, const string&) bool
-	+ send_file(const string&, const string&, const string&) bool
-	+ wait_stop(const uint32_t&) void
-	+ stop(void) void
-	
-	+ received_connection_callback(const function~bool(const string&, const string&, const bool&)~&) void
-	+ received_binary_callback(const function~bool(const string&, const string&, const vector~uint8_t~&)~&) void
-	+ received_message_callback(const function~bool(const string&, const string&, const string&)~&) void
-	+ received_file_callback(const function~bool(const string&, const string&, const string&, const vector~uint8_t~&)~&) void
-	
-	# received_connection(const vector~uint8_t~&) bool
-	# received_binary(const string&, const string&, const vector~uint8_t~&) bool
-	# received_message(const string&, const string&, const string&) bool
-	# received_file(const string&, const string&, const string&, const vector~uint8_t~&) bool
-	
-	- create_io_context(const uint16_t& port) void
+
+	+ heartbeat_mode(bool, uint32_t) void
+	+ heartbeat_tolerance(uint32_t) void
+	+ maintenance_interval(uint32_t) void
+
+	+ start(uint16_t, size_t) expected~void, string~
+	+ send_binary(const vector~uint8_t~&, const string&, const string&, const string&) expected~void, string~
+	+ send_message(const string&, const string&, const string&) expected~void, string~
+	+ send_files(const vector~pair~string, string~~&, const string&, const string&) expected~void, string~
+	+ wait_stop(uint32_t) expected~void, string~
+	+ stop(void) expected~void, string~
+
+	+ received_connection_callback(const function~expected~void, string~(const string&, const string&, bool)~&) void
+	+ received_binary_callback(const function~expected~void, string~(const string&, const string&, const string&, const vector~uint8_t~&)~&) void
+	+ received_message_callback(const function~expected~void, string~(const string&, const string&, const string&)~&) void
+	+ received_file_callback(const function~expected~void, string~(const string&, const string&, const string&, const vector~uint8_t~&)~&) void
+	+ received_files_callback(const function~expected~void, string~(const string&, const string&, const vector~string~&, const vector~pair~string, string~~&)~&) void
+
+	+ drop_session(const string&, const string&) void
+	+ drop_sessions(const string&) void
+
+	# received_connection(const vector~uint8_t~&) expected~void, string~
+	# received_binary(const string&, const string&, const string&, const vector~uint8_t~&) expected~void, string~
+	# received_message(const string&, const string&, const string&) expected~void, string~
+	# received_file(const string&, const string&, const string&, const vector~uint8_t~&) expected~void, string~
+	# received_files(const string&, const string&, const vector~string~&, const vector~pair~string, string~~&) expected~void, string~
+
+	- create_io_context(uint16_t) bool
 	- destroy_io_context(void) void
-	
+
+	- create_thread_pool(void) void
+	- destroy_thread_pool(void) void
+
+	- drop_sessions(void) void
+
+	- start_main_job(void) void
+
 	- wait_connection(void) void
-	- received_connection_handler(const vector~uint8_t~& condition) bool
-	- run(void) bool
-	
+	- received_connection_handler(const vector~uint8_t~&) expected~void, string~
+	- run(void) expected~void, string~
+
+	- start_maintenance_job(void) void
+	- stop_maintenance_job(void) void
+
 	- string id_
 	- string registered_key_
+
+	- size_t buffer_size_
 
 	- uint16_t high_priority_count_
 	- uint16_t normal_priority_count_
 	- uint16_t low_priority_count_
-	
-	- bool encrypt_mode_
+
+	- bool heartbeat_enabled_
+	- uint32_t heartbeat_interval_sec_
 
 	- mutex mutex_
 	- vector~shared_ptr~NetworkSession~~ sessions_
-	
+
 	- future~bool~ future_status_
-	- optional~promise~bool~~ promise_status_
-	
-	- shared_ptr~ThreadPool~ thread_pool_
+	- unique_ptr~promise~bool~~ promise_status_
+
+	- shared_ptr~Thread::ThreadPool~ thread_pool_
 	- shared_ptr~io_context~ io_context_
 	- shared_ptr~acceptor~ acceptor_
-	
-	- function~bool(const string&, const string&, const bool&)~ received_connection_callback_
-	- function~bool(const string&, const string&, const vector~uint8_t~&)~ received_binary_callback_
-	- function~bool(const string&, const string&, const string&)~ received_message_callback_
-	- function~bool(const string&, const string&, const string&, const vector~uint8_t~&)~ received_file_callback_
+	- shared_ptr~steady_timer~ maintenance_timer_
+
+	- uint32_t maintenance_interval_sec_
+	- uint32_t heartbeat_missed_tolerance_
+
+	- function~expected~void, string~(const string&, const string&, bool)~ received_connection_callback_
+	- function~expected~void, string~(const string&, const string&, const string&)~ received_message_callback_
+	- function~expected~void, string~(const string&, const string&, const string&, const vector~uint8_t~&)~ received_file_callback_
+	- function~expected~void, string~(const string&, const string&, const string&, const vector~uint8_t~&)~ received_binary_callback_
+	- function~expected~void, string~(const string&, const string&, const vector~string~&, const vector~pair~string, string~~&)~ received_files_callback_
 }
 
 class SendingJob{
-	+ SendingJob(shared_ptr~socket~, const vector~uint8_t~&, const vector~uint8_t~&, const vector~uint8_t~&)
-	+ SendingJob(void)*
+	+ SendingJob(shared_ptr~socket~, const vector~uint8_t~&, const vector~uint8_t~&, const vector~uint8_t~&, size_t)
+	+ ~SendingJob(void)*
 
-	- working(void) bool
+	- working(void) expected~void, string~
 
-	- send_start(void) bool
-	- send_length(const uint32_t&) bool
-	- send_data(const vector~uint8_t~&) bool
-	- send_end(void) bool
+	- send_start(void) expected~void, string~
+	- send_length(const uint64_t&) expected~void, string~
+	- send_data(const vector~uint8_t~&) expected~void, string~
+	- send_end(void) expected~void, string~
 
 	- vector~uint8_t~ start_code_
 	- vector~uint8_t~ end_code_
+	- size_t buffer_size_
 	- shared_ptr~socket~ socket_
 }
 
 class ReceivingJob{
-	+ ReceivingJob(shared_ptr~socket~, const vector~uint8_t~&, const vector~uint8_t~&, const vector~uint8_t~&)
-	+ ReceivingJob(void)*
+	+ ReceivingJob(const vector~uint8_t~&, const function~expected~void, string~(DataModes, const vector~uint8_t~&)~&)
+	+ ~ReceivingJob(void)*
 
-	- working(void) bool
+	- working(void) expected~void, string~
 
-	- function~bool(const DataModes&, const vector~uint8_t~&)~ receiving_callback_
+	- function~expected~void, string~(DataModes, const vector~uint8_t~&)~ receiving_callback_
+}
+
+class ConnectionJob{
+	+ ConnectionJob(bool, bool, const function~expected~void, string~(bool, bool)~&)
+	+ ~ConnectionJob(void)*
+
+	- working(void) expected~void, string~
+
+	- bool condition_
+	- bool by_itself_
+	- function~expected~void, string~(bool, bool)~ connection_callback_
+}
+
+class FileSendingJob{
+	+ FileSendingJob(const vector~uint8_t~&, const function~expected~void, string~(DataModes, const vector~uint8_t~&)~&)
+	+ ~FileSendingJob(void)*
+
+	- working(void) expected~void, string~
+
+	- function~expected~void, string~(DataModes, const vector~uint8_t~&)~ sending_callback_
 }
 
 DataHandler <|-- NetworkClient
@@ -328,12 +369,14 @@ DataHandler <|-- NetworkSession
 DataModes o-- DataHandler
 SendingJob o-- DataHandler
 ReceivingJob o-- DataHandler
+ConnectionJob o-- DataHandler
+FileSendingJob o-- DataHandler
 
-ConnectCondition o-- DataHandler
-ConnectCondition o-- NetworkServer
+ConnectConditions o-- DataHandler
+ConnectConditions o-- NetworkServer
 
 NetworkServer --o NetworkSession
-``` 
+```
 
 NetworkServer 사용법
 ``` C++
@@ -356,7 +399,7 @@ using namespace Utilities;
 auto register_signal(void) -> void;
 auto signal_callback(int32_t signum) -> void;
 bool received_connection(const std::string& id, const std::string& sub_id, const bool& condition);
-bool received_message(const std::string& id, const std::string& sub_id, const std::string& message); 
+bool received_message(const std::string& id, const std::string& sub_id, const std::string& message);
 auto parse_arguments(ArgumentParser& arguments) -> void;
 
 std::shared_ptr<NetworkServer> server_ = nullptr;
@@ -378,7 +421,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	Logger::handle().file_mode(write_file_);
 	Logger::handle().console_mode(write_console_);
 	Logger::handle().log_root(arguments.program_folder());
-	
+
 	Logger::handle().start("NetworkServerSample");
 
 	register_signal();
@@ -386,11 +429,11 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	server_ = std::make_shared<NetworkServer>("SampleServer", high_priority_count_, normal_priority_count_, low_priority_count_);
 	server_->received_connection_callback(&received_connection);
 	server_->received_message_callback(&received_message);
-	
+
 	server_->start(server_port_);
 	server_->wait_stop();
 	server_.reset();
-	
+
 	Logger::handle().stop();
 	Logger::destroy();
 
@@ -464,13 +507,13 @@ auto parse_arguments(ArgumentParser& arguments) -> void
 	{
 		low_priority_count_ = ushort_target.value();
 	}
-	
+
 	auto int_target = arguments.to_int("--logging_level");
 	if (int_target != std::nullopt)
 	{
 		type_ = (LogTypes)int_target.value();
 	}
-	
+
 	auto bool_target = arguments.to_bool("--write_console_log");
 	if (bool_target != std::nullopt && *bool_target)
 	{
@@ -483,7 +526,7 @@ auto parse_arguments(ArgumentParser& arguments) -> void
 		write_file_ = bool_target.value();
 	}
 }
-``` 
+```
 
 NetworkClient 사용법
 ``` C++
@@ -506,7 +549,7 @@ using namespace Utilities;
 auto register_signal(void) -> void;
 auto signal_callback(int32_t signum) -> void;
 bool received_connection(const bool& condition);
-bool received_message(const std::string& message); 
+bool received_message(const std::string& message);
 auto parse_arguments(ArgumentParser& arguments) -> void;
 
 std::shared_ptr<NetworkClient> client_ = nullptr;
@@ -529,7 +572,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	Logger::handle().file_mode(write_file_);
 	Logger::handle().console_mode(write_console_);
 	Logger::handle().log_root(arguments.program_folder());
-	
+
 	Logger::handle().start("NetworkClientSample");
 
 	register_signal();
@@ -537,7 +580,7 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	client_ = std::make_shared<NetworkClient>("SampleClient", high_priority_count_, normal_priority_count_, low_priority_count_);
 	client_->received_connection_callback(&received_connection);
 	client_->received_message_callback(&received_message);
-	
+
 	client_->start(server_ip_, server_port_);
 	client_->wait_stop();
 	client_.reset();
@@ -630,13 +673,13 @@ auto parse_arguments(ArgumentParser& arguments) -> void
 	{
 		low_priority_count_ = ushort_target.value();
 	}
-	
+
 	auto int_target = arguments.to_int("--logging_level");
 	if (int_target != std::nullopt)
 	{
 		type_ = (LogTypes)int_target.value();
 	}
-	
+
 	auto bool_target = arguments.to_bool("--write_console_log");
 	if (bool_target != std::nullopt && *bool_target)
 	{
@@ -649,4 +692,4 @@ auto parse_arguments(ArgumentParser& arguments) -> void
 		write_file_ = bool_target.value();
 	}
 }
-``` 
+```
