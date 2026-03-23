@@ -13,11 +13,11 @@ namespace Redis
 
 	RedisClient::~RedisClient() { connector_.reset(); }
 
-	auto RedisClient::connect() -> std::tuple<bool, std::optional<std::string>>
+	auto RedisClient::connect() -> std::expected<void, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { false, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		return connector_->connect();
@@ -33,36 +33,36 @@ namespace Redis
 		return connector_->is_connected();
 	}
 
-	auto RedisClient::disconnect() -> std::tuple<bool, std::optional<std::string>>
+	auto RedisClient::disconnect() -> std::expected<void, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { false, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		return connector_->disconnect();
 	}
 
-	auto RedisClient::set(const std::string& key, const std::string& value, long ttl_seconds) -> std::tuple<bool, std::optional<std::string>>
+	auto RedisClient::set(const std::string& key, const std::string& value, long ttl_seconds) -> std::expected<void, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { false, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { false, std::format("failed to set value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to set value: {}", connect_result.error()));
 			}
 		}
 
 		auto transaction = connector_->get_transaction();
 		if (transaction == nullptr)
 		{
-			return { false, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -76,47 +76,47 @@ namespace Redis
 
 			if (!results.get<bool>(0))
 			{
-				return { false, "failed to set value." };
+				return std::unexpected("failed to set value.");
 			}
 
 			if (ttl_seconds > 0)
 			{
 				if (!results.get<bool>(1))
 				{
-					return { false, "failed to set TTL." };
+					return std::unexpected("failed to set TTL.");
 				}
 			}
 
-			return { true, std::nullopt };
+			return {};
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { false, std::format("failed to set value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to set value {}: {}", key, err.what()));
 		}
 	}
 
-	auto RedisClient::get(const std::string& key) -> std::tuple<std::string, std::optional<std::string>>
+	auto RedisClient::get(const std::string& key) -> std::expected<std::string, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { "", "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { "", std::format("failed to get value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to get value: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { "", "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -124,39 +124,39 @@ namespace Redis
 			auto result = redis->get(key);
 			if (!result.has_value())
 			{
-				return { "", std::format("failed to get value {}", key) };
+				return std::unexpected(std::format("failed to get value {}", key));
 			}
 
-			return { result.value(), std::nullopt };
+			return result.value();
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { "", std::format("failed to get value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to get value {}: {}", key, err.what()));
 		}
 	}
 
-	auto RedisClient::lpush(const std::string& key, const std::vector<std::string>& values, long ttl_seconds) -> std::tuple<long long, std::optional<std::string>>
+	auto RedisClient::lpush(const std::string& key, const std::vector<std::string>& values, long ttl_seconds) -> std::expected<long long, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { 0, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { 0, std::format("failed to lpush value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to lpush value: {}", connect_result.error()));
 			}
 		}
 
 		auto transaction = connector_->get_transaction();
 		if (transaction == nullptr)
 		{
-			return { false, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -171,47 +171,47 @@ namespace Redis
 			auto list_length = results.get<long long>(0);
 			if (list_length < 0)
 			{
-				return { 0, std::format("failed to lpush value {}", key) };
+				return std::unexpected(std::format("failed to lpush value {}", key));
 			}
 
 			if (ttl_seconds > 0)
 			{
 				if (!results.get<bool>(1))
 				{
-					return { 0, std::format("failed to set TTL for {}", key) };
+					return std::unexpected(std::format("failed to set TTL for {}", key));
 				}
 			}
 
-			return { list_length, std::nullopt };
+			return list_length;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { 0, std::format("failed to lpush value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to lpush value {}: {}", key, err.what()));
 		}
 	}
 
-	auto RedisClient::rpush(const std::string& key, const std::vector<std::string>& values, long ttl_seconds) -> std::tuple<long long, std::optional<std::string>>
+	auto RedisClient::rpush(const std::string& key, const std::vector<std::string>& values, long ttl_seconds) -> std::expected<long long, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { 0, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { 0, std::format("failed to rpush value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to rpush value: {}", connect_result.error()));
 			}
 		}
 
 		auto transaction = connector_->get_transaction();
 		if (transaction == nullptr)
 		{
-			return { false, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -226,47 +226,47 @@ namespace Redis
 			auto list_length = results.get<long long>(0);
 			if (list_length < 0)
 			{
-				return { 0, std::format("failed to rpush value {}", key) };
+				return std::unexpected(std::format("failed to rpush value {}", key));
 			}
 
 			if (ttl_seconds > 0)
 			{
 				if (!results.get<bool>(1))
 				{
-					return { 0, std::format("failed to set TTL for {}", key) };
+					return std::unexpected(std::format("failed to set TTL for {}", key));
 				}
 			}
 
-			return { list_length, std::nullopt };
+			return list_length;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { 0, std::format("failed to rpush value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to rpush value {}: {}", key, err.what()));
 		}
 	}
 
-	auto RedisClient::lpop(const std::string& key) -> std::tuple<std::optional<std::string>, std::optional<std::string>>
+	auto RedisClient::lpop(const std::string& key) -> std::expected<std::optional<std::string>, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { std::nullopt, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { std::nullopt, std::format("failed to lpop value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to lpop value: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { std::nullopt, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		std::optional<std::string> value;
@@ -278,32 +278,32 @@ namespace Redis
 		{
 			connector_->disconnect();
 
-			return { std::nullopt, std::format("failed to lpop value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to lpop value {}: {}", key, err.what()));
 		}
 
-		return { value, std::nullopt };
+		return value;
 	}
 
-	auto RedisClient::rpop(const std::string& key) -> std::tuple<std::optional<std::string>, std::optional<std::string>>
+	auto RedisClient::rpop(const std::string& key) -> std::expected<std::optional<std::string>, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { std::nullopt, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { std::nullopt, std::format("failed to rpop value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to rpop value: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { std::nullopt, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -311,39 +311,39 @@ namespace Redis
 			auto value = redis->rpop(key);
 			if (!value.has_value())
 			{
-				return { std::nullopt, std::format("failed to rpop value {}", key) };
+				return std::unexpected(std::format("failed to rpop value {}", key));
 			}
 
-			return { value, std::nullopt };
+			return value;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { std::nullopt, std::format("failed to rpop value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to rpop value {}: {}", key, err.what()));
 		}
 	}
 
-	auto RedisClient::lrange(const std::string& key, long start, long stop) -> std::tuple<std::vector<std::string>, std::optional<std::string>>
+	auto RedisClient::lrange(const std::string& key, long start, long stop) -> std::expected<std::vector<std::string>, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { std::vector<std::string>{}, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { std::vector<std::string>{}, std::format("failed to lrange value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to lrange value: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { std::vector<std::string>{}, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -351,36 +351,36 @@ namespace Redis
 			std::vector<std::string> values;
 			redis->lrange(key, start, stop, std::back_inserter(values));
 
-			return { values, std::nullopt };
+			return values;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { std::vector<std::string>{}, std::format("failed to lrange value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to lrange value {}: {}", key, err.what()));
 		}
 	}
 
-	auto RedisClient::blpop(const std::string& key, const std::optional<long>& timeout_seconds) -> std::tuple<std::optional<std::string>, std::optional<std::string>>
+	auto RedisClient::blpop(const std::string& key, const std::optional<long>& timeout_seconds) -> std::expected<std::optional<std::string>, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { std::nullopt, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { std::nullopt, std::format("failed to blpop value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to blpop value: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { std::nullopt, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -388,41 +388,41 @@ namespace Redis
 			auto result = redis->blpop(key, timeout_seconds.value_or(0));
 			if (result)
 			{
-				return { result->second, std::nullopt };
+				return std::optional<std::string>(result->second);
 			}
 
-			return { std::nullopt, std::format("failed to blpop value {}", key) };
+			return std::unexpected(std::format("failed to blpop value {}", key));
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { std::nullopt, std::format("failed to blpop value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to blpop value {}: {}", key, err.what()));
 		}
 	}
 
 	auto RedisClient::zadd(const std::string& key,
 						   const std::vector<std::pair<std::string, double>>& members,
-						   long ttl_seconds) -> std::tuple<long long, std::optional<std::string>>
+						   long ttl_seconds) -> std::expected<long long, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { 0, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { 0, std::format("failed to zadd value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to zadd value: {}", connect_result.error()));
 			}
 		}
 
 		auto transaction = connector_->get_transaction();
 		if (transaction == nullptr)
 		{
-			return { false, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -437,47 +437,47 @@ namespace Redis
 			auto added = results.get<long long>(0);
 			if (added < 0)
 			{
-				return { 0, std::format("failed to zadd value {}", key) };
+				return std::unexpected(std::format("failed to zadd value {}", key));
 			}
 
 			if (ttl_seconds > 0)
 			{
 				if (!results.get<bool>(1))
 				{
-					return { 0, std::format("failed to set TTL for {}", key) };
+					return std::unexpected(std::format("failed to set TTL for {}", key));
 				}
 			}
 
-			return { added, std::nullopt };
+			return added;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { 0, std::format("failed to zadd value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to zadd value {}: {}", key, err.what()));
 		}
 	}
 
-	auto RedisClient::zrange(const std::string& key, long start, long stop, bool with_scores) -> std::tuple<std::vector<std::string>, std::optional<std::string>>
+	auto RedisClient::zrange(const std::string& key, long start, long stop, bool with_scores) -> std::expected<std::vector<std::string>, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { std::vector<std::string>{}, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { std::vector<std::string>{}, std::format("failed to zrange value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to zrange value: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { std::vector<std::string>{}, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -487,7 +487,7 @@ namespace Redis
 				std::vector<std::string> values;
 				redis->zrange(key, start, stop, std::back_inserter(values));
 
-				return { values, std::nullopt };
+				return values;
 			}
 
 			std::vector<std::string> values;
@@ -498,36 +498,36 @@ namespace Redis
 				values.emplace_back(pair.first + ":" + std::to_string(pair.second));
 			}
 
-			return { values, std::nullopt };
+			return values;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { std::vector<std::string>{}, std::format("failed to zrange value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to zrange value {}: {}", key, err.what()));
 		}
 	}
 
-	auto RedisClient::zrem(const std::string& key, const std::vector<std::string>& members) -> std::tuple<long long, std::optional<std::string>>
+	auto RedisClient::zrem(const std::string& key, const std::vector<std::string>& members) -> std::expected<long long, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { 0, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { 0, std::format("failed to zrem value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to zrem value: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { false, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -535,80 +535,78 @@ namespace Redis
 			auto removed = redis->zrem(key, members.begin(), members.end());
 			if (removed < 0)
 			{
-				return { 0, std::format("failed to zrem value {}", key) };
+				return std::unexpected(std::format("failed to zrem value {}", key));
 			}
 
-			return { removed, std::nullopt };
+			return removed;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { 0, std::format("failed to zrem value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to zrem value {}: {}", key, err.what()));
 		}
 	}
 
-	auto RedisClient::set_ttl(const std::string& key, long ttl_seconds) -> std::tuple<bool, std::optional<std::string>>
+	auto RedisClient::set_ttl(const std::string& key, long ttl_seconds) -> std::expected<void, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { false, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { false, std::format("failed to expire value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to expire value: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { false, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
 		{
 			if (!redis->expire(key, ttl_seconds))
 			{
-				return { false, "failed to set TTL." };
+				return std::unexpected("failed to set TTL.");
 			}
 
-			return { true, std::nullopt };
+			return {};
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { false, std::format("failed to expire value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to expire value {}: {}", key, err.what()));
 		}
-
-		return { true, std::nullopt };
 	}
 
-	auto RedisClient::llen(const std::string& key) -> std::tuple<long long, std::optional<std::string>>
+	auto RedisClient::llen(const std::string& key) -> std::expected<long long, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { 0, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { 0, std::format("failed to llen value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to llen value: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { false, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -616,39 +614,39 @@ namespace Redis
 			auto length = redis->llen(key);
 			if (length < 0)
 			{
-				return { 0, std::format("failed to llen value {}", key) };
+				return std::unexpected(std::format("failed to llen value {}", key));
 			}
 
-			return { length, std::nullopt };
+			return length;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { 0, std::format("failed to llen value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to llen value {}: {}", key, err.what()));
 		}
 	}
 
-	auto RedisClient::del(const std::string& key) -> std::tuple<long long, std::optional<std::string>>
+	auto RedisClient::del(const std::string& key) -> std::expected<long long, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { 0, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { 0, std::format("failed to del value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to del value: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { false, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -656,39 +654,39 @@ namespace Redis
 			auto deleted = redis->del(key);
 			if (deleted < 0)
 			{
-				return { 0, std::format("failed to del value {}", key) };
+				return std::unexpected(std::format("failed to del value {}", key));
 			}
 
-			return { deleted, std::nullopt };
+			return deleted;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { 0, std::format("failed to del value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to del value {}: {}", key, err.what()));
 		}
 	}
 
-	auto RedisClient::lrem(const std::string& key, long count, const std::string& value) -> std::tuple<long long, std::optional<std::string>>
+	auto RedisClient::lrem(const std::string& key, long count, const std::string& value) -> std::expected<long long, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { 0, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { 0, std::format("failed to lrem value: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to lrem value: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { false, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -696,40 +694,40 @@ namespace Redis
 			auto removed = redis->lrem(key, count, value);
 			if (removed < 0)
 			{
-				return { 0, std::format("failed to lrem value {}", key) };
+				return std::unexpected(std::format("failed to lrem value {}", key));
 			}
 
-			return { removed, std::nullopt };
+			return removed;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
 
-			return { 0, std::format("failed to lrem value {}: {}", key, err.what()) };
+			return std::unexpected(std::format("failed to lrem value {}: {}", key, err.what()));
 		}
 	}
 
 	auto RedisClient::xadd(const std::string& key, const std::map<std::string, std::string>& fields, const std::optional<std::string>& id, long maxlen, long ttl_seconds)
-		-> std::tuple<std::string, std::optional<std::string>>
+		-> std::expected<std::string, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { "", "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { "", std::format("failed to xadd: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to xadd: {}", connect_result.error()));
 			}
 		}
 
 		auto transaction = connector_->get_transaction();
 		if (transaction == nullptr)
 		{
-			return { "", "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -761,10 +759,10 @@ namespace Redis
 
 				if (ttl_seconds > 0 && !results.get<bool>(1))
 				{
-					return { "", "failed to set TTL." };
+					return std::unexpected("failed to set TTL.");
 				}
 
-				return { results.get<std::string>(0), std::nullopt };
+				return results.get<std::string>(0);
 			}
 
 			if (id.has_value())
@@ -785,40 +783,39 @@ namespace Redis
 
 			if (ttl_seconds > 0 && !results.get<bool>(1))
 			{
-				return { "", "failed to set TTL." };
+				return std::unexpected("failed to set TTL.");
 			}
 
-			return { results.get<std::string>(0), std::nullopt };
+			return results.get<std::string>(0);
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
-			return { "", std::format("failed to xadd: {}", err.what()) };
+			return std::unexpected(std::format("failed to xadd: {}", err.what()));
 		}
 	}
 
 	auto RedisClient::xread(const std::vector<std::string>& keys, const std::vector<std::string>& ids, long count, long block)
-		-> std::tuple<std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>, std::optional<std::string>>
+		-> std::expected<std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{}, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{},
-						 std::format("failed to xread: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to xread: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{}, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -827,7 +824,7 @@ namespace Redis
 
 			if (keys.size() != ids.size())
 			{
-				return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{}, "keys and ids size mismatch" };
+				return std::unexpected("keys and ids size mismatch");
 			}
 
 			for (size_t i = 0; i < keys.size(); ++i)
@@ -859,107 +856,106 @@ namespace Redis
 				}
 			}
 
-			return { result, std::nullopt };
+			return result;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
-			return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{},
-					 std::format("failed to xread: {}", err.what()) };
+			return std::unexpected(std::format("failed to xread: {}", err.what()));
 		}
 	}
 
-	auto RedisClient::xlen(const std::string& key) -> std::tuple<long long, std::optional<std::string>>
+	auto RedisClient::xlen(const std::string& key) -> std::expected<long long, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { 0, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { 0, std::format("failed to xlen: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to xlen: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { 0, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
 		{
 			auto length = redis->xlen(key);
-			return { length, std::nullopt };
+			return length;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
-			return { 0, std::format("failed to xlen: {}", err.what()) };
+			return std::unexpected(std::format("failed to xlen: {}", err.what()));
 		}
 	}
 
-	auto RedisClient::xdel(const std::string& key, const std::vector<std::string>& ids) -> std::tuple<long long, std::optional<std::string>>
+	auto RedisClient::xdel(const std::string& key, const std::vector<std::string>& ids) -> std::expected<long long, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { 0, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { 0, std::format("failed to xdel: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to xdel: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { 0, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
 		{
 			auto deleted = redis->xdel(key, ids.begin(), ids.end());
-			return { deleted, std::nullopt };
+			return deleted;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
-			return { 0, std::format("failed to xdel: {}", err.what()) };
+			return std::unexpected(std::format("failed to xdel: {}", err.what()));
 		}
 	}
 
 	auto RedisClient::xrange(const std::string& key,
 							 const std::string& start,
 							 const std::string& end,
-							 long count) -> std::tuple<std::vector<std::pair<std::string, std::map<std::string, std::string>>>, std::optional<std::string>>
+							 long count) -> std::expected<std::vector<std::pair<std::string, std::map<std::string, std::string>>>, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { std::vector<std::pair<std::string, std::map<std::string, std::string>>>{}, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { std::vector<std::pair<std::string, std::map<std::string, std::string>>>{}, std::format("failed to xrange: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to xrange: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { std::vector<std::pair<std::string, std::map<std::string, std::string>>>{}, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -969,43 +965,43 @@ namespace Redis
 			{
 				redis->xrange(key, start, end, count, std::back_inserter(result));
 
-				return { result, std::nullopt };
+				return result;
 			}
 
 			redis->xrange(key, start, end, std::back_inserter(result));
 
-			return { result, std::nullopt };
+			return result;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
-			return { std::vector<std::pair<std::string, std::map<std::string, std::string>>>{}, std::format("failed to xrange: {}", err.what()) };
+			return std::unexpected(std::format("failed to xrange: {}", err.what()));
 		}
 	}
 
 	auto RedisClient::xgroup_create(const std::string& key,
 									const std::string& group_name,
 									const std::string& id,
-									bool mkstream) -> std::tuple<bool, std::optional<std::string>>
+									bool mkstream) -> std::expected<void, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { false, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { false, std::format("failed to create group: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to create group: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { false, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -1014,23 +1010,23 @@ namespace Redis
 			{
 				redis->xgroup_create(key, group_name, id, true);
 
-				return { true, std::nullopt };
+				return {};
 			}
 
 			redis->xgroup_create(key, group_name, id);
 
-			return { true, std::nullopt };
+			return {};
 		}
 		catch (const sw::redis::Error& err)
 		{
 			auto error_message = std::string(err.what());
 			if (error_message.find("BUSYGROUP") != std::string::npos)
 			{
-				return { true, std::nullopt };
+				return {};
 			}
 
 			connector_->disconnect();
-			return { false, std::format("failed to create group: {}", error_message) };
+			return std::unexpected(std::format("failed to create group: {}", error_message));
 		}
 	}
 
@@ -1040,27 +1036,26 @@ namespace Redis
 								 const std::vector<std::string>& ids,
 								 long count,
 								 long block)
-		-> std::tuple<std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>, std::optional<std::string>>
+		-> std::expected<std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{}, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{},
-						 std::format("failed to xreadgroup: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to xreadgroup: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{}, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
@@ -1069,7 +1064,7 @@ namespace Redis
 
 			if (keys.size() != ids.size())
 			{
-				return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{}, "keys and ids size mismatch" };
+				return std::unexpected("keys and ids size mismatch");
 			}
 
 			for (size_t i = 0; i < keys.size(); ++i)
@@ -1101,49 +1096,48 @@ namespace Redis
 				}
 			}
 
-			return { result, std::nullopt };
+			return result;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
-			return { std::vector<std::pair<std::string, std::vector<std::pair<std::string, std::map<std::string, std::string>>>>>{},
-					 std::format("failed to xreadgroup: {}", err.what()) };
+			return std::unexpected(std::format("failed to xreadgroup: {}", err.what()));
 		}
 	}
 
 	auto RedisClient::xack(const std::string& key,
 						   const std::string& group_name,
-						   const std::vector<std::string>& ids) -> std::tuple<long long, std::optional<std::string>>
+						   const std::vector<std::string>& ids) -> std::expected<long long, std::string>
 	{
 		if (connector_ == nullptr)
 		{
-			return { 0, "Connector is not created." };
+			return std::unexpected("Connector is not created.");
 		}
 
 		if (!connector_->is_connected())
 		{
-			auto [connected, connect_error] = connector_->connect();
-			if (connect_error.has_value())
+			auto connect_result = connector_->connect();
+			if (!connect_result.has_value())
 			{
-				return { 0, std::format("failed to xack: {}", connect_error.value()) };
+				return std::unexpected(std::format("failed to xack: {}", connect_result.error()));
 			}
 		}
 
 		auto redis = connector_->get_redis();
 		if (redis == nullptr)
 		{
-			return { 0, "failed to get redis connection." };
+			return std::unexpected("failed to get redis connection.");
 		}
 
 		try
 		{
 			auto acknowledged = redis->xack(key, group_name, ids.begin(), ids.end());
-			return { acknowledged, std::nullopt };
+			return acknowledged;
 		}
 		catch (const sw::redis::Error& err)
 		{
 			connector_->disconnect();
-			return { 0, std::format("failed to xack: {}", err.what()) };
+			return std::unexpected(std::format("failed to xack: {}", err.what()));
 		}
 	}
 }

@@ -25,33 +25,33 @@ namespace RabbitMQ
 		return true;
 	}
 
-	auto ConsumeInformationContainer::add_consume_information(const ConsumeInformation& information) -> std::tuple<bool, std::optional<std::string>>
+	auto ConsumeInformationContainer::add_consume_information(const ConsumeInformation& information) -> std::expected<void, std::string>
 	{
 		auto iter = consume_informations_.find(information.get_queue_name());
 		if (iter != consume_informations_.end())
 		{
-			return { false, std::format("Consume information for queue '{}' already exists", information.get_queue_name()) };
+			return std::unexpected(std::format("Consume information for queue '{}' already exists", information.get_queue_name()));
 		}
 
 		consume_informations_.insert({ information.get_queue_name(), information });
 
-		return { true, std::nullopt };
+		return {};
 	}
 
 	auto ConsumeInformationContainer::remove_consume_information(const std::string& queue_name)
-		-> std::tuple<std::optional<ConsumeInformation>, std::optional<std::string>>
+		-> std::expected<ConsumeInformation, std::string>
 	{
 		auto iter = consume_informations_.find(queue_name);
 		if (iter == consume_informations_.end())
 		{
-			return { std::nullopt, std::format("Consume information for queue '{}' does not exist", queue_name) };
+			return std::unexpected(std::format("Consume information for queue '{}' does not exist", queue_name));
 		}
 
 		const auto information = iter->second;
 
 		consume_informations_.erase(iter);
 
-		return { information, std::nullopt };
+		return information;
 	}
 
 	auto ConsumeInformationContainer::get_heartbeat() const -> int { return heartbeat_; }
@@ -68,7 +68,7 @@ namespace RabbitMQ
 	}
 
 	auto ConsumeInformationContainer::get_consume_callback(const std::string& queue_name) const
-		-> std::optional<std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&)>>
+		-> std::optional<std::function<std::expected<void, std::string>(const std::string&, const std::string&, const std::string&)>>
 	{
 		auto iter = consume_informations_.find(queue_name);
 		if (iter == consume_informations_.end())

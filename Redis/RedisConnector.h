@@ -4,10 +4,9 @@
 
 #include <sw/redis++/redis++.h>
 
-#include <tuple>
+#include <expected>
 #include <memory>
 #include <string>
-#include <optional>
 
 namespace Redis
 {
@@ -17,8 +16,8 @@ namespace Redis
 		RedisConnector(const std::string& address, const int& port = 6379, const TLSOptions& tls_options = TLSOptions(), const int& db_index = 0);
 		~RedisConnector(void);
 
-		auto connect(void) -> std::tuple<bool, std::optional<std::string>>;
-		auto disconnect(void) -> std::tuple<bool, std::optional<std::string>>;
+		auto connect(void) -> std::expected<void, std::string>;
+		auto disconnect(void) -> std::expected<void, std::string>;
 		auto is_connected(void) const -> bool;
 
 		auto get_redis(void) const -> std::shared_ptr<sw::redis::Redis>;

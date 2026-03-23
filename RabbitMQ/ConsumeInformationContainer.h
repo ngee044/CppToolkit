@@ -4,6 +4,7 @@
 
 #include <map>
 #include <string>
+#include <expected>
 
 namespace RabbitMQ
 {
@@ -14,13 +15,13 @@ namespace RabbitMQ
 		ConsumeInformationContainer(const int& heartbeat, const std::vector<ConsumeInformation>& consume_informations);
 
 		auto exists_consume_information(const std::string& queue_name) const -> bool;
-		auto add_consume_information(const ConsumeInformation& information) -> std::tuple<bool, std::optional<std::string>>;
-		auto remove_consume_information(const std::string& queue_name) -> std::tuple<std::optional<ConsumeInformation>, std::optional<std::string>>;
+		auto add_consume_information(const ConsumeInformation& information) -> std::expected<void, std::string>;
+		auto remove_consume_information(const std::string& queue_name) -> std::expected<ConsumeInformation, std::string>;
 
 		auto get_heartbeat() const -> int;
 		auto get_consume_informations() const -> std::vector<ConsumeInformation>;
 		auto get_consume_callback(const std::string& queue_name) const
-			-> std::optional<std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&)>>;
+			-> std::optional<std::function<std::expected<void, std::string>(const std::string&, const std::string&, const std::string&)>>;
 
 	private:
 		int heartbeat_;

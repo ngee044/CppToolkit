@@ -13,6 +13,7 @@
 
 #include <future>
 
+using namespace Thread;
 using namespace Utilities;
 
 #ifndef RABBITMQ_SSL_AVAILABLE
@@ -29,7 +30,7 @@ namespace RabbitMQ
 		, ssl_options_(ssl_options)
 		, conn_(nullptr)
 		, thread_pool_(nullptr)
-		, stop_future_(std::nullopt)
+		, stop_future_()
 		, continue_receiving_(false)
 		, consume_information_container_(nullptr)
 	{
@@ -40,31 +41,33 @@ namespace RabbitMQ
 		stop();
 	}
 
-	auto RabbitMQBase::start() -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::start() -> std::expected<void, std::string>
 	{
 		stop();
 
-		auto [created, create_error] = create_thread_pool();
+		auto created = create_thread_pool();
 		if (!created)
 		{
-			return { false, create_error };
+			return std::unexpected(created.error());
 		}
 
-		return thread_pool_->start();
+		auto started = thread_pool_->start();
+		if (!started)
+		{
+			return std::unexpected(started.error());
+		}
+
+		return {};
 	}
 
-	auto RabbitMQBase::wait_stop() -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::wait_stop() -> std::expected<void, std::string>
 	{
-		if (stop_future_ != std::nullopt)
-		{
-			return { false, "already created future object" };
-		}
+		stop_promise_ = std::make_unique<std::promise<void>>();
+		stop_future_ = stop_promise_->get_future();
 
-		stop_future_ = stop_promise_.get_future();
-		stop_future_.value().wait();
-		stop_future_.reset();
+		stop_future_.wait();
 
-		return { true, std::nullopt };
+		return {};
 	}
 
 	auto RabbitMQBase::stop() -> void
@@ -73,21 +76,28 @@ namespace RabbitMQ
 
 		destroy_thread_pool();
 
-		if (stop_future_ != std::nullopt)
+		if (stop_promise_ != nullptr)
 		{
-			stop_promise_.set_value();
+			try
+			{
+				stop_promise_->set_value();
+			}
+			catch (const std::future_error&)
+			{
+			}
+			stop_promise_.reset();
 		}
 	}
 
-	auto RabbitMQBase::basic_publish(int target_channel_id, 
-									const std::string& exchange, 
-									const std::string& routing_key, 
-									const std::string& message, 
-									const std::string& exchange_mode, 
-									const std::string& content_type, 
-									const DeliveryMode& delivery_mode, 
-									const bool& use_confirm_select, 
-									const std::optional<uint32_t>& expiration_millisecond) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_publish(int target_channel_id,
+									const std::string& exchange,
+									const std::string& routing_key,
+									const std::string& message,
+									const std::string& exchange_mode,
+									const std::string& content_type,
+									DeliveryMode delivery_mode,
+									bool use_confirm_select,
+									const std::optional<uint32_t>& expiration_millisecond) -> std::expected<void, std::string>
 	{
 		Logger::handle().write(LogTypes::Sequence, std::format("attempt to publish message: routing_key[{}] => {} bytes", routing_key, message.length()));
 
@@ -100,7 +110,7 @@ namespace RabbitMQ
 			socket = amqp_tcp_socket_new(conn);
 			if (!socket)
 			{
-				return { false, "create TCP socket failed" };
+				return std::unexpected("create TCP socket failed");
 			}
 
 			socket_type = "TCP";
@@ -111,13 +121,13 @@ namespace RabbitMQ
 			socket = amqp_ssl_socket_new(conn);
 			if (!socket)
 			{
-				return { false, "create SSL socket failed" };
+				return std::unexpected("create SSL socket failed");
 			}
 
-			auto [ssl_setup, ssl_error] = basic_ssl_setup(socket);
+			auto ssl_setup = basic_ssl_setup(socket);
 			if (!ssl_setup)
 			{
-				return { false, ssl_error };
+				return std::unexpected(ssl_setup.error());
 			}
 
 			socket_type = "SSL/TLS";
@@ -125,27 +135,27 @@ namespace RabbitMQ
 #else
 		else
 		{
-			return { false, "SSL/TLS requested, but rabbitmq-c in this build lacks SSL support" };
+			return std::unexpected("SSL/TLS requested, but rabbitmq-c in this build lacks SSL support");
 		}
 #endif
 
 		auto status = amqp_socket_open(socket, host_.c_str(), port_);
 		if (status != AMQP_STATUS_OK)
 		{
-			return { false, std::format("opening {} socket failed: {}", socket_type, status_message(static_cast<amqp_status_enum_>(status))) };
+			return std::unexpected(std::format("opening {} socket failed: {}", socket_type, status_message(static_cast<amqp_status_enum_>(status))));
 		}
 
 		auto reply = amqp_login(conn, "/", AMQP_DEFAULT_MAX_CHANNELS, AMQP_DEFAULT_FRAME_SIZE, 0, AMQP_SASL_METHOD_PLAIN, user_name_.c_str(), password_.c_str());
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, std::format("logging in failed: {}", reply_message(reply)) };
+			return std::unexpected(std::format("logging in failed: {}", reply_message(reply)));
 		}
 
 		amqp_channel_open(conn, target_channel_id);
 		reply = amqp_get_rpc_reply(conn);
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, std::format("opening channel failed: {}", reply_message(reply)) };
+			return std::unexpected(std::format("opening channel failed: {}", reply_message(reply)));
 		}
 
 		if (exchange_mode.empty())
@@ -155,10 +165,10 @@ namespace RabbitMQ
 			bool exclusive = false;
 			bool auto_delete = true;
 
-			auto [declare_queue, declare_error] = basic_declare_queue(conn, target_channel_id, exchange, passive, durable, exclusive, auto_delete);
+			auto declare_queue = basic_declare_queue(conn, target_channel_id, exchange, passive, durable, exclusive, auto_delete);
 			if (!declare_queue)
 			{
-				return { false, declare_error };
+				return std::unexpected(declare_queue.error());
 			}
 		}
 		else
@@ -172,7 +182,7 @@ namespace RabbitMQ
 				= amqp_exchange_declare(conn, target_channel_id, amqp_cstring_bytes(exchange.c_str()), amqp_cstring_bytes(exchange_mode.c_str()), passive, durable, auto_delete, internal, amqp_empty_table);
 			if (amqp_get_rpc_reply(conn).reply_type != AMQP_RESPONSE_NORMAL)
 			{
-				return { false, "declare exchange failed" };
+				return std::unexpected("declare exchange failed");
 			}
 		}
 
@@ -182,7 +192,7 @@ namespace RabbitMQ
 			auto confirm_reply = amqp_get_rpc_reply(conn);
 			if (confirm_reply.reply_type != AMQP_RESPONSE_NORMAL)
 			{
-				return { false, std::format("confirm select failed: {}", reply_message(confirm_reply)) };
+				return std::unexpected(std::format("confirm select failed: {}", reply_message(confirm_reply)));
 			}
 		}
 
@@ -203,12 +213,12 @@ namespace RabbitMQ
 
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, std::format("failed to send message: {}", reply_message(reply)) };
+			return std::unexpected(std::format("failed to send message: {}", reply_message(reply)));
 		}
 
 		if (status != AMQP_STATUS_OK)
 		{
-			return { false, std::format("failed to send message: {}", status_message(static_cast<amqp_status_enum_>(status))) };
+			return std::unexpected(std::format("failed to send message: {}", status_message(static_cast<amqp_status_enum_>(status))));
 		}
 
 		Logger::handle().write(LogTypes::Sequence, std::format("published message: routing_key[{}] => {} bytes", routing_key, message.length()));
@@ -217,74 +227,76 @@ namespace RabbitMQ
 		reply = amqp_get_rpc_reply(conn);
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, std::format("closing channel failed: {}", reply_message(reply)) };
+			return std::unexpected(std::format("closing channel failed: {}", reply_message(reply)));
 		}
 
 		reply = amqp_connection_close(conn, AMQP_REPLY_SUCCESS);
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, std::format("closing connection failed: {}", reply_message(reply)) };
+			return std::unexpected(std::format("closing connection failed: {}", reply_message(reply)));
 		}
 
 		status = amqp_destroy_connection(conn);
 		if (status != AMQP_STATUS_OK)
 		{
-			return { false, std::format("destroying connection failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
+			return std::unexpected(std::format("destroying connection failed: {}", status_message(static_cast<amqp_status_enum_>(status))));
 		}
 
 		conn = nullptr;
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto RabbitMQBase::basic_register_consume(int target_channel_id, const std::string& target_queue_name, 
-												const std::function<std::tuple<bool, std::optional<std::string>>(const std::string&, const std::string&, const std::string&)>& callback) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_register_consume(int target_channel_id, const std::string& target_queue_name,
+												const std::function<std::expected<void, std::string>(const std::string&, const std::string&, const std::string&)>& callback) -> std::expected<void, std::string>
 	{
 		if (!conn_)
 		{
-			return { false, "connection is not established" };
+			return std::unexpected("connection is not established");
 		}
 
-		auto [added, add_error] = consume_information_container_->add_consume_information(ConsumeInformation(target_channel_id ,target_queue_name, callback));
+		auto added = consume_information_container_->add_consume_information(ConsumeInformation(target_channel_id ,target_queue_name, callback));
 		if (!added)
 		{
-			return { false, add_error };
+			return std::unexpected(added.error());
 		}
 
-		auto [registered, register_error] = register_consumer(target_channel_id, target_queue_name);
+		auto registered = register_consumer(target_channel_id, target_queue_name);
 		if (!registered)
 		{
-			return { false, register_error };
+			return std::unexpected(registered.error());
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto RabbitMQBase::basic_unregister_consume(const int& target_channel_id, const std::string& target_queue) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_unregister_consume(int target_channel_id, const std::string& target_queue) -> std::expected<void, std::string>
 	{
 		if (!conn_)
 		{
-			return { false, "connection is not established" };
+			return std::unexpected("connection is not established");
 		}
 
-		auto [removed_information, remove_error] = consume_information_container_->remove_consume_information(target_queue);
-		if (!removed_information.has_value())
+		auto removed_information = consume_information_container_->remove_consume_information(target_queue);
+		if (!removed_information)
 		{
-			return { false, remove_error };
+			return std::unexpected(removed_information.error());
 		}
 
 		auto consume_information = removed_information.value();
 
-		auto [unregistered, unregister_error] = unregister_consumer(consume_information.get_channel_id());
+		auto unregistered = unregister_consumer(consume_information.get_channel_id());
 		if (!unregistered)
 		{
-			return { false, unregister_error };
+			return std::unexpected(unregistered.error());
 		}
 
-		return { false, "not implemented" };
+		// TODO: complete unregister implementation — currently unregisters the consumer
+		// from the broker but does not fully clean up the local state
+		return {};
 	}
 
-	auto RabbitMQBase::basic_connect(int heartbeat) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_connect(int heartbeat) -> std::expected<void, std::string>
 	{
 		basic_disconnect();
 
@@ -302,12 +314,12 @@ namespace RabbitMQ
 			}
 			catch (const std::exception& e)
 			{
-				return { false, std::format("creating TCP socket failed: {}", e.what()) };
+				return std::unexpected(std::format("creating TCP socket failed: {}", e.what()));
 			}
 
 			if (!socket)
 			{
-				return { false, "creating TCP socket failed" };
+				return std::unexpected("creating TCP socket failed");
 			}
 
 			socket_type = "TCP";
@@ -321,26 +333,26 @@ namespace RabbitMQ
 			}
 			catch (const std::exception& e)
 			{
-				return { false, std::format("creating SSL/TLS socket failed: {}", e.what()) };
+				return std::unexpected(std::format("creating SSL/TLS socket failed: {}", e.what()));
 			}
 
 			if (!socket)
 			{
-				return { false, "creating SSL/TLS socket failed" };
+				return std::unexpected("creating SSL/TLS socket failed");
 			}
 
 			try
 			{
-				auto [ssl_setup, ssl_error] = basic_ssl_setup(socket);
+				auto ssl_setup = basic_ssl_setup(socket);
 
 				if (!ssl_setup)
 				{
-					return { false, ssl_error };
+					return std::unexpected(ssl_setup.error());
 				}
 			}
 			catch (const std::exception& e)
 			{
-				return { false, std::format("SSL/TLS setup failed: {}", e.what()) };
+				return std::unexpected(std::format("SSL/TLS setup failed: {}", e.what()));
 			}
 
 			socket_type = "SSL/TLS";
@@ -348,52 +360,52 @@ namespace RabbitMQ
 #else
 		else
 		{
-			return { false, "SSL/TLS requested, but rabbitmq-c in this build lacks SSL support" };
+			return std::unexpected("SSL/TLS requested, but rabbitmq-c in this build lacks SSL support");
 		}
 #endif
 
 		return basic_login(socket, socket_type, heartbeat);
 	}
-	auto RabbitMQBase::basic_disconnect() -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_disconnect() -> std::expected<void, std::string>
 	{
 		if (conn_ == nullptr)
 		{
-			return { true, std::nullopt };
+			return {};
 		}
 
 		amqp_rpc_reply_t reply = amqp_connection_close(conn_, AMQP_REPLY_SUCCESS);
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, std::format("closing connection failed: {}", reply_message(reply)) };
+			return std::unexpected(std::format("closing connection failed: {}", reply_message(reply)));
 		}
 
 		int status = amqp_destroy_connection(conn_);
 		if (status != AMQP_STATUS_OK)
 		{
-			return { false, std::format("destroying connection failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
+			return std::unexpected(std::format("destroying connection failed: {}", status_message(static_cast<amqp_status_enum_>(status))));
 		}
 
 		consume_information_container_.reset();
 
 		conn_ = nullptr;
 
-		return { true, std::nullopt };
+		return {};
 	}
-	auto RabbitMQBase::basic_start_consume() -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_start_consume() -> std::expected<void, std::string>
 	{
 		if (conn_ == nullptr)
 		{
-			return { false, "cannot start to consuming_start: connection is not established" };
+			return std::unexpected("cannot start to consuming_start: connection is not established");
 		}
 
 		if (thread_pool_ == nullptr)
 		{
-			return { false, "cannot start to consuming_start: thread pool is not created" };
+			return std::unexpected("cannot start to consuming_start: thread pool is not created");
 		}
 
 		if (continue_receiving_.load())
 		{
-			return { false, "cannot start to consuming_start: message receiving is already in progress" };
+			return std::unexpected("cannot start to consuming_start: message receiving is already in progress");
 		}
 
 		continue_receiving_.store(true);
@@ -402,7 +414,7 @@ namespace RabbitMQ
 
 		return thread_pool_->push(std::make_shared<Job>(
 			JobPriorities::LongTerm,
-			[this](void) -> std::tuple<bool, std::optional<std::string>>
+			[this](void) -> std::expected<void, std::string>
 			{
 				amqp_frame_t frame;
 				bool reconnection = false;
@@ -411,10 +423,10 @@ namespace RabbitMQ
 				{
 					if (reconnection)
 					{
-						auto [connected, connect_error] = reconnect();
+						auto connected = reconnect();
 						if (!connected)
 						{
-							Logger::handle().write(LogTypes::Error, std::format("cannot reconnect to consume message: {}", connect_error.value()));
+							Logger::handle().write(LogTypes::Error, std::format("cannot reconnect to consume message: {}", connected.error()));
 							continue;
 						}
 
@@ -472,10 +484,10 @@ namespace RabbitMQ
 						try
 						{
 							auto callback = callback_opt.value();
-							auto [result, result_error] = callback(routing_key, Converter::to_string(received_message), Converter::to_string(content_type));
+							auto result = callback(routing_key, Converter::to_string(received_message), Converter::to_string(content_type));
 							if (!result)
 							{
-								Logger::handle().write(LogTypes::Error, std::format("message consume error: {}", result_error.value()));
+								Logger::handle().write(LogTypes::Error, std::format("message consume error: {}", result.error()));
 
 								amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
 							}
@@ -517,21 +529,21 @@ namespace RabbitMQ
 					amqp_destroy_envelope(&envelope);
 				}
 
-				return { true, std::nullopt };
+				return {};
 			},
 			"main_job_for_rabbitmq", false));
 	}
 
-	auto RabbitMQBase::basic_stop_consume() -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_stop_consume() -> std::expected<void, std::string>
 	{
 		if (conn_ == nullptr)
 		{
-			return { false, "cannot start to consuming_stop: connection is not established" };
+			return std::unexpected("cannot start to consuming_stop: connection is not established");
 		}
 
 		if (thread_pool_ == nullptr)
 		{
-			return { false, "cannot start to consuming_stop: thread pool is not created" };
+			return std::unexpected("cannot start to consuming_stop: thread pool is not created");
 		}
 
 		continue_receiving_.store(false);
@@ -541,11 +553,11 @@ namespace RabbitMQ
 			thread_pool_->remove_workers(JobPriorities::LongTerm);
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
 #if RABBITMQ_SSL_AVAILABLE
-	auto RabbitMQBase::basic_ssl_setup(amqp_socket_t* socket) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_ssl_setup(amqp_socket_t* socket) -> std::expected<void, std::string>
 	{
 		amqp_ssl_socket_set_verify_peer(socket, 0);
 		amqp_ssl_socket_set_verify_hostname(socket, 0);
@@ -556,7 +568,7 @@ namespace RabbitMQ
 			status = amqp_ssl_socket_set_cacert(socket, ssl_options_.ca_cert().c_str());
 			if (status != AMQP_STATUS_OK)
 			{
-				return { false, std::format("setting CA certificate failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
+				return std::unexpected(std::format("setting CA certificate failed: {}", status_message(static_cast<amqp_status_enum_>(status))));
 			}
 
 			if (!ssl_options_.engine().empty())
@@ -564,7 +576,7 @@ namespace RabbitMQ
 				status = amqp_set_ssl_engine(ssl_options_.engine().c_str());
 				if (status != AMQP_STATUS_OK)
 				{
-					return { false, std::format("setting SSL engine failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
+					return std::unexpected(std::format("setting SSL engine failed: {}", status_message(static_cast<amqp_status_enum_>(status))));
 				}
 			}
 
@@ -577,58 +589,64 @@ namespace RabbitMQ
 			status = amqp_ssl_socket_set_key(socket, ssl_options_.client_cert().c_str(), ssl_options_.client_key().c_str());
 			if (status != AMQP_STATUS_OK)
 			{
-				return { false, std::format("setting client certificate and key failed: {}", status_message(static_cast<amqp_status_enum_>(status))) };
+				return std::unexpected(std::format("setting client certificate and key failed: {}", status_message(static_cast<amqp_status_enum_>(status))));
 			}
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 #else
-	auto RabbitMQBase::basic_ssl_setup(amqp_socket_t* /*socket*/) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_ssl_setup(amqp_socket_t* /*socket*/) -> std::expected<void, std::string>
 	{
-		return { false, "SSL/TLS support is not available in rabbitmq-c for this build" };
+		return std::unexpected("SSL/TLS support is not available in rabbitmq-c for this build");
 	}
 #endif
 
-	auto RabbitMQBase::basic_login(amqp_socket_t* socket, const std::string& socket_type, const int& heartbeat) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_login(amqp_socket_t* socket, const std::string& socket_type, int heartbeat) -> std::expected<void, std::string>
 	{
 		int status = amqp_socket_open(socket, host_.c_str(), port_);
 		if (status != AMQP_STATUS_OK)
 		{
-			return { false, std::format("opening {} socket failed: {}", socket_type, status_message(static_cast<amqp_status_enum_>(status))) };
+			return std::unexpected(std::format("opening {} socket failed: {}", socket_type, status_message(static_cast<amqp_status_enum_>(status))));
 		}
 
 		auto reply = amqp_login(conn_, "/", AMQP_DEFAULT_MAX_CHANNELS, AMQP_DEFAULT_FRAME_SIZE, heartbeat, AMQP_SASL_METHOD_PLAIN, user_name_.c_str(), password_.c_str());
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, std::format("logging in failed: {}", reply_message(reply)) };
+			return std::unexpected(std::format("logging in failed: {}", reply_message(reply)));
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto RabbitMQBase::basic_start(amqp_socket_t* socket, const std::string& socket_type) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_start(amqp_socket_t* socket, const std::string& socket_type) -> std::expected<void, std::string>
 	{
-		auto [logged_in, login_error] = basic_login(socket, socket_type);
+		auto logged_in = basic_login(socket, socket_type);
 		if (!logged_in)
 		{
-			return { false, login_error };
+			return std::unexpected(logged_in.error());
 		}
 
-		auto [created, create_error] = create_thread_pool();
+		auto created = create_thread_pool();
 		if (!created)
 		{
-			return { false, create_error };
+			return std::unexpected(created.error());
 		}
 
-		return thread_pool_->start();
+		auto started = thread_pool_->start();
+		if (!started)
+		{
+			return std::unexpected(started.error());
+		}
+
+		return {};
 	}
 
-	auto RabbitMQBase::basic_channel_open(int channel_id) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_channel_open(int channel_id) -> std::expected<void, std::string>
 	{
 		if (conn_ == nullptr)
 		{
-			return { false, "connection is not established" };
+			return std::unexpected("connection is not established");
 		}
 
 		amqp_channel_open(conn_, channel_id);
@@ -636,17 +654,17 @@ namespace RabbitMQ
 		auto reply = amqp_get_rpc_reply(conn_);
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, std::format("opening channel failed: {}", reply_message(reply)) };
+			return std::unexpected(std::format("opening channel failed: {}", reply_message(reply)));
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto RabbitMQBase::basic_channel_close(int channel_id) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_channel_close(int channel_id) -> std::expected<void, std::string>
 	{
 		if (conn_ == nullptr)
 		{
-			return { false, "connection is not established" };
+			return std::unexpected("connection is not established");
 		}
 
 		amqp_channel_close(conn_, channel_id, AMQP_REPLY_SUCCESS);
@@ -654,13 +672,13 @@ namespace RabbitMQ
 		auto reply = amqp_get_rpc_reply(conn_);
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, std::format("closing channel failed: {}", reply_message(reply)) };
+			return std::unexpected(std::format("closing channel failed: {}", reply_message(reply)));
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto RabbitMQBase::basic_declare_queue(amqp_connection_state_t conn, int target_channel_id, const std::string& queue_name, bool passive, bool durable, bool exclusive, bool auto_delete) -> std::tuple<std::optional<std::string>, std::optional<std::string>>
+	auto RabbitMQBase::basic_declare_queue(amqp_connection_state_t conn, int target_channel_id, const std::string& queue_name, bool passive, bool durable, bool exclusive, bool auto_delete) -> std::expected<std::string, std::string>
 	{
 		std::unique_lock<std::mutex> unique(mutex_);
 		amqp_queue_declare_ok_t* declare_result
@@ -670,13 +688,13 @@ namespace RabbitMQ
 
 		if (declare_reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { std::nullopt, std::format("queue declaration failed: {}", reply_message(declare_reply)) };
+			return std::unexpected(std::format("queue declaration failed: {}", reply_message(declare_reply)));
 		}
 
-		return { std::string((char*)declare_result->queue.bytes, declare_result->queue.len), std::nullopt };
+		return std::string((char*)declare_result->queue.bytes, declare_result->queue.len);
 	}
 
-	auto RabbitMQBase::basic_delete_queue(amqp_connection_state_t conn, int target_channel_id, const std::string& queue_name, bool if_unused, bool if_empty) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::basic_delete_queue(amqp_connection_state_t conn, int target_channel_id, const std::string& queue_name, bool if_unused, bool if_empty) -> std::expected<void, std::string>
 	{
 		std::unique_lock<std::mutex> unique(mutex_);
 		amqp_queue_delete_ok_t* result = amqp_queue_delete(conn, target_channel_id, amqp_cstring_bytes(queue_name.c_str()), if_unused, if_empty);
@@ -685,17 +703,17 @@ namespace RabbitMQ
 
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, std::format("deleting queue failed: {}", reply_message(reply)) };
+			return std::unexpected(std::format("deleting queue failed: {}", reply_message(reply)));
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
 	auto RabbitMQBase::basic_bind_queue(amqp_connection_state_t conn,
 		int target_channel_id,
 		const std::string& queue_name,
 		const std::string& exchange,
-		const std::string& routing_key) -> std::tuple<bool, std::optional<std::string>>
+		const std::string& routing_key) -> std::expected<void, std::string>
 	{
 		std::unique_lock<std::mutex> unique(mutex_);
 		amqp_queue_bind_ok_t* result = amqp_queue_bind(conn, target_channel_id, amqp_cstring_bytes(queue_name.c_str()), amqp_cstring_bytes(exchange.c_str()),
@@ -705,18 +723,18 @@ namespace RabbitMQ
 
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, std::format("binding queue failed: {}", reply_message(reply)) };
+			return std::unexpected(std::format("binding queue failed: {}", reply_message(reply)));
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto RabbitMQBase::create_thread_pool() -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::create_thread_pool() -> std::expected<void, std::string>
 	{
-		auto [destroyed, destroy_error] = destroy_thread_pool();
+		auto destroyed = destroy_thread_pool();
 		if (!destroyed)
 		{
-			return { false, destroy_error };
+			return std::unexpected(destroyed.error());
 		}
 
 		try
@@ -725,30 +743,26 @@ namespace RabbitMQ
 		}
 		catch (const std::bad_alloc& e)
 		{
-			return { false, std::format("thread pool creation failed: {}", e.what()) };
+			return std::unexpected(std::format("thread pool creation failed: {}", e.what()));
 		}
 
 		thread_pool_->push(std::make_shared<ThreadWorker>(std::vector<JobPriorities>{ JobPriorities::Normal }));
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto RabbitMQBase::destroy_thread_pool() -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::destroy_thread_pool() -> std::expected<void, std::string>
 	{
 		if (thread_pool_ == nullptr)
 		{
-			return { true, std::nullopt };
+			return {};
 		}
 
-		auto [stopped, stop_error] = thread_pool_->stop();
-		if (!stopped)
-		{
-			return { false, stop_error };
-		}
+		thread_pool_->stop();
 
 		thread_pool_.reset();
 
-		return { true, std::nullopt };
+		return {};
 	}
 
 	auto RabbitMQBase::status_message(const amqp_status_enum_& status) -> std::string
@@ -894,7 +908,7 @@ namespace RabbitMQ
 		return result;
 	}
 
-	auto RabbitMQBase::register_consumer(const int& target_channel_id, const std::string& target_queue) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::register_consumer(int target_channel_id, const std::string& target_queue) -> std::expected<void, std::string>
 	{
 		std::unique_lock<std::mutex> unique(mutex_);
 		amqp_basic_consume_ok_t* result
@@ -904,13 +918,13 @@ namespace RabbitMQ
 
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, std::format("consuming_start failed: {}", reply_message(reply)) };
+			return std::unexpected(std::format("consuming_start failed: {}", reply_message(reply)));
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto RabbitMQBase::unregister_consumer(const int& target_channel_id) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::unregister_consumer(int target_channel_id) -> std::expected<void, std::string>
 	{
 		std::unique_lock<std::mutex> unique(mutex_);
 		amqp_basic_cancel_ok_t* result = amqp_basic_cancel(conn_, target_channel_id, amqp_empty_bytes);
@@ -919,60 +933,60 @@ namespace RabbitMQ
 
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return { false, std::format("consuming_stop failed: {}", reply_message(reply)) };
+			return std::unexpected(std::format("consuming_stop failed: {}", reply_message(reply)));
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto RabbitMQBase::reconnect(void) -> std::tuple<bool, std::optional<std::string>>
+	auto RabbitMQBase::reconnect(void) -> std::expected<void, std::string>
 	{
 		if (consume_information_container_ == nullptr)
 		{
-			return { false, "cannot reconnect: consume information container is not created" };
+			return std::unexpected("cannot reconnect: consume information container is not created");
 		}
 
 		auto heartbeat = consume_information_container_->get_heartbeat();
 		auto consume_informations = consume_information_container_->get_consume_informations();
 
-		auto [connected, connect_error] = basic_connect(heartbeat);
+		auto connected = basic_connect(heartbeat);
 		if (!connected)
 		{
-			return { false, connect_error };
+			return std::unexpected(connected.error());
 		}
 
 		for (auto& consume_information : consume_informations)
 		{
-			auto [opened, open_error] = basic_channel_open(consume_information.get_channel_id());
+			auto opened = basic_channel_open(consume_information.get_channel_id());
 			if (!opened)
 			{
 				consume_information_container_.reset();
 				consume_information_container_ = std::make_unique<ConsumeInformationContainer>(heartbeat, consume_informations);
 
-				return { false, open_error };
+				return std::unexpected(opened.error());
 			}
 
-			auto [declared, declare_error] = redeclare_channel();
+			auto declared = redeclare_channel();
 			if (!declared)
 			{
 				consume_information_container_.reset();
 				consume_information_container_ = std::make_unique<ConsumeInformationContainer>(heartbeat, consume_informations);
 
-				return { false, declare_error };
+				return std::unexpected(declared.error());
 			}
 
-			auto [registered, register_error]
+			auto registered
 				= basic_register_consume(consume_information.get_channel_id(), consume_information.get_queue_name(), consume_information.get_callback());
 			if (!registered)
 			{
 				consume_information_container_.reset();
 				consume_information_container_ = std::make_unique<ConsumeInformationContainer>(heartbeat, consume_informations);
 
-				return { false, register_error };
+				return std::unexpected(registered.error());
 			}
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
 }
