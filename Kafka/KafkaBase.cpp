@@ -9,7 +9,9 @@
 
 #include <future>
 
+using namespace Thread;
 using namespace Utilities;
+
 namespace Kafka
 {
 	KafkaBase::KafkaBase(const KafkaConfig& config)
@@ -27,60 +29,70 @@ namespace Kafka
 		}
 	}
 
-	auto KafkaBase::start() -> std::tuple<bool, std::optional<std::string>>
+	auto KafkaBase::start() -> std::expected<void, std::string>
 	{
 		stop();
 
-		auto [created, create_error] = create_thread_pool();
+		auto created = create_thread_pool();
 		if (!created)
 		{
-			return { false, create_error };
+			return std::unexpected(created.error());
 		}
 
-		auto [success, error_message] = connect();
-		if (!success)
+		auto connected = connect();
+		if (!connected)
 		{
-			Logger::handle().write(LogTypes::Error, std::format("connect start error = {}", error_message.value()));
-			return { false, error_message };
+			Logger::handle().write(LogTypes::Error, std::format("connect start error = {}", connected.error()));
+			thread_pool_.reset();
+			return std::unexpected(connected.error());
 		}
 
-		return thread_pool_->start();
+		auto started = thread_pool_->start();
+		if (!started)
+		{
+			return std::unexpected(started.error());
+		}
+
+		return {};
 	}
 
-	auto KafkaBase::wait_stop() -> std::tuple<bool, std::optional<std::string>>
+	auto KafkaBase::wait_stop() -> std::expected<void, std::string>
 	{
-		if (stop_future_ != std::nullopt)
-		{
-			return { false, "already created future object" };
-		}
+		stop_promise_ = std::make_unique<std::promise<void>>();
+		stop_future_ = stop_promise_->get_future();
 
-		stop_future_ = stop_promise_.get_future();
-		stop_future_.value().wait();
-		stop_future_.reset();
+		stop_future_.wait();
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto KafkaBase::stop() -> std::tuple<bool, std::optional<std::string>>
+	auto KafkaBase::stop() -> std::expected<void, std::string>
 	{
 		disconnect();
 
 		destroy_thread_pool();
 
-		if (stop_future_ != std::nullopt)
+		if (stop_promise_ != nullptr)
 		{
-			stop_promise_.set_value();
+			try
+			{
+				stop_promise_->set_value();
+			}
+			catch (const std::future_error&)
+			{
+			}
+			stop_promise_.reset();
 		}
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto KafkaBase::create_thread_pool() -> std::tuple<bool, std::optional<std::string>>
+	auto KafkaBase::create_thread_pool() -> std::expected<void, std::string>
 	{
-		auto [destroyed, destroy_error] = destroy_thread_pool();
+		auto destroyed = destroy_thread_pool();
 		if (!destroyed)
 		{
-			return { false, destroy_error };
+			return std::unexpected(destroyed.error());
 		}
 
 		try
@@ -89,29 +101,24 @@ namespace Kafka
 		}
 		catch (const std::bad_alloc& e)
 		{
-			return { false, std::format("thread pool creation failed: {}", e.what()) };
+			return std::unexpected(std::format("thread pool creation failed: {}", e.what()));
 		}
 
 		thread_pool_->push(std::make_shared<ThreadWorker>(std::vector<JobPriorities>{ JobPriorities::Normal }));
 
-		return { true, std::nullopt };
+		return {};
 	}
 
-	auto KafkaBase::destroy_thread_pool() -> std::tuple<bool, std::optional<std::string>>
+	auto KafkaBase::destroy_thread_pool() -> std::expected<void, std::string>
 	{
 		if (thread_pool_ == nullptr)
 		{
-			return { true, std::nullopt };
+			return {};
 		}
 
-		auto [stopped, stop_error] = thread_pool_->stop();
-		if (!stopped)
-		{
-			return { false, stop_error };
-		}
-
+		thread_pool_->stop();
 		thread_pool_.reset();
 
-		return { true, std::nullopt };
+		return {};
 	}
-	}
+}

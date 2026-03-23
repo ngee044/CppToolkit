@@ -30,61 +30,129 @@ namespace Kafka
 			Logger::handle().write(LogTypes::Error, "Failed to send message");
 			return DeliveryResult(
 				DeliveryResult::Status::Failed,
-                "Failed to send message",
-                "Producer is not connected"
+				"Failed to send message",
+				"Producer is not connected"
 			);
 		}
 
 		try
 		{
 			auto record = create_producer_record(message);
-			auto delivery_callback = [](const kafka::clients::producer::RecordMetadata& metadata, const kafka::Error& error) 
-			{
-				if (!error) 
-				{
-					std::cout << "Message delivered: " << metadata.toString() << std::endl;
-				} 
-				else 
-				{
-					std::cerr << "Message failed to be delivered: " << error.message() << std::endl;
-				}
-			};
 
-			producer_->send(record, delivery_callback);
-			
-			return DeliveryResult(
-                DeliveryResult::Status::Success,
-                "Message queued for delivery",
-                {}
-            );
-			
+			auto delivery_promise = std::make_shared<std::promise<DeliveryResult>>();
+			auto delivery_future = delivery_promise->get_future();
+
+			producer_->send(record,
+				[delivery_promise](const kafka::clients::producer::RecordMetadata& metadata, const kafka::Error& error)
+				{
+					if (!error)
+					{
+						delivery_promise->set_value(DeliveryResult(
+							DeliveryResult::Status::Success,
+							std::format("Message delivered: {}", metadata.toString()),
+							{}
+						));
+					}
+					else
+					{
+						delivery_promise->set_value(DeliveryResult(
+							DeliveryResult::Status::Failed,
+							"Message delivery failed",
+							error.message()
+						));
+					}
+				});
+
+			producer_->flush();
+
+			if (delivery_future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout)
+			{
+				return DeliveryResult(
+					DeliveryResult::Status::Failed,
+					"Message delivery timed out",
+					"flush completed but delivery callback not received within 10 seconds"
+				);
+			}
+
+			return delivery_future.get();
 		}
-		catch(const kafka::KafkaException& e)
+		catch (const kafka::KafkaException& e)
 		{
-            Logger::handle().write(LogTypes::Error, e.what());
-            return DeliveryResult(
-                DeliveryResult::Status::Failed,
-                "KafkaException on send",
-                e.what()
-            );
+			Logger::handle().write(LogTypes::Error, e.what());
+			return DeliveryResult(
+				DeliveryResult::Status::Failed,
+				"KafkaException on send",
+				e.what()
+			);
 		}
-		
 	}
 
 	auto KafkaQueueEmitter::send_batch(const std::vector<KafkaMessage>& messages) -> std::vector<DeliveryResult>
 	{
-		std::vector<DeliveryResult> delivery_results;
+		if (!is_connected() || producer_ == nullptr)
+		{
+			std::vector<DeliveryResult> results;
+			for (size_t i = 0; i < messages.size(); ++i)
+			{
+				results.emplace_back(DeliveryResult::Status::Failed, "Producer is not connected", std::string{});
+			}
+			return results;
+		}
+
+		std::vector<std::shared_ptr<std::promise<DeliveryResult>>> promises;
+		promises.reserve(messages.size());
+
 		for (const auto& message : messages)
 		{
-			auto delivery_result = send(message);
-			delivery_results.push_back(delivery_result);
-			if (delivery_result.get_status() != DeliveryResult::Status::Success)
+			try
 			{
-				Logger::handle().write(LogTypes::Debug, std::format("failed send message (kafka) = {}", delivery_result.get_message()));
-				if (delivery_result.get_error().has_value())
-				{
-					Logger::handle().write(LogTypes::Error, std::format("kafka producer send error = {}", delivery_result.get_error().value()));
-				}
+				auto record = create_producer_record(message);
+				auto delivery_promise = std::make_shared<std::promise<DeliveryResult>>();
+				promises.push_back(delivery_promise);
+
+				producer_->send(record,
+					[delivery_promise](const kafka::clients::producer::RecordMetadata& metadata, const kafka::Error& error)
+					{
+						if (!error)
+						{
+							delivery_promise->set_value(DeliveryResult(
+								DeliveryResult::Status::Success,
+								std::format("Message delivered: {}", metadata.toString()),
+								{}
+							));
+						}
+						else
+						{
+							delivery_promise->set_value(DeliveryResult(
+								DeliveryResult::Status::Failed,
+								"Message delivery failed",
+								error.message()
+							));
+						}
+					});
+			}
+			catch (const kafka::KafkaException& e)
+			{
+				auto error_promise = std::make_shared<std::promise<DeliveryResult>>();
+				error_promise->set_value(DeliveryResult(DeliveryResult::Status::Failed, "KafkaException on send", e.what()));
+				promises.push_back(error_promise);
+			}
+		}
+
+		producer_->flush();
+
+		std::vector<DeliveryResult> delivery_results;
+		delivery_results.reserve(promises.size());
+		for (auto& promise : promises)
+		{
+			auto future = promise->get_future();
+			if (future.wait_for(std::chrono::seconds(10)) == std::future_status::timeout)
+			{
+				delivery_results.emplace_back(DeliveryResult::Status::Failed, "Message delivery timed out", std::string{});
+			}
+			else
+			{
+				delivery_results.push_back(future.get());
 			}
 		}
 
@@ -112,44 +180,52 @@ namespace Kafka
 		disconnect();
 	}
 
-	auto KafkaQueueEmitter::connect() -> std::tuple<bool, std::optional<std::string>>
+	auto KafkaQueueEmitter::connect() -> std::expected<void, std::string>
 	{
 		Logger::handle().write(LogTypes::Information, "Connecting Kafka Producer");
 
 		if (producer_ != nullptr)
 		{
-			return { true, std::nullopt};
+			return {};
 		}
 
 		try
 		{
-			producer_ = std::make_unique<kafka::clients::producer::KafkaProducer>(config_.get_properties());
+			auto properties = config_.get_properties();
+			properties.put("topic.metadata.refresh.interval.ms", "500");
+
+			producer_ = std::make_unique<kafka::clients::producer::KafkaProducer>(properties);
 			if (producer_ != nullptr)
 			{
 				status_ = KafkaStatus::Connected;
+
+				// Warm up: trigger metadata fetch for the configured topic
+				producer_->flush();
+				std::this_thread::sleep_for(std::chrono::seconds(2));
+
 				Logger::handle().write(LogTypes::Information, "Kafka Producer Connected");
 			}
 
-			return { true, std::nullopt };
+			return {};
 		}
-		catch(const kafka::KafkaException& e)
+		catch (const kafka::KafkaException& e)
 		{
 			std::string error_message = std::format("Producer Connect Error = {}", e.what());
 			Logger::handle().write(LogTypes::Error, error_message);
-			return { false, error_message };
+			return std::unexpected(error_message);
 		}
 	}
 
-	auto KafkaQueueEmitter::disconnect() -> std::tuple<bool, std::optional<std::string>>
+	auto KafkaQueueEmitter::disconnect() -> std::expected<void, std::string>
 	{
 		if (status_ == KafkaStatus::Disconnected)
 		{
-			return { true, std::nullopt };
+			return {};
 		}
 
 		if (producer_ == nullptr)
 		{
-			return { false, "producer is nullptr"};
+			return std::unexpected("producer is nullptr");
 		}
 
 		status_ = KafkaStatus::Disconnecting;
@@ -164,24 +240,24 @@ namespace Kafka
 
 			Logger::handle().write(LogTypes::Information, "Kafka Producer Disconnected");
 
-			return { true, std::nullopt };
+			return {};
 		}
 		catch(const kafka::KafkaException& e)
 		{
 			std::string error_message = std::format("Error Disconnecting producer: {}", e.what());
 			Logger::handle().write(LogTypes::Error, error_message);
-			return {false, error_message};
+			return std::unexpected(error_message);
 		}
-		
+
 	}
 
 	auto KafkaQueueEmitter::create_producer_record(const KafkaMessage& message) -> kafka::clients::producer::ProducerRecord
 	{
 		auto line = message.value();
 
-		kafka::clients::producer::ProducerRecord record(message.topic(), 
-														message.key().empty() ? kafka::NullKey 
-																			  : kafka::Key(message.key().c_str(), message.key().size()), 
+		kafka::clients::producer::ProducerRecord record(message.topic(),
+														message.key().empty() ? kafka::NullKey
+																			  : kafka::Key(message.key().c_str(), message.key().size()),
 														kafka::Value(line.c_str(), line.size()));
 
 		if (message.partition() > 0)

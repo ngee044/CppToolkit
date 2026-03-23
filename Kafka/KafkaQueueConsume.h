@@ -8,6 +8,7 @@
 #include <string>
 #include <tuple>
 #include <optional>
+#include <expected>
 #include <chrono>
 
 namespace Kafka
@@ -21,8 +22,8 @@ namespace Kafka
 		KafkaQueueConsume(const KafkaConfig& config);
 		virtual ~KafkaQueueConsume();
 
-		auto subscribe(const std::string& topic) -> std::tuple<bool, std::optional<std::string>>;
-		auto unsubscribe() -> std::tuple<bool, std::optional<std::string>>;
+		auto subscribe(const std::string& topic) -> std::expected<void, std::string>;
+		auto unsubscribe() -> std::expected<void, std::string>;
 
 		auto poll(std::chrono::milliseconds timeout_ms) -> std::vector<KafkaMessage>;
 
@@ -32,8 +33,8 @@ namespace Kafka
 		auto close() -> void;
 
 	protected:
-		auto connect() -> std::tuple<bool, std::optional<std::string>> override;
-		auto disconnect() -> std::tuple<bool, std::optional<std::string>> override;
+		auto connect() -> std::expected<void, std::string> override;
+		auto disconnect() -> std::expected<void, std::string> override;
 
 	};
-} 
+}

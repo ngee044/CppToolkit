@@ -12,8 +12,7 @@
 #include <tuple>
 #include <string>
 #include <optional>
-
-using namespace Thread;
+#include <expected>
 
 namespace Kafka
 {
@@ -31,28 +30,27 @@ namespace Kafka
 		KafkaBase(const KafkaConfig& config);
 		virtual ~KafkaBase();
 
-		auto start() -> std::tuple<bool, std::optional<std::string>>;
-		auto wait_stop() -> std::tuple<bool, std::optional<std::string>>;
-		auto stop() -> std::tuple<bool, std::optional<std::string>>;
+		auto start() -> std::expected<void, std::string>;
+		auto wait_stop() -> std::expected<void, std::string>;
+		auto stop() -> std::expected<void, std::string>;
 
         auto get_status() const -> KafkaStatus { return status_; }
         auto is_connected() const -> bool { return status_ == KafkaStatus::Connected; }
 
 	protected:
-		virtual auto connect() -> std::tuple<bool, std::optional<std::string>> = 0;
-		virtual auto disconnect() -> std::tuple<bool, std::optional<std::string>> = 0;
+		virtual auto connect() -> std::expected<void, std::string> = 0;
+		virtual auto disconnect() -> std::expected<void, std::string> = 0;
 
-		auto create_thread_pool() -> std::tuple<bool, std::optional<std::string>>;
-		auto destroy_thread_pool() -> std::tuple<bool, std::optional<std::string>>;
+		auto create_thread_pool() -> std::expected<void, std::string>;
+		auto destroy_thread_pool() -> std::expected<void, std::string>;
 
-		std::shared_ptr<ThreadPool> thread_pool_;
+		std::shared_ptr<Thread::ThreadPool> thread_pool_;
 
 		std::unique_ptr<kafka::clients::producer::KafkaProducer> producer_;
 		std::unique_ptr<kafka::clients::consumer::KafkaConsumer> consumer_;
-		
-		// Variables to be deleted if not used
-		std::promise<void> stop_promise_;
-		std::optional<std::future<void>> stop_future_;
+
+		std::unique_ptr<std::promise<void>> stop_promise_;
+		std::future<void> stop_future_;
 
 		KafkaStatus status_;
 		KafkaConfig config_;

@@ -25,54 +25,54 @@ namespace Kafka
 		Logger::handle().write(LogTypes::Information, "KafkaConsumer disconnected");
 	}
 
-	auto KafkaQueueConsume::subscribe(const std::string& topic) -> std::tuple<bool, std::optional<std::string>>
+	auto KafkaQueueConsume::subscribe(const std::string& topic) -> std::expected<void, std::string>
 	{
 		if (!is_connected() || consumer_ == nullptr)
 		{
-			return {false, "Consumer not connected"};
+			return std::unexpected("Consumer not connected");
 		}
 
 		try
 		{
 			consumer_->subscribe({topic});
-			Logger::handle().write(LogTypes::Information, 
+			Logger::handle().write(LogTypes::Information,
 				std::format("KafkaConsumer Subscribed to topic: {}", topic));
 
-			return {true, std::nullopt};
+			return {};
 		}
 		catch (const kafka::KafkaException& e)
 		{
 			auto msg = std::format("KafkaConsumer subscribe error: {}", e.what());
 			Logger::handle().write(LogTypes::Error, msg);
-			
-			return {false, msg};
+
+			return std::unexpected(msg);
 		}
 	}
 
-	auto KafkaQueueConsume::unsubscribe() -> std::tuple<bool, std::optional<std::string>>
+	auto KafkaQueueConsume::unsubscribe() -> std::expected<void, std::string>
 	{
 		if (!is_connected() || consumer_ == nullptr)
 		{
-			return {false, "Consumer not connected"};
+			return std::unexpected("Consumer not connected");
 		}
 
 		try
 		{
 			consumer_->unsubscribe();
 			Logger::handle().write(LogTypes::Information, "KafkaConsumer Unsubscribed.");
-			
-			return {true, std::nullopt};
+
+			return {};
 		}
 		catch (const kafka::KafkaException& e)
 		{
 			auto msg = std::format("KafkaConsumer unsubscribe() error: {}", e.what());
 			Logger::handle().write(LogTypes::Error, msg);
 
-			return {false, msg};
+			return std::unexpected(msg);
 		}
 	}
 
-	auto KafkaQueueConsume::connect() -> std::tuple<bool, std::optional<std::string>>
+	auto KafkaQueueConsume::connect() -> std::expected<void, std::string>
 	{
 		Logger::handle().write(LogTypes::Information, "KafkaConsumer Connecting....");
 
@@ -90,7 +90,7 @@ namespace Kafka
 				Logger::handle().write(LogTypes::Information, "KafkaConsumer Connected");
 			}
 
-			return { true, std::nullopt };
+			return {};
 		}
 		catch (const kafka::KafkaException& e)
 		{
@@ -99,20 +99,20 @@ namespace Kafka
 
 			status_ = KafkaStatus::Error;
 
-			return { false, message };
+			return std::unexpected(message);
 		}
 	}
 
-	auto KafkaQueueConsume::disconnect() -> std::tuple<bool, std::optional<std::string>>
+	auto KafkaQueueConsume::disconnect() -> std::expected<void, std::string>
 	{
 		if (status_ == KafkaStatus::Disconnected)
 		{
-			return {true, std::nullopt};
+			return {};
 		}
-		
+
 		if (consumer_ == nullptr)
 		{
-			return {false, "Consumer is nullptr"};
+			return std::unexpected("Consumer is nullptr");
 		}
 
 		status_ = KafkaStatus::Disconnecting;
@@ -123,10 +123,10 @@ namespace Kafka
 			consumer_.reset();
 
 			status_ = KafkaStatus::Disconnected;
-			
+
 			Logger::handle().write(LogTypes::Information, "KafkaConsumer Disconnected");
 
-			return {true, std::nullopt};
+			return {};
 		}
 		catch (const kafka::KafkaException& e)
 		{
@@ -134,10 +134,8 @@ namespace Kafka
 			Logger::handle().write(LogTypes::Error, msg);
 
 			status_ = KafkaStatus::Error;
-			return {false, msg};
+			return std::unexpected(msg);
 		}
-
-		return { true, std::nullopt };
 	}
 
 	auto KafkaQueueConsume::poll(std::chrono::milliseconds timeout_ms) -> std::vector<KafkaMessage>
@@ -158,8 +156,8 @@ namespace Kafka
 				{
 					KafkaMessage kafka_message(
 						record.topic(),
-						record.key().toString(),   
-						record.value().toString()  
+						record.key().toString(),
+						record.value().toString()
 					);
 
 					kafka_message.partition(record.partition());
@@ -167,9 +165,9 @@ namespace Kafka
 
 					for (auto&& header : record.headers())
 					{
-						auto key_buffer = header.key;   
-						auto value_buffer = header.value; 
-						
+						auto key_buffer = header.key;
+						auto value_buffer = header.value;
+
 						kafka_message.add_header(header.key, header.value.toString());
 					}
 
@@ -227,7 +225,7 @@ namespace Kafka
 		{
 			return;
 		}
-		disconnect(); 
+		disconnect();
 	}
 
 

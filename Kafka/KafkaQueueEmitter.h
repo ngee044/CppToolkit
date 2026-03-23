@@ -8,6 +8,7 @@
 #include <string>
 #include <tuple>
 #include <optional>
+#include <expected>
 #include <mutex>
 #include <unordered_map>
 #include <queue>
@@ -28,11 +29,11 @@ namespace Kafka
 		auto close() -> void;
 
 	protected:
-		auto connect() -> std::tuple<bool, std::optional<std::string>> override;
-		auto disconnect() -> std::tuple<bool, std::optional<std::string>> override;
+		auto connect() -> std::expected<void, std::string> override;
+		auto disconnect() -> std::expected<void, std::string> override;
 
 		auto create_producer_record(const KafkaMessage& message) -> kafka::clients::producer::ProducerRecord;
-		
+
 
 	};
-} 
+}
