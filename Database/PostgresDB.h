@@ -11,11 +11,11 @@ namespace Database
 		PostgresDB(const std::string& conn_str);
 		virtual ~PostgresDB();
 
-		auto execute_query(const std::string& sql_query) -> std::tuple<bool, std::optional<std::string>> override;
+		auto execute_query(const std::string& sql_query) -> std::expected<void, std::string> override;
 		auto execute_query_and_get_result(const std::string& sql_query)
-			-> std::tuple<std::optional<std::vector<std::vector<std::variant<int, double, std::string, std::vector<std::string>>>>>, std::optional<std::string>> override;
+			-> std::expected<std::vector<std::vector<std::variant<int, double, std::string, std::vector<std::string>>>>, std::string> override;
 
-		auto execute_command(const std::string& sql) -> std::tuple<bool, std::optional<std::string>>;
+		auto execute_command(const std::string& sql) -> std::expected<void, std::string>;
 		auto escape_string(const std::string input) -> std::string;	
 
 		auto handler() -> PGconn* { return connection_; }
