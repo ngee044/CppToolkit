@@ -275,8 +275,8 @@ CppToolkit 프레임워크 코드 변경 시, 아래 테스트 케이스를 통�
 | 사전 조건 | Kafka 브로커 실행, `test_topic` 토픽 존재 (auto-create 또는 수동 생성) |
 | 실행 | `./build/bin/KafkaSample` |
 | 기대 결과 | Producer가 메시지를 전송하고, Consumer가 해당 메시지를 수신한다 |
-| 확인 포인트 - Producer | `Message queued successfully.` 출력 |
-| 확인 포인트 - Consumer | `[Consumer] Received: topic=test_topic, key=myKey, value=Hello Kafka from sample code!` 출력 |
+| 확인 포인트 - Producer | `Message delivered: test_topic-0@<offset>` 형식의 성공 메시지 출력 (초기 메타데이터 fetch 지연으로 재시도 메시지가 먼저 출력될 수 있음) |
+| 확인 포인트 - Consumer | `[Consumer] Received: topic=test_topic, key=myKey` 출력 (value는 압축 적용 시 바이너리로 표시될 수 있음) |
 
 ### TC-6.2: Producer 시작 실패 처리
 
@@ -336,3 +336,60 @@ CppToolkit 프레임워크 코드 변경 시, 아래 테스트 케이스를 통�
 |------|------|
 | 확인 포인트 | SIGINT, SIGTERM 수신 시 graceful shutdown이 수행된다 |
 | 검증 방법 | 실행 중 `kill -SIGINT <pid>` 또는 `Ctrl+C` |
+
+---
+
+## 외부 서비스 환경 구성
+
+일부 테스트 케이스(TC-3, TC-6)는 외부 서비스(PostgreSQL, Kafka)가 필요하다.
+로컬에 해당 서비스가 설치되어 있지 않은 경우 Docker를 사용하여 테스트 환경을 구성할 수 있다.
+
+### PostgreSQL (TC-3)
+
+```bash
+docker run -d --name postgres-test \
+  -p 5432:5432 \
+  -e POSTGRES_USER=testuser \
+  -e POSTGRES_PASSWORD=testpass \
+  -e POSTGRES_DB=testdb \
+  postgres:14
+
+# 접속 확인
+psql -U testuser -d testdb -h localhost -p 5432
+```
+
+### Kafka (TC-6)
+
+```bash
+docker run -d --name kafka-test \
+  -p 9092:9092 \
+  -e KAFKA_NODE_ID=1 \
+  -e KAFKA_PROCESS_ROLES=broker,controller \
+  -e KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093 \
+  -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
+  -e KAFKA_CONTROLLER_QUORUM_VOTERS=1@localhost:9093 \
+  -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
+  -e KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://127.0.0.1:9092 \
+  -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+  -e KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1 \
+  -e KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1 \
+  -e CLUSTER_ID=MkU3OEVBNTcwNTJENDM2Qk \
+  apache/kafka:latest
+
+# 브로커 초기화 대기 (약 15~20초)
+sleep 20
+
+# 토픽 생성
+docker exec kafka-test /opt/kafka/bin/kafka-topics.sh \
+  --create --topic test_topic \
+  --bootstrap-server localhost:9092 \
+  --partitions 1 --replication-factor 1
+```
+
+### 환경 정리
+
+```bash
+docker rm -f postgres-test kafka-test
+```
+
+> **참고**: Kafka 브로커는 초기화에 시간이 걸리므로 컨테이너 시작 후 약 20초 대기 후 테스트를 실행한다. Producer의 첫 메시지 전송 시 메타데이터 fetch 지연으로 재시도가 발생할 수 있으며, 이는 정상 동작이다.
