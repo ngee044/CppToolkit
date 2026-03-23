@@ -1,6 +1,7 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <expected>
 #include "KafkaQueueEmitter.h"
 #include "KafkaQueueConsume.h"
 #include "KafkaConfig.h"
@@ -12,40 +13,47 @@ int main()
 {
 	Kafka::KafkaConfig producer_config("127.0.0.1:9092");
 	producer_config.set_topic("test_topic");
-	producer_config.add_config("enable.idempotence", "true");
-	producer_config.add_config("acks", "all");               
+	producer_config.add_config("acks", "all");
+	// enable.idempotence is implicitly true with acks=all on Kafka 3.x+               
 
 	Kafka::KafkaQueueEmitter producer(producer_config);
 
 	{
-		auto [start_ok, start_err] = producer.start();
-		if (!start_ok)
+		auto start_result = producer.start();
+		if (!start_result)
 		{
 			std::cerr << "Producer start failed: "
-					<< (start_err.has_value() ? start_err.value() : "") << std::endl;
+					<< start_result.error() << std::endl;
 			return -1;
 		}
 	}
 
 	{
 		Kafka::KafkaMessage message("test_topic", "myKey", "Hello Kafka from sample code!");
-		auto delivery_result = producer.send(message);
+
+		DeliveryResult delivery_result(DeliveryResult::Status::Failed, "not attempted", {});
+		for (int attempt = 1; attempt <= 5; ++attempt)
+		{
+			delivery_result = producer.send(message);
+			if (delivery_result.get_status() == DeliveryResult::Status::Success)
+			{
+				break;
+			}
+			std::cerr << "Send attempt " << attempt << " failed, retrying in 3s..." << std::endl;
+			std::this_thread::sleep_for(std::chrono::seconds(3));
+		}
 		if (delivery_result.get_status() != DeliveryResult::Status::Success)
 		{
-			std::cerr << "Producer send error: "
-					<< delivery_result.get_message() << std::endl;
+			std::cerr << "Send failed: " << delivery_result.get_message() << std::endl;
 			if (delivery_result.get_error().has_value())
 			{
-				std::cerr << "Error detail: "
-						<< delivery_result.get_error().value() << std::endl;
+				std::cerr << "Error: " << delivery_result.get_error().value() << std::endl;
 			}
 		}
 		else
 		{
-			std::cout << "Message queued successfully." << std::endl;
+			std::cout << delivery_result.get_message() << std::endl;
 		}
-		// wait send message
-		std::this_thread::sleep_for(std::chrono::seconds(1));
 	}
 
 	// 4) Consumer
@@ -59,19 +67,19 @@ int main()
 
 	// 5) Consumer start + connect + subscribe
 	{
-		auto [start_ok, start_err] = consumer.start();
-		if (!start_ok)
+		auto start_result = consumer.start();
+		if (!start_result)
 		{
 			std::cerr << "Consumer start failed: "
-					<< (start_err.has_value() ? start_err.value() : "") << std::endl;
+					<< start_result.error() << std::endl;
 			return -1;
 		}
 
-		auto [sub_ok, sub_err] = consumer.subscribe("test_topic");
-		if (!sub_ok)
+		auto sub_result = consumer.subscribe("test_topic");
+		if (!sub_result)
 		{
 			std::cerr << "Consumer subscribe failed: "
-					<< (sub_err.has_value() ? sub_err.value() : "") << std::endl;
+					<< sub_result.error() << std::endl;
 			return -1;
 		}
 	}

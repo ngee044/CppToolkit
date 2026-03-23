@@ -11,6 +11,7 @@
 #include "ThreadPool.h"
 #include "ThreadWorker.h"
 
+#include <expected>
 #include <format>
 
 #include "boost/json.hpp"
@@ -48,10 +49,10 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		std::unique_ptr<ThreadPool> pool = std::make_unique<ThreadPool>();
 		pool->push(std::make_shared<ThreadWorker>(std::vector<JobPriorities>{ JobPriorities::High }));
 		pool->push(std::make_shared<ThreadWorker>(std::vector<JobPriorities>{ JobPriorities::Normal }));
-		auto [started, start_error] = pool->start();
-		if (!started)
+		auto start_result = pool->start();
+		if (!start_result)
 		{
-			Logger::handle().write(LogTypes::Error, std::format("Failed to start a thread pool: {}", start_error.value()));
+			Logger::handle().write(LogTypes::Error, std::format("Failed to start a thread pool: {}", start_result.error()));
 			pool.reset();
 
 			continue;
@@ -63,21 +64,21 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 			Logger::handle().write(LogTypes::Error, std::format("Failed to remove a worker: {}", remove_error.value()));
 		}
 
-		auto [pushed_job, push_job_error] = pool->push(std::make_shared<Job>(JobPriorities::High,
-																			 [i]() -> std::tuple<bool, std::optional<std::string>>
+		auto push_result = pool->push(std::make_shared<Job>(JobPriorities::High,
+																			 [i]() -> std::expected<void, std::string>
 																			 {
 																				 Logger::handle().write(LogTypes::Information, std::format("High: {}", i));
-																				 return { true, std::nullopt };
+																				 return {};
 																			 }));
-		if (!pushed_job)
+		if (!push_result)
 		{
-			Logger::handle().write(LogTypes::Error, std::format("Failed to push a job: {}", push_job_error.value()));
+			Logger::handle().write(LogTypes::Error, std::format("Failed to push a job: {}", push_result.error()));
 		}
 
-		auto [stopped, stop_error] = pool->stop();
-		if (!stopped)
+		auto stop_result = pool->stop();
+		if (!stop_result)
 		{
-			Logger::handle().write(LogTypes::Error, std::format("Failed to stop a thread pool: {}", stop_error.value()));
+			Logger::handle().write(LogTypes::Error, std::format("Failed to stop a thread pool: {}", stop_result.error()));
 		}
 
 		pool.reset();

@@ -9,6 +9,7 @@
 #include "Logger.h"
 #include "NetworkClient.h"
 
+#include <expected>
 #include <format>
 
 #include <memory>
@@ -63,11 +64,11 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		client_->register_key("test_key");
         client_->auto_pong(pong_enable_);
 		client_->received_connection_callback(
-			[](const bool& condition, const bool& by_itself) -> std::tuple<bool, std::optional<std::string>>
+			[](bool condition, bool by_itself) -> std::expected<void, std::string>
 			{
 				if (client_ == nullptr)
 				{
-					return { false, "client has no handle" };
+					return std::unexpected("client has no handle");
 				}
 
 				Logger::handle().write(LogTypes::Information, std::format("received condition of connection: {}, by itself: {}", condition, by_itself));
@@ -81,27 +82,27 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 						client_->stop();
 					}
 
-					return { false, "client has no connection" };
+					return std::unexpected("client has no connection");
 				}
 
 				return client_->send_message("echo");
 			});
 		client_->received_message_callback(
-			[](const std::string& message) -> std::tuple<bool, std::optional<std::string>>
+			[](const std::string& message) -> std::expected<void, std::string>
 			{
 				if (client_ == nullptr)
 				{
-					return { false, "client has no handle" };
+					return std::unexpected("client has no handle");
 				}
 
 				return client_->send_binary(Converter::to_array("send_binary"), message);
 			});
 		client_->received_binary_callback(
-			[](const std::string& message, const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+			[](const std::string& message, const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 			{
 				if (client_ == nullptr)
 				{
-					return { false, "client has no handle" };
+					return std::unexpected("client has no handle");
 				}
 
 				Logger::handle().write(LogTypes::Information, std::format("received_binary: {}", message));
@@ -109,11 +110,11 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 				return client_->send_message(message);
 			});
 		client_->received_file_callback(
-			[](const std::string& message, const std::vector<uint8_t>& file_path) -> std::tuple<bool, std::optional<std::string>>
+			[](const std::string& message, const std::vector<uint8_t>& file_path) -> std::expected<void, std::string>
 			{
 				if (client_ == nullptr)
 				{
-					return { false, "client has no handle" };
+					return std::unexpected("client has no handle");
 				}
 
 				Logger::handle().write(LogTypes::Information, std::format("received_binary: {}", message));
@@ -122,14 +123,14 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 			});
 		client_->received_files_callback(
 			[](const std::vector<std::string>& failures,
-			   const std::vector<std::pair<std::string, std::string>>& successes) -> std::tuple<bool, std::optional<std::string>>
+			   const std::vector<std::pair<std::string, std::string>>& successes) -> std::expected<void, std::string>
 			{
 				if (client_ == nullptr)
 				{
-					return { false, "client has no handle" };
+					return std::unexpected("client has no handle");
 				}
 
-				return { true, std::nullopt };
+				return {};
 			});
 
 		if (client_->start(server_ip_, server_port_, buffer_size_))

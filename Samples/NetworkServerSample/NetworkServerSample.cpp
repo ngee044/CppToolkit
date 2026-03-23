@@ -9,6 +9,7 @@
 #include "Logger.h"
 #include "NetworkServer.h"
 
+#include <expected>
 #include <format>
 
 #include <tuple>
@@ -65,25 +66,25 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 	server_->register_key("test_key");
 
 	server_->received_connection_callback(
-		[](const std::string& id, const std::string& sub_id, const bool& condition) -> std::tuple<bool, std::optional<std::string>>
+		[](const std::string& id, const std::string& sub_id, bool condition) -> std::expected<void, std::string>
 		{
 			if (server_ == nullptr)
 			{
-				return { false, "server has no handle" };
+				return std::unexpected("server has no handle");
 			}
 
 			Logger::handle().write(LogTypes::Information, std::format("received condition message from "
 																	  "NetworkClientSample : [{}:{}] => {}",
 																	  id, sub_id, condition));
 
-			return { true, std::nullopt };
+			return {};
 		});
 	server_->received_message_callback(
-		[](const std::string& id, const std::string& sub_id, const std::string& message) -> std::tuple<bool, std::optional<std::string>>
+		[](const std::string& id, const std::string& sub_id, const std::string& message) -> std::expected<void, std::string>
 		{
 			if (server_ == nullptr)
 			{
-				return { false, "server has no handle" };
+				return std::unexpected("server has no handle");
 			}
 
 			Logger::handle().write(LogTypes::Information, std::format("received_message: {}", message));
@@ -91,11 +92,11 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 			return server_->send_binary(Converter::to_array("send_binary"), message, id, sub_id);
 		});
 	server_->received_binary_callback(
-		[](const std::string& id, const std::string& sub_id, const std::string& message, const std::vector<uint8_t>& data) -> std::tuple<bool, std::optional<std::string>>
+		[](const std::string& id, const std::string& sub_id, const std::string& message, const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 		{
 			if (server_ == nullptr)
 			{
-				return { false, "server has no handle" };
+				return std::unexpected("server has no handle");
 			}
 
 			Logger::handle().write(LogTypes::Information, std::format("received_binary: {}", message));
@@ -104,11 +105,11 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		});
 	server_->received_file_callback(
 		[](const std::string& id, const std::string& sub_id, const std::string& message,
-		   const std::vector<uint8_t>& file_path) -> std::tuple<bool, std::optional<std::string>>
+		   const std::vector<uint8_t>& file_path) -> std::expected<void, std::string>
 		{
 			if (server_ == nullptr)
 			{
-				return { false, "server has no handle" };
+				return std::unexpected("server has no handle");
 			}
 
 			Logger::handle().write(LogTypes::Information, std::format("received_file: {}", message));
@@ -117,16 +118,16 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 		});
 	server_->received_files_callback(
 		[](const std::string& id, const std::string& sub_id, const std::vector<std::string>& failures,
-		   const std::vector<std::pair<std::string, std::string>>& successes) -> std::tuple<bool, std::optional<std::string>>
+		   const std::vector<std::pair<std::string, std::string>>& successes) -> std::expected<void, std::string>
 		{
 			if (server_ == nullptr)
 			{
-				return std::make_tuple(false, "server has no handle");
+				return std::unexpected("server has no handle");
 			}
 
 			Logger::handle().write(LogTypes::Information, std::format("received_files: successes[{}], failures[{}]", successes.size(), failures.size()));
 
-			return { true, std::nullopt };
+			return {};
 		});
 
 #ifdef USE_ENCRYPT_MODULE
