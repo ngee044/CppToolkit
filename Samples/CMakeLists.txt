@@ -10,7 +10,9 @@ if (BUILD_SAMPLES)
 add_subdirectory(FolderWatcherSample)
 endif()
 
-add_subdirectory(FolderCompressionSample)
+if (BUILD_SAMPLES)
+	add_subdirectory(FolderCompressionSample)
+endif()
 
 # cpp_libraries
 if(BUILD_THREAD_LIB AND BUILD_SAMPLES)
@@ -20,7 +22,7 @@ if(BUILD_NETWORK_LIB AND BUILD_SAMPLES)
 	add_subdirectory(NetworkServerSample)
 	add_subdirectory(NetworkClientSample)
 endif()
-if(BUILD_DATABASE_LIB)
+if(BUILD_DATABASE_LIB AND BUILD_SAMPLES)
 	add_subdirectory(DatabaseSample)
 endif()
 

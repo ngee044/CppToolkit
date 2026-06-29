@@ -23,13 +23,13 @@ namespace Utilities
 		std::vector<std::vector<char>> source_buffer;
 		source_buffer.push_back(std::vector<char>());
 		source_buffer.push_back(std::vector<char>());
-		source_buffer[0].reserve(block_bytes);
-		source_buffer[1].reserve(block_bytes);
+		source_buffer[0].resize(block_bytes);
+		source_buffer[1].resize(block_bytes);
 
 		int32_t original_size = 0;
 		int32_t compress_size = LZ4_COMPRESSBOUND(block_bytes);
 		std::vector<char> compress_buffer;
-		compress_buffer.reserve(compress_size);
+		compress_buffer.resize(compress_size);
 		std::vector<uint8_t> compressed_data;
 
 		char original_size_data[4];
@@ -113,12 +113,12 @@ namespace Utilities
 		std::vector<std::vector<char>> target_buffer;
 		target_buffer.push_back(std::vector<char>());
 		target_buffer.push_back(std::vector<char>());
-		target_buffer[0].reserve(block_bytes);
-		target_buffer[1].reserve(block_bytes);
+		target_buffer[0].resize(block_bytes);
+		target_buffer[1].resize(block_bytes);
 
 		int32_t compress_size = LZ4_COMPRESSBOUND(block_bytes);
 		std::vector<char> compress_buffer;
-		compress_buffer.reserve(compress_size);
+		compress_buffer.resize(compress_size);
 		std::vector<uint8_t> decompressed_data;
 
 		LZ4_setStreamDecode(&lz4StreamDecode_body, nullptr, 0);

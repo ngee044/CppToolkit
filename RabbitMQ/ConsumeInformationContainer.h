@@ -3,6 +3,7 @@
 #include "ConsumeInformation.h"
 
 #include <map>
+#include <mutex>
 #include <string>
 #include <expected>
 
@@ -17,6 +18,7 @@ namespace RabbitMQ
 		auto exists_consume_information(const std::string& queue_name) const -> bool;
 		auto add_consume_information(const ConsumeInformation& information) -> std::expected<void, std::string>;
 		auto remove_consume_information(const std::string& queue_name) -> std::expected<ConsumeInformation, std::string>;
+		auto set_consumer_tag(const std::string& queue_name, const std::string& consumer_tag) -> std::expected<void, std::string>;
 
 		auto get_heartbeat() const -> int;
 		auto get_consume_informations() const -> std::vector<ConsumeInformation>;
@@ -24,6 +26,7 @@ namespace RabbitMQ
 			-> std::optional<std::function<std::expected<void, std::string>(const std::string&, const std::string&, const std::string&)>>;
 
 	private:
+		mutable std::mutex mutex_;
 		int heartbeat_;
 		std::map<std::string, ConsumeInformation> consume_informations_;
 	};

@@ -18,7 +18,6 @@
       "boost-json",
       "boost-system",
       "boost-filesystem",
-      "libplist",
       "boost-process",
       "curl",
       "librabbitmq",

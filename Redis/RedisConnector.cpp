@@ -55,7 +55,6 @@ namespace Redis
 				return {};
 			}
 
-			redis_->subscriber().unsubscribe();
 			redis_.reset();
 
 			return {};

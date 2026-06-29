@@ -18,10 +18,7 @@ namespace Kafka
 
 	KafkaQueueConsume::~KafkaQueueConsume()
 	{
-		if (is_connected())
-		{
-			disconnect();
-		}
+		disconnect();
 		Logger::handle().write(LogTypes::Information, "KafkaConsumer disconnected");
 	}
 
@@ -165,9 +162,6 @@ namespace Kafka
 
 					for (auto&& header : record.headers())
 					{
-						auto key_buffer = header.key;
-						auto value_buffer = header.value;
-
 						kafka_message.add_header(header.key, header.value.toString());
 					}
 

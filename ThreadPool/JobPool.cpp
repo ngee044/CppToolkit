@@ -18,7 +18,7 @@ namespace Thread
 	static constexpr size_t MAX_QUEUE_LOW = 4096;
 	// static constexpr size_t MAX_QUEUE_NORMAL = 8192; // reserved for future use
 
-	JobPool::JobPool(const std::string& title) : lock_condition_(false), job_pool_title_(title)
+	JobPool::JobPool(const std::string& title) : job_pool_title_(title), lock_condition_(false)
 	{
 		backup_extensions_.insert({ ".top", JobPriorities::Top });
 		backup_extensions_.insert({ ".high", JobPriorities::High });
@@ -39,9 +39,9 @@ namespace Thread
 	{
 		std::scoped_lock<std::mutex> lock(mutex_);
 
-		for (auto job : job_queues_)
+		for (auto& [priority, queue] : job_queues_)
 		{
-			for (auto target : job.second)
+			for (auto& target : queue)
 			{
 				target->job_pool(nullptr);
 				target->destroy();
@@ -59,6 +59,12 @@ namespace Thread
 		if (iterator == job_queues_.end())
 		{
 			return;
+		}
+
+		for (auto& target : iterator->second)
+		{
+			target->job_pool(nullptr);
+			target->destroy();
 		}
 
 		iterator->second.clear();
@@ -152,11 +158,13 @@ namespace Thread
 		}
 
 		Logger::handle().write(LogTypes::Parameter, std::format("contained job : {} [ {} ]", job->title(), priority_string(job->priority())));
+
+		auto callback = notify_callback_;
 		lock.unlock();
 
-		if (notify_callback_)
+		if (callback)
 		{
-			notify_callback_(priority);
+			callback(priority);
 		}
 
 		return {};
@@ -200,18 +208,22 @@ namespace Thread
 		return nullptr;
 	}
 
-	auto JobPool::notify_callback(const std::function<void(JobPriorities)>& callback) -> void { notify_callback_ = callback; }
+	auto JobPool::notify_callback(const std::function<void(JobPriorities)>& callback) -> void
+	{
+		std::scoped_lock<std::mutex> lock(mutex_);
+		notify_callback_ = callback;
+	}
 
 	auto JobPool::job_pool_title(const std::string& title) -> void { job_pool_title_ = title; }
 
 	const std::string JobPool::job_pool_title(void) { return job_pool_title_; }
 
-	auto JobPool::job_count(std::vector<JobPriorities>& priorities) -> const size_t
+	auto JobPool::job_count(const std::vector<JobPriorities>& priorities) -> const size_t
 	{
+		std::scoped_lock<std::mutex> lock(mutex_);
+
 		if (priorities.empty())
 		{
-			std::scoped_lock<std::mutex> lock(mutex_);
-
 			size_t count = 0;
 
 			for (auto& current : job_queues_)
@@ -225,8 +237,6 @@ namespace Thread
 		size_t count = 0;
 		for (auto& priority : priorities)
 		{
-			std::scoped_lock<std::mutex> lock(mutex_);
-
 			auto iter = job_queues_.find(priority);
 			if (iter == job_queues_.end())
 			{

@@ -11,6 +11,11 @@ namespace Database
 		PostgresDB(const std::string& conn_str);
 		virtual ~PostgresDB();
 
+		PostgresDB(const PostgresDB&) = delete;
+		auto operator=(const PostgresDB&) -> PostgresDB& = delete;
+		PostgresDB(PostgresDB&& other) noexcept;
+		auto operator=(PostgresDB&& other) noexcept -> PostgresDB&;
+
 		auto execute_query(const std::string& sql_query) -> std::expected<void, std::string> override;
 		auto execute_query_and_get_result(const std::string& sql_query)
 			-> std::expected<std::vector<std::vector<std::variant<int, double, std::string, std::vector<std::string>>>>, std::string> override;
@@ -23,6 +28,8 @@ namespace Database
 		auto parse_postgres_array(const std::string& array_string) const -> std::vector<std::string>;
 
 	private:
+		auto is_connected() const -> bool { return PQstatus(connection_) == CONNECTION_OK; }
+
 		PGconn* connection_;
 	};
 }

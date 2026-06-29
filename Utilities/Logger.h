@@ -74,7 +74,8 @@ namespace Utilities
 	private:
 		auto run(void) -> void;
 		auto write_log(const std::vector<std::shared_ptr<Log>>& messages) -> void;
-		auto convert_log(const std::vector<std::shared_ptr<Log>>& messages) -> std::tuple<std::vector<std::string>, std::vector<std::string>, std::vector<std::string>>;
+		auto convert_log(const std::vector<std::shared_ptr<Log>>& messages, bool include_database)
+			-> std::tuple<std::vector<std::string>, std::vector<std::string>, std::vector<std::string>>;
 		auto write_console(const std::vector<std::string>& messages) -> void;
 		auto write_database(const std::vector<std::string>& messages) -> void;
 		auto write_file(const std::string& target_path, const std::vector<std::string>& messages) -> std::deque<std::string>;
@@ -88,14 +89,14 @@ namespace Utilities
 		std::unique_ptr<std::thread> thread_;
 		std::condition_variable condition_;
 
-		bool database_mode_;
+		std::atomic<bool> database_mode_;
 		bool file_backup_mode_;
-		uint16_t write_interval_;
+		std::atomic<uint16_t> write_interval_;
 		uint16_t max_lines_;
 
-		LogTypes file_mode_;
-		LogTypes console_mode_;
-		LogTypes log_types_;
+		std::atomic<LogTypes> file_mode_;
+		std::atomic<LogTypes> console_mode_;
+		std::atomic<LogTypes> log_types_;
 
 		std::locale locale_;
 		std::string log_name_;

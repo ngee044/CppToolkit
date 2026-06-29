@@ -34,8 +34,8 @@ private:
     kafka::Topic topic_;
     std::string key_;
     std::string value_;
-    kafka::Partition partition_;
-    int64_t timestamp_;
+    kafka::Partition partition_{RD_KAFKA_PARTITION_UA};
+    int64_t timestamp_{0};
     std::vector<MessageHeader> message_headers_;
 };
 

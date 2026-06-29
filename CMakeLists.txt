@@ -15,8 +15,6 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 
 project(${PROGRAM_NAME} VERSION 1.0.0.0)
 
-add_definitions(-DCPPHTTPLIB_OPENSSL_SUPPORT)
-
 option(USE_ENCRYPT_LIBS "Use encrypt library" ON)
 option(BUILD_THREAD_LIB "Build thread library" ON)
 option(BUILD_DATABASE_LIB "Build database library" ON)
@@ -24,12 +22,14 @@ option(BUILD_NETWORK_LIB "Build network library" ON)
 option(BUILD_SAMPLES "Build samples" ON)
 option(BUILD_RABBIT_MQ_LIB "Build rabbitmq library" ON)
 option(BUILD_REDIS_LIB "Build redis library" ON)
-option(BUILD_KAFKA_LIB "Build redis library" ON)
+option(BUILD_KAFKA_LIB "Build kafka library" ON)
 
 add_subdirectory(Utilities)
 add_subdirectory(ThreadPool)
-add_subdirectory(Database)
 
+if (BUILD_DATABASE_LIB)
+    add_subdirectory(Database)
+endif()
 if (BUILD_NETWORK_LIB)
     add_subdirectory(Network)
 endif()

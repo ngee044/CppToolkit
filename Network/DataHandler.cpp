@@ -69,7 +69,11 @@ auto DataHandler::id(void) const -> std::string { return id_; }
 
 auto DataHandler::sub_id(void) const -> std::string { return sub_id_; }
 
-auto DataHandler::strand(void) -> std::shared_ptr<boost::asio::strand<boost::asio::any_io_executor>> { return strand_; }
+auto DataHandler::strand(void) -> std::shared_ptr<boost::asio::strand<boost::asio::any_io_executor>>
+{
+	std::scoped_lock<std::mutex> lock(mutex_);
+	return strand_;
+}
 
 auto DataHandler::set_self_guard(const std::weak_ptr<void>& self) -> void { self_guard_ = self; }
 
@@ -248,21 +252,32 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 
 	auto DataHandler::destroy_thread_pool(void) -> void
 	{
-		std::scoped_lock<std::mutex> lock(mutex_);
-
-		if (thread_pool_ == nullptr)
+		std::shared_ptr<ThreadPool> pool;
 		{
-			return;
+			std::scoped_lock<std::mutex> lock(mutex_);
+
+			if (thread_pool_ == nullptr)
+			{
+				return;
+			}
+
+			pool = thread_pool_;
+			thread_pool_.reset();
 		}
 
 		Logger::handle().write(LogTypes::Sequence, "attempt to call destroy_thread_pool on DataHandler");
 
-		thread_pool_->stop(true);
-		thread_pool_.reset();
+		pool->stop(true);
+		pool.reset();
 	}
 
 	auto DataHandler::buffer_size(size_t size) -> void
 	{
+		if (size < MIN_RECEIVING_BUFFER_SIZE)
+		{
+			size = MIN_RECEIVING_BUFFER_SIZE;
+		}
+
 		if (buffer_size_ != size || receiving_buffers_ == nullptr)
 		{
 			create_receiving_buffers(size);
@@ -275,6 +290,8 @@ auto DataHandler::alive(void) const -> bool { return !self_guard_.expired(); }
 
 auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socket) -> void
 {
+    std::scoped_lock<std::mutex> lock(mutex_);
+
     socket_ = new_socket;
     if (socket_ && socket_->is_open())
     {
@@ -293,19 +310,30 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
     }
 }
 
-	auto DataHandler::socket(void) -> std::shared_ptr<boost::asio::ip::tcp::socket> { return socket_; }
+	auto DataHandler::socket(void) -> std::shared_ptr<boost::asio::ip::tcp::socket>
+	{
+		std::scoped_lock<std::mutex> lock(mutex_);
+		return socket_;
+	}
 
 	auto DataHandler::destroy_socket(void) -> void
 	{
-		if (socket_ == nullptr)
+		std::shared_ptr<boost::asio::ip::tcp::socket> sock;
 		{
-			return;
+			std::scoped_lock<std::mutex> lock(mutex_);
+
+			if (socket_ == nullptr)
+			{
+				return;
+			}
+
+			sock = socket_;
+			socket_.reset();
+			strand_.reset();
 		}
 
-		if (!socket_->is_open())
+		if (!sock->is_open())
 		{
-			socket_.reset();
-
 			return;
 		}
 
@@ -313,36 +341,35 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 
 		boost::system::error_code ec;
 
-		socket_->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+		sock->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
 		ec.clear();
 
-		socket_->close(ec);
+		sock->close(ec);
 		ec.clear();
-
-		socket_.reset();
-		strand_.reset();
 	}
 
 	auto DataHandler::condition(ConnectConditions new_condition, bool by_itself) -> void
 	{
-		if (condition_ == new_condition)
+		ConnectConditions expected = condition_.load();
+		do
 		{
-			return;
-		}
-
-		condition_ = new_condition;
+			if (expected == new_condition)
+			{
+				return;
+			}
+		} while (!condition_.compare_exchange_weak(expected, new_condition));
 
 #ifdef _DEBUG
-		Logger::handle().write(LogTypes::Debug, std::format("connection condition : {}", (uint8_t)condition_));
+		Logger::handle().write(LogTypes::Debug, std::format("connection condition : {}", (uint8_t)new_condition));
 #endif
 
-		if (condition_ == ConnectConditions::Expired)
+		if (new_condition == ConnectConditions::Expired)
 		{
 			disconnected(by_itself);
 		}
 	}
 
-	auto DataHandler::condition(void) -> const ConnectConditions { return condition_; }
+	auto DataHandler::condition(void) -> const ConnectConditions { return condition_.load(); }
 
 	auto DataHandler::send(DataModes mode, const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
@@ -409,7 +436,15 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 			return;
 		}
 
-		if (socket_ == nullptr || !socket_->is_open())
+		std::shared_ptr<boost::asio::ip::tcp::socket> sock;
+		std::shared_ptr<boost::asio::strand<boost::asio::any_io_executor>> strand;
+		{
+			std::scoped_lock<std::mutex> lock(mutex_);
+			sock = socket_;
+			strand = strand_;
+		}
+
+		if (sock == nullptr || !sock->is_open())
 		{
 			condition(ConnectConditions::Expired);
 			return;
@@ -475,14 +510,14 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 									read_start_code(matched_index + 1);
 								};
 
-		if (strand_)
+		if (strand)
 		{
-			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1),
-									  boost::asio::bind_executor(*strand_, std::move(handler_start)));
+			boost::asio::async_read(*sock, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1),
+									  boost::asio::bind_executor(*strand, std::move(handler_start)));
 		}
 		else
 		{
-			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1), handler_start);
+			boost::asio::async_read(*sock, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1), handler_start);
 		}
 	}
 
@@ -493,7 +528,15 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 			return;
 		}
 
-		if (socket_ == nullptr || !socket_->is_open())
+		std::shared_ptr<boost::asio::ip::tcp::socket> sock;
+		std::shared_ptr<boost::asio::strand<boost::asio::any_io_executor>> strand;
+		{
+			std::scoped_lock<std::mutex> lock(mutex_);
+			sock = socket_;
+			strand = strand_;
+		}
+
+		if (sock == nullptr || !sock->is_open())
 		{
 			condition(ConnectConditions::Expired);
 			return;
@@ -547,14 +590,14 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
             read_data(target_length);
         };
 
-		if (strand_)
+		if (strand)
 		{
-			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, LENGTH_SIZE), boost::asio::transfer_exactly(LENGTH_SIZE),
-									  boost::asio::bind_executor(*strand_, std::move(handler_length)));
+			boost::asio::async_read(*sock, boost::asio::buffer(receiving_buffers_, LENGTH_SIZE), boost::asio::transfer_exactly(LENGTH_SIZE),
+									  boost::asio::bind_executor(*strand, std::move(handler_length)));
 		}
 		else
 		{
-			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, LENGTH_SIZE), boost::asio::transfer_exactly(LENGTH_SIZE), handler_length);
+			boost::asio::async_read(*sock, boost::asio::buffer(receiving_buffers_, LENGTH_SIZE), boost::asio::transfer_exactly(LENGTH_SIZE), handler_length);
 		}
 	}
 
@@ -565,7 +608,15 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 			return;
 		}
 
-		if (socket_ == nullptr || !socket_->is_open())
+		std::shared_ptr<boost::asio::ip::tcp::socket> sock;
+		std::shared_ptr<boost::asio::strand<boost::asio::any_io_executor>> strand;
+		{
+			std::scoped_lock<std::mutex> lock(mutex_);
+			sock = socket_;
+			strand = strand_;
+		}
+
+		if (sock == nullptr || !sock->is_open())
 		{
 			condition(ConnectConditions::Expired);
 			return;
@@ -614,14 +665,14 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 										read_data(remained_data_length - length);
 			};
 
-			if (strand_)
+			if (strand)
 			{
-				boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, buffer_size_), boost::asio::transfer_exactly(buffer_size_),
-										  boost::asio::bind_executor(*strand_, std::move(handler_chunk)));
+				boost::asio::async_read(*sock, boost::asio::buffer(receiving_buffers_, buffer_size_), boost::asio::transfer_exactly(buffer_size_),
+										  boost::asio::bind_executor(*strand, std::move(handler_chunk)));
 			}
 			else
 			{
-				boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, buffer_size_), boost::asio::transfer_exactly(buffer_size_), handler_chunk);
+				boost::asio::async_read(*sock, boost::asio::buffer(receiving_buffers_, buffer_size_), boost::asio::transfer_exactly(buffer_size_), handler_chunk);
 			}
 
 			return;
@@ -655,14 +706,14 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 									read_end_code();
 		};
 
-		if (strand_)
+		if (strand)
 		{
-			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, remained_data_length), boost::asio::transfer_exactly(remained_data_length),
-									  boost::asio::bind_executor(*strand_, std::move(handler_last)));
+			boost::asio::async_read(*sock, boost::asio::buffer(receiving_buffers_, remained_data_length), boost::asio::transfer_exactly(remained_data_length),
+									  boost::asio::bind_executor(*strand, std::move(handler_last)));
 		}
 		else
 		{
-			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, remained_data_length), boost::asio::transfer_exactly(remained_data_length), handler_last);
+			boost::asio::async_read(*sock, boost::asio::buffer(receiving_buffers_, remained_data_length), boost::asio::transfer_exactly(remained_data_length), handler_last);
 		}
 	}
 
@@ -673,7 +724,15 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 			return;
 		}
 
-		if (socket_ == nullptr || !socket_->is_open())
+		std::shared_ptr<boost::asio::ip::tcp::socket> sock;
+		std::shared_ptr<boost::asio::strand<boost::asio::any_io_executor>> strand;
+		{
+			std::scoped_lock<std::mutex> lock(mutex_);
+			sock = socket_;
+			strand = strand_;
+		}
+
+		if (sock == nullptr || !sock->is_open())
 		{
 			condition(ConnectConditions::Expired);
 			return;
@@ -731,19 +790,24 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 									read_end_code(matched_index + 1);
 		};
 
-		if (strand_)
+		if (strand)
 		{
-			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1),
-									  boost::asio::bind_executor(*strand_, std::move(handler_end)));
+			boost::asio::async_read(*sock, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1),
+									  boost::asio::bind_executor(*strand, std::move(handler_end)));
 		}
 		else
 		{
-			boost::asio::async_read(*socket_, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1), handler_end);
+			boost::asio::async_read(*sock, boost::asio::buffer(receiving_buffers_, 1), boost::asio::transfer_exactly(1), handler_end);
 		}
 	}
 
 	auto DataHandler::create_receiving_buffers(size_t size) -> void
 	{
+		if (size < MIN_RECEIVING_BUFFER_SIZE)
+		{
+			size = MIN_RECEIVING_BUFFER_SIZE;
+		}
+
 		destroy_receiving_buffers();
 
 		receiving_buffers_ = new uint8_t[size];

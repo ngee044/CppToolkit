@@ -8,12 +8,14 @@
 #include <expected>
 #include <format>
 
+#include <algorithm>
+
 using namespace Utilities;
 
 namespace Thread
 {
 	ThreadWorker::ThreadWorker(const std::vector<JobPriorities>& priorities, const std::string& worker_title)
-		: thread_(nullptr), priorities_(priorities), thread_worker_title_(worker_title), pause_(false), thread_stop_(false)
+		: pause_(false), thread_stop_(false), thread_worker_title_(worker_title), thread_(nullptr), priorities_(priorities)
 	{
 	}
 
@@ -61,6 +63,8 @@ namespace Thread
 
 	auto ThreadWorker::notify_one(JobPriorities target) -> void
 	{
+		std::scoped_lock<std::mutex> lock(mutex_);
+
 		if (thread_ == nullptr)
 		{
 			return;
@@ -77,7 +81,6 @@ namespace Thread
 			return;
 		}
 
-		std::scoped_lock<std::mutex> lock(mutex_);
 		condition_.notify_one();
 	}
 

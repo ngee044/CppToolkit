@@ -11,7 +11,6 @@ set(HEADER_FILES
 	KafkaQueueEmitter.h
 	KafkaMessage.h
 	DeliveryResult.hpp
-	KafkaAdmin.h
 	KafkaCommon.h
 )
 
@@ -21,8 +20,6 @@ set(SOURCE_FILES
 	KafkaQueueEmitter.cpp
 	KafkaBase.cpp
 	KafkaMessage.cpp
-	KafkaAdmin.cpp
-	
 )
 
 find_package(unofficial-modern-cpp-kafka CONFIG REQUIRED)

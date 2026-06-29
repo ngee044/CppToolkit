@@ -13,6 +13,8 @@
 #include <string>
 #include <optional>
 #include <expected>
+#include <mutex>
+#include <future>
 
 namespace Kafka
 {
@@ -49,6 +51,7 @@ namespace Kafka
 		std::unique_ptr<kafka::clients::producer::KafkaProducer> producer_;
 		std::unique_ptr<kafka::clients::consumer::KafkaConsumer> consumer_;
 
+		std::mutex stop_mutex_;
 		std::unique_ptr<std::promise<void>> stop_promise_;
 		std::future<void> stop_future_;
 

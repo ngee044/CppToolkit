@@ -13,6 +13,8 @@
 #include <memory>
 #include <vector>
 #include <expected>
+#include <atomic>
+#include <mutex>
 
 namespace Network
 {
@@ -105,7 +107,7 @@ namespace Network
 		std::string id_;
 		std::string sub_id_;
 		size_t buffer_size_;
-		ConnectConditions condition_;
+		std::atomic<ConnectConditions> condition_;
 		uint16_t high_priority_count_;
 		uint16_t normal_priority_count_;
 		uint16_t low_priority_count_;

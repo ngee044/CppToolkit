@@ -16,6 +16,8 @@ namespace RabbitMQ
 
 	auto ConsumeInformationContainer::exists_consume_information(const std::string& queue_name) const -> bool
 	{
+		std::lock_guard<std::mutex> lock(mutex_);
+
 		auto iter = consume_informations_.find(queue_name);
 		if (iter == consume_informations_.end())
 		{
@@ -27,6 +29,8 @@ namespace RabbitMQ
 
 	auto ConsumeInformationContainer::add_consume_information(const ConsumeInformation& information) -> std::expected<void, std::string>
 	{
+		std::lock_guard<std::mutex> lock(mutex_);
+
 		auto iter = consume_informations_.find(information.get_queue_name());
 		if (iter != consume_informations_.end())
 		{
@@ -41,6 +45,8 @@ namespace RabbitMQ
 	auto ConsumeInformationContainer::remove_consume_information(const std::string& queue_name)
 		-> std::expected<ConsumeInformation, std::string>
 	{
+		std::lock_guard<std::mutex> lock(mutex_);
+
 		auto iter = consume_informations_.find(queue_name);
 		if (iter == consume_informations_.end())
 		{
@@ -54,10 +60,27 @@ namespace RabbitMQ
 		return information;
 	}
 
+	auto ConsumeInformationContainer::set_consumer_tag(const std::string& queue_name, const std::string& consumer_tag) -> std::expected<void, std::string>
+	{
+		std::lock_guard<std::mutex> lock(mutex_);
+
+		auto iter = consume_informations_.find(queue_name);
+		if (iter == consume_informations_.end())
+		{
+			return std::unexpected(std::format("Consume information for queue '{}' does not exist", queue_name));
+		}
+
+		iter->second.set_consumer_tag(consumer_tag);
+
+		return {};
+	}
+
 	auto ConsumeInformationContainer::get_heartbeat() const -> int { return heartbeat_; }
 
 	auto ConsumeInformationContainer::get_consume_informations() const -> std::vector<ConsumeInformation>
 	{
+		std::lock_guard<std::mutex> lock(mutex_);
+
 		std::vector<ConsumeInformation> result;
 		for (const auto& [key, value] : consume_informations_)
 		{
@@ -70,6 +93,8 @@ namespace RabbitMQ
 	auto ConsumeInformationContainer::get_consume_callback(const std::string& queue_name) const
 		-> std::optional<std::function<std::expected<void, std::string>(const std::string&, const std::string&, const std::string&)>>
 	{
+		std::lock_guard<std::mutex> lock(mutex_);
+
 		auto iter = consume_informations_.find(queue_name);
 		if (iter == consume_informations_.end())
 		{

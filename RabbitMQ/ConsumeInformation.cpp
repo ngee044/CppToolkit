@@ -19,4 +19,8 @@ namespace RabbitMQ
 	{
 		return callback_;
 	}
+
+	auto ConsumeInformation::get_consumer_tag() const -> const std::string& { return consumer_tag_; }
+
+	auto ConsumeInformation::set_consumer_tag(const std::string& consumer_tag) -> void { consumer_tag_ = consumer_tag; }
 }

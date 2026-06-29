@@ -11,6 +11,7 @@
 
 #include "boost/json.hpp"
 
+#include <cstring>
 #include <filesystem>
 #include <optional>
 
@@ -19,12 +20,12 @@ using namespace Utilities;
 namespace Thread
 {
 	Job::Job(JobPriorities priority, const std::string& title, bool use_time_stamp)
-		: title_(title), priority_(priority), callback1_(nullptr), callback2_(nullptr), callback3_(nullptr), use_time_stamp_(use_time_stamp)
+		: title_(title), use_time_stamp_(use_time_stamp), priority_(priority), callback1_(nullptr), callback2_(nullptr), callback3_(nullptr), callback4_(nullptr)
 	{
 	}
 
 	Job::Job(JobPriorities priority, const std::vector<uint8_t>& data, const std::string& title, bool use_time_stamp)
-		: title_(title), priority_(priority), data_(data), callback1_(nullptr), callback2_(nullptr), callback3_(nullptr), use_time_stamp_(use_time_stamp)
+		: title_(title), use_time_stamp_(use_time_stamp), data_(data), priority_(priority), callback1_(nullptr), callback2_(nullptr), callback3_(nullptr), callback4_(nullptr)
 	{
 	}
 
@@ -32,7 +33,7 @@ namespace Thread
 			 const std::function<std::expected<void, std::string>(void)>& callback,
 			 const std::string& title,
 			 bool use_time_stamp)
-		: title_(title), priority_(priority), callback1_(callback), callback2_(nullptr), callback3_(nullptr), callback4_(nullptr), use_time_stamp_(use_time_stamp)
+		: title_(title), use_time_stamp_(use_time_stamp), priority_(priority), callback1_(callback), callback2_(nullptr), callback3_(nullptr), callback4_(nullptr)
 	{
 	}
 
@@ -42,13 +43,13 @@ namespace Thread
 			 const std::string& title,
 			 bool use_time_stamp)
 		: title_(title)
-		, priority_(priority)
+		, use_time_stamp_(use_time_stamp)
 		, data_({ (condition ? (uint8_t)1 : (uint8_t)0) })
+		, priority_(priority)
 		, callback1_(nullptr)
 		, callback2_(callback)
 		, callback3_(nullptr)
 		, callback4_(nullptr)
-		, use_time_stamp_(use_time_stamp)
 	{
 	}
 
@@ -57,7 +58,7 @@ namespace Thread
 			 const std::function<std::expected<void, std::string>(const int&)>& callback,
 			 const std::string& title,
 			 bool use_time_stamp)
-		: title_(title), priority_(priority), callback1_(nullptr), callback2_(nullptr), callback3_(callback), callback4_(nullptr), use_time_stamp_(use_time_stamp)
+		: title_(title), use_time_stamp_(use_time_stamp), priority_(priority), callback1_(nullptr), callback2_(nullptr), callback3_(callback), callback4_(nullptr)
 	{
 		auto size = sizeof(int32_t);
 
@@ -74,13 +75,13 @@ namespace Thread
 			 const std::string& title,
 			 bool use_time_stamp)
 		: title_(title)
-		, priority_(priority)
+		, use_time_stamp_(use_time_stamp)
 		, data_(data)
+		, priority_(priority)
 		, callback1_(nullptr)
 		, callback2_(nullptr)
 		, callback3_(nullptr)
 		, callback4_(callback)
-		, use_time_stamp_(use_time_stamp)
 	{
 	}
 
@@ -120,7 +121,7 @@ namespace Thread
 
 		if (callback2_)
 		{
-			uint8_t condition = data_[0];
+			uint8_t condition = data_.empty() ? (uint8_t)0 : data_[0];
 
 			result = callback_safe_caller([&, condition]() -> std::expected<void, std::string> { return callback2_((condition == 1) ? true : false); });
 			destroy();
@@ -137,8 +138,18 @@ namespace Thread
 
 		if (callback3_)
 		{
-			int value;
-			std::memcpy(&value, data_.data(), sizeof(value));
+			if (data_.size() < sizeof(int32_t))
+			{
+				destroy();
+
+				return std::unexpected(std::format("cannot complete {} [ {} ] : missing int payload", title_, priority_string(priority_)));
+			}
+
+			int32_t value = 0;
+			for (size_t i = 0; i < sizeof(int32_t); ++i)
+			{
+				value |= (static_cast<int32_t>(data_[i]) & 0xFF) << (i * 8);
+			}
 
 			result = callback_safe_caller([&, value]() -> std::expected<void, std::string> { return callback3_(value); });
 			destroy();

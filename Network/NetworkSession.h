@@ -99,7 +99,9 @@ namespace Network
 		std::shared_ptr<boost::asio::steady_timer> heartbeat_timer_;
 
 		// Heartbeat monitoring
-		std::chrono::steady_clock::time_point last_pong_at_{};
+		// steady_clock time of last pong, stored as nanoseconds since the clock epoch
+		// so it can be read/written atomically across the io_context and worker threads
+		std::atomic<int64_t> last_pong_at_{ 0 };
 		uint32_t missed_heartbeats_ = 0;
 		uint32_t max_missed_heartbeats_ = 3; // expire after N missed intervals
 

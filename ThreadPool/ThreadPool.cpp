@@ -7,6 +7,7 @@
 #include <expected>
 #include <format>
 
+#include <algorithm>
 #include <functional>
 
 using namespace Utilities;
@@ -14,14 +15,18 @@ using namespace Utilities;
 namespace Thread
 {
 	ThreadPool::ThreadPool(const std::string& title)
-		: job_pool_(std::make_shared<JobPool>(std::format("JobPool on {}", title))), working_(false), thread_title_(title), pause_(false)
+		: pause_(false), working_(false), thread_title_(title), job_pool_(std::make_shared<JobPool>(std::format("JobPool on {}", title)))
 	{
-		job_pool_->notify_callback(std::bind(&ThreadPool::notify_callback, this, std::placeholders::_1));
 	}
 
 	ThreadPool::~ThreadPool(void)
 	{
 		stop(true);
+
+		if (job_pool_ != nullptr)
+		{
+			job_pool_->notify_callback(nullptr);
+		}
 
 		thread_workers_.clear();
 		job_pool_.reset();
@@ -82,6 +87,10 @@ namespace Thread
 
 	auto ThreadPool::remove_workers(JobPriorities priority) -> std::tuple<size_t, std::optional<std::string>>
 	{
+		// Serialize lifecycle operations (start/stop/remove_workers) so two of them cannot
+		// call worker->stop()/start() on the same worker concurrently outside mutex_.
+		std::scoped_lock<std::mutex> lifecycle_lock(lifecycle_mutex_);
+
 		if (job_pool_ == nullptr)
 		{
 			return { 0, "cannot remove workers due to null JobPool" };
@@ -89,40 +98,48 @@ namespace Thread
 
 		job_pool_->clear(priority);
 
-		std::scoped_lock<std::mutex> lock(mutex_);
-
-		auto new_end = std::remove_if(thread_workers_.begin(), thread_workers_.end(),
-									  [priority](const std::shared_ptr<ThreadWorker>& worker)
-									  {
-										  if (worker == nullptr)
-										  {
-											  return false;
-										  }
-
-										  auto priorities = worker->priorities();
-										  auto new_end = std::remove_if(priorities.begin(), priorities.end(),
-																		[priority](JobPriorities target) { return target == priority; });
-										  priorities.erase(new_end, priorities.end());
-										  worker->priorities(priorities);
-
-										  if (!priorities.empty())
-										  {
-											  return false;
-										  }
-
-										  worker->stop();
-
-										  return true;
-									  });
-		std::vector<std::shared_ptr<ThreadWorker>> removed_items(new_end, thread_workers_.end());
-		if (removed_items.size() == 0)
+		std::vector<std::shared_ptr<ThreadWorker>> workers_to_stop;
 		{
-			return { 0, "no worker to remove" };
+			std::scoped_lock<std::mutex> lock(mutex_);
+
+			auto new_end = std::remove_if(thread_workers_.begin(), thread_workers_.end(),
+										  [priority, &workers_to_stop](const std::shared_ptr<ThreadWorker>& worker)
+										  {
+											  if (worker == nullptr)
+											  {
+												  return false;
+											  }
+
+											  auto priorities = worker->priorities();
+											  auto new_end = std::remove_if(priorities.begin(), priorities.end(),
+																			[priority](JobPriorities target) { return target == priority; });
+											  priorities.erase(new_end, priorities.end());
+											  worker->priorities(priorities);
+
+											  if (!priorities.empty())
+											  {
+												  return false;
+											  }
+
+											  workers_to_stop.push_back(worker);
+
+											  return true;
+										  });
+
+			if (workers_to_stop.size() == 0)
+			{
+				return { 0, "no worker to remove" };
+			}
+
+			thread_workers_.erase(new_end, thread_workers_.end());
 		}
 
-		thread_workers_.erase(new_end, thread_workers_.end());
+		for (auto& worker : workers_to_stop)
+		{
+			worker->stop();
+		}
 
-		return { removed_items.size(), std::nullopt };
+		return { workers_to_stop.size(), std::nullopt };
 	}
 
 	auto ThreadPool::lock(bool lock_condition) -> void
@@ -175,14 +192,41 @@ namespace Thread
 
 	auto ThreadPool::start(void) -> std::expected<void, std::string>
 	{
-		std::scoped_lock<std::mutex> lock(mutex_);
+		std::scoped_lock<std::mutex> lifecycle_lock(lifecycle_mutex_);
 
-		if (working_.load())
+		std::vector<std::shared_ptr<ThreadWorker>> workers;
 		{
-			return std::unexpected("already started");
+			std::scoped_lock<std::mutex> lock(mutex_);
+
+			if (working_.load())
+			{
+				return std::unexpected("already started");
+			}
+
+			if (job_pool_ != nullptr)
+			{
+				std::weak_ptr<ThreadPool> weak_self = weak_from_this();
+				if (!weak_self.expired())
+				{
+					job_pool_->notify_callback(
+						[weak_self](JobPriorities priority)
+						{
+							if (auto self = weak_self.lock())
+							{
+								self->notify_callback(priority);
+							}
+						});
+				}
+				else
+				{
+					job_pool_->notify_callback([this](JobPriorities priority) { notify_callback(priority); });
+				}
+			}
+
+			workers = thread_workers_;
 		}
 
-		for (auto& worker : thread_workers_)
+		for (auto& worker : workers)
 		{
 			if (worker == nullptr)
 			{
@@ -220,6 +264,9 @@ namespace Thread
 
 	auto ThreadPool::stop(bool stop_immediately) -> std::expected<void, std::string>
 	{
+		std::scoped_lock<std::mutex> lifecycle_lock(lifecycle_mutex_);
+
+		std::vector<std::shared_ptr<ThreadWorker>> workers;
 		{
 			std::scoped_lock<std::mutex> lock(mutex_);
 
@@ -235,24 +282,32 @@ namespace Thread
 				job_pool_->clear();
 			}
 
-			for (auto& worker : thread_workers_)
-			{
-				if (worker == nullptr)
-				{
-					continue;
-				}
-
-				auto result = worker->stop();
-				if (!result)
-				{
-					return std::unexpected(result.error());
-				}
-			}
-
-			job_pool_->lock(false);
+			workers = thread_workers_;
 		}
 
+		std::optional<std::string> stop_error;
+		for (auto& worker : workers)
+		{
+			if (worker == nullptr)
+			{
+				continue;
+			}
+
+			auto result = worker->stop();
+			if (!result && !stop_error.has_value())
+			{
+				stop_error = result.error();
+			}
+		}
+
+		job_pool_->lock(false);
+
 		working_.store(false);
+
+		if (stop_error.has_value())
+		{
+			return std::unexpected(stop_error.value());
+		}
 
 		return {};
 	}
@@ -263,9 +318,14 @@ namespace Thread
 	{
 		Logger::handle().write(LogTypes::Sequence, std::format("notify one for {} priority", priority_string(priority)));
 
-		std::scoped_lock<std::mutex> lock(mutex_);
+		std::vector<std::shared_ptr<ThreadWorker>> workers;
+		{
+			std::scoped_lock<std::mutex> lock(mutex_);
 
-		for (auto& worker : thread_workers_)
+			workers = thread_workers_;
+		}
+
+		for (auto& worker : workers)
 		{
 			if (worker == nullptr)
 			{

@@ -23,9 +23,19 @@ namespace Kafka
 
 	KafkaBase::~KafkaBase()
 	{
-		if (status_ != KafkaStatus::Disconnected)
+		destroy_thread_pool();
+
+		std::lock_guard<std::mutex> lock(stop_mutex_);
+		if (stop_promise_ != nullptr)
 		{
-			stop();
+			try
+			{
+				stop_promise_->set_value();
+			}
+			catch (const std::future_error&)
+			{
+			}
+			stop_promise_.reset();
 		}
 	}
 
@@ -50,6 +60,8 @@ namespace Kafka
 		auto started = thread_pool_->start();
 		if (!started)
 		{
+			disconnect();
+			destroy_thread_pool();
 			return std::unexpected(started.error());
 		}
 
@@ -58,10 +70,15 @@ namespace Kafka
 
 	auto KafkaBase::wait_stop() -> std::expected<void, std::string>
 	{
-		stop_promise_ = std::make_unique<std::promise<void>>();
-		stop_future_ = stop_promise_->get_future();
+		std::future<void> wait_future;
+		{
+			std::lock_guard<std::mutex> lock(stop_mutex_);
+			stop_promise_ = std::make_unique<std::promise<void>>();
+			stop_future_ = stop_promise_->get_future();
+			wait_future = std::move(stop_future_);
+		}
 
-		stop_future_.wait();
+		wait_future.wait();
 
 		return {};
 	}
@@ -72,16 +89,19 @@ namespace Kafka
 
 		destroy_thread_pool();
 
-		if (stop_promise_ != nullptr)
 		{
-			try
+			std::lock_guard<std::mutex> lock(stop_mutex_);
+			if (stop_promise_ != nullptr)
 			{
-				stop_promise_->set_value();
+				try
+				{
+					stop_promise_->set_value();
+				}
+				catch (const std::future_error&)
+				{
+				}
+				stop_promise_.reset();
 			}
-			catch (const std::future_error&)
-			{
-			}
-			stop_promise_.reset();
 		}
 
 		return {};

@@ -16,11 +16,8 @@ namespace Kafka
 
 	KafkaQueueEmitter::~KafkaQueueEmitter()
 	{
-		if (is_connected())
-		{
-			Logger::handle().write(LogTypes::Information, "KafkaQueueEmitter disconnect");
-			disconnect();
-		}
+		Logger::handle().write(LogTypes::Information, "KafkaQueueEmitter disconnect");
+		disconnect();
 	}
 
 	auto KafkaQueueEmitter::send(const KafkaMessage& message) -> DeliveryResult
@@ -61,7 +58,8 @@ namespace Kafka
 							error.message()
 						));
 					}
-				});
+				},
+				kafka::clients::producer::KafkaProducer::SendOption::ToCopyRecordValue);
 
 			producer_->flush();
 
@@ -129,7 +127,8 @@ namespace Kafka
 								error.message()
 							));
 						}
-					});
+					},
+					kafka::clients::producer::KafkaProducer::SendOption::ToCopyRecordValue);
 			}
 			catch (const kafka::KafkaException& e)
 			{
@@ -172,7 +171,7 @@ namespace Kafka
 
 	auto KafkaQueueEmitter::close() -> void
 	{
-		if (!is_connected() || consumer_ == nullptr)
+		if (!is_connected() || producer_ == nullptr)
 		{
 			return;
 		}
@@ -253,12 +252,10 @@ namespace Kafka
 
 	auto KafkaQueueEmitter::create_producer_record(const KafkaMessage& message) -> kafka::clients::producer::ProducerRecord
 	{
-		auto line = message.value();
-
 		kafka::clients::producer::ProducerRecord record(message.topic(),
 														message.key().empty() ? kafka::NullKey
 																			  : kafka::Key(message.key().c_str(), message.key().size()),
-														kafka::Value(line.c_str(), line.size()));
+														kafka::Value(message.value().data(), message.value().size()));
 
 		if (message.partition() > 0)
 		{

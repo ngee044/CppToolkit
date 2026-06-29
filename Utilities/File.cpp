@@ -47,6 +47,7 @@ namespace Utilities
 	auto File::open(const std::string& path, const std::ios_base::openmode& mode, const std::locale& locale) -> std::expected<void, std::string>
 	{
 		file_path_ = path;
+		openmode_ = mode;
 
 		std::filesystem::path target_path(file_path_);
 		if (target_path.parent_path().empty() != true)
@@ -138,16 +139,26 @@ namespace Utilities
 			return std::unexpected(std::format("cannot write file by unopened condition : {}", file_path_));
 		}
 
-		std::string concatenated_message = std::accumulate(lines.begin(), lines.end(), std::string(),
-														   [append_newline](const std::string& a, const std::string& b)
-														   {
-															   if (!append_newline)
-															   {
-																   return a + b;
-															   }
+		size_t total = 0;
+		for (const auto& line : lines)
+		{
+			total += line.size();
+			if (append_newline)
+			{
+				total += 1;
+			}
+		}
 
-															   return a + (a.empty() ? "" : "\n") + b;
-														   });
+		std::string concatenated_message;
+		concatenated_message.reserve(total);
+		for (const auto& line : lines)
+		{
+			if (append_newline && !concatenated_message.empty())
+			{
+				concatenated_message += '\n';
+			}
+			concatenated_message += line;
+		}
 		stream_ << concatenated_message;
 		if (append_newline)
 		{
@@ -169,16 +180,26 @@ namespace Utilities
 			return std::unexpected(std::format("cannot write file by unopened condition : {}", file_path_));
 		}
 
-		std::string concatenated_message = std::accumulate(lines.begin(), lines.end(), std::string(),
-														   [append_newline](const std::string& a, const std::string& b)
-														   {
-															   if (!append_newline)
-															   {
-																   return a + b;
-															   }
+		size_t total = 0;
+		for (const auto& line : lines)
+		{
+			total += line.size();
+			if (append_newline)
+			{
+				total += 1;
+			}
+		}
 
-															   return a + (a.empty() ? "" : "\n") + b;
-														   });
+		std::string concatenated_message;
+		concatenated_message.reserve(total);
+		for (const auto& line : lines)
+		{
+			if (append_newline && !concatenated_message.empty())
+			{
+				concatenated_message += '\n';
+			}
+			concatenated_message += line;
+		}
 		stream_ << concatenated_message;
 		if (append_newline)
 		{

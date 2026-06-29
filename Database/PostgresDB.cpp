@@ -6,6 +6,8 @@
 
 #include <regex>
 #include <sstream>
+#include <charconv>
+#include <memory>
 
 using namespace Utilities;
 
@@ -22,9 +24,23 @@ namespace Database
 
 	PostgresDB::~PostgresDB() { PQfinish(connection_); }
 
+	PostgresDB::PostgresDB(PostgresDB&& other) noexcept : connection_(other.connection_) { other.connection_ = nullptr; }
+
+	auto PostgresDB::operator=(PostgresDB&& other) noexcept -> PostgresDB&
+	{
+		if (this != &other)
+		{
+			PQfinish(connection_);
+			connection_ = other.connection_;
+			other.connection_ = nullptr;
+		}
+
+		return *this;
+	}
+
 	auto PostgresDB::execute_query(const std::string& sql_query) -> std::expected<void, std::string>
 	{
-		if (PQstatus(connection_) != CONNECTION_OK)
+		if (!is_connected())
 		{
 			return std::unexpected(std::format("there is no created PGconn: {}", PQerrorMessage(connection_)));
 		}
@@ -45,45 +61,60 @@ namespace Database
 	auto PostgresDB::execute_query_and_get_result(const std::string& sql_query)
 		-> std::expected<std::vector<std::vector<std::variant<int, double, std::string, std::vector<std::string>>>>, std::string>
 	{
-		if (PQstatus(connection_) != CONNECTION_OK)
+		if (!is_connected())
 		{
 			return std::unexpected(std::format("there is no created PGconn: {}", PQerrorMessage(connection_)));
 		}
 
-		PGresult* result = PQexec(connection_, sql_query.c_str());
-		if (PQresultStatus(result) != PGRES_TUPLES_OK)
+		std::unique_ptr<PGresult, decltype(&PQclear)> result(PQexec(connection_, sql_query.c_str()), &PQclear);
+		if (PQresultStatus(result.get()) != PGRES_TUPLES_OK)
 		{
-			std::string error = PQerrorMessage(connection_);
-			PQclear(result);
-
-			return std::unexpected(error);
+			return std::unexpected(std::string(PQerrorMessage(connection_)));
 		}
 
-		int field_count = PQnfields(result);
-		int row_count = PQntuples(result);
+		int field_count = PQnfields(result.get());
+		int row_count = PQntuples(result.get());
 		std::vector<std::vector<std::variant<int, double, std::string, std::vector<std::string>>>> result_data;
 		for (int row_index = 0; row_index < row_count; ++row_index)
 		{
 			std::vector<std::variant<int, double, std::string, std::vector<std::string>>> current_row;
 			for (int field_index = 0; field_index < field_count; ++field_index)
 			{
-				if (PQgetisnull(result, row_index, field_index))
+				if (PQgetisnull(result.get(), row_index, field_index))
 				{
 					current_row.emplace_back("");
 					continue;
 				}
 
-				Oid fieldType = PQftype(result, field_index);
-				char* fieldValue = PQgetvalue(result, row_index, field_index);
+				Oid fieldType = PQftype(result.get(), field_index);
+				char* fieldValue = PQgetvalue(result.get(), row_index, field_index);
 
 				switch (fieldType)
 				{
 				case 23:
-					current_row.emplace_back(std::stoi(fieldValue));
+				{
+					int int_value = 0;
+					const char* int_end = fieldValue + std::char_traits<char>::length(fieldValue);
+					auto [ptr, ec] = std::from_chars(fieldValue, int_end, int_value);
+					if (ec != std::errc{} || ptr != int_end)
+					{
+						return std::unexpected(std::format("failed to parse int4 value: {}", fieldValue));
+					}
+					current_row.emplace_back(int_value);
 					break;
+				}
 				case 700:
-					current_row.emplace_back(std::stof(fieldValue));
+				{
+					try
+					{
+						current_row.emplace_back(std::stof(fieldValue));
+					}
+					catch (const std::exception&)
+					{
+						return std::unexpected(std::format("failed to parse float4 value: {}", fieldValue));
+					}
 					break;
+				}
 				case 1043:
 					current_row.emplace_back(std::string(fieldValue));
 					break;
@@ -96,14 +127,13 @@ namespace Database
 			}
 			result_data.push_back(current_row);
 		}
-		PQclear(result);
 
 		return result_data;
 	}
 
 	auto PostgresDB::execute_command(const std::string& sql) -> std::expected<void, std::string>
 	{
-        if (!connection_)
+        if (!is_connected())
 		{
 			return std::unexpected(std::format("there is no created PGconn: {}", PQerrorMessage(connection_)));
 		}
@@ -122,7 +152,7 @@ namespace Database
         return {};
 	}
 
-	auto PostgresDB::escape_string(const std::string input) -> std::string 
+	auto PostgresDB::escape_string(const std::string input) -> std::string
 	{
 		if (!connection_)
 		{

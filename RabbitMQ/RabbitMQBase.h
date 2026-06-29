@@ -94,6 +94,8 @@ namespace RabbitMQ
 		auto basic_delete_queue(amqp_connection_state_t conn, int target_channel_id, const std::string& queue_name, bool if_unused = false, bool if_empty = false) -> std::expected<void, std::string>;
 		auto basic_bind_queue(amqp_connection_state_t conn, int target_channel_id, const std::string& queue_name, const std::string& exchange, const std::string& routing_key) -> std::expected<void, std::string>;
 
+		auto create_socket(amqp_connection_state_t conn, std::string& socket_type) -> std::expected<amqp_socket_t*, std::string>;
+
 		auto create_thread_pool() -> std::expected<void, std::string>;
 		auto destroy_thread_pool() -> std::expected<void, std::string>;
 
@@ -103,8 +105,8 @@ namespace RabbitMQ
 		virtual auto redeclare_channel(void) -> std::expected<void, std::string> { return std::unexpected("Not implemented yet"); }
 
 	private:
-		auto register_consumer(int target_channel_id, const std::string& target_queue) -> std::expected<void, std::string>;
-		auto unregister_consumer(int target_channel_id) -> std::expected<void, std::string>;
+		auto register_consumer(int target_channel_id, const std::string& target_queue) -> std::expected<std::string, std::string>;
+		auto unregister_consumer(int target_channel_id, const std::string& consumer_tag) -> std::expected<void, std::string>;
 		auto reconnect(void) -> std::expected<void, std::string>;
 
 	protected:

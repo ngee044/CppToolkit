@@ -309,7 +309,7 @@ namespace Utilities
 		// UTF-8 BOM
 		if (value.size() >= 3 && value[0] == 0xef && value[1] == 0xbb && value[2] == 0xbf)
 		{
-			return std::string((char*)value.data() + 2, value.size() - 2);
+			return std::string((char*)value.data() + 3, value.size() - 3);
 		}
 
 		// UTF-8 no BOM

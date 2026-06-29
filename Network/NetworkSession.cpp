@@ -227,7 +227,17 @@ namespace Network
 		received_files_callback_ = callback;
 	}
 
-	auto NetworkSession::disconnected(bool by_itself) -> void { response_connection(false); }
+	auto NetworkSession::disconnected(bool by_itself) -> void
+	{
+		// During an explicit stop() the thread pool and socket are about to be torn
+		// down, so do not enqueue a new response_connection send onto the dying pool.
+		if (stopped_.load())
+		{
+			return;
+		}
+
+		response_connection(false);
+	}
 
 	auto NetworkSession::received_connection(const std::vector<uint8_t>& data) -> std::expected<void, std::string>
 	{
@@ -286,7 +296,7 @@ namespace Network
 		if (heartbeat_enabled_)
 		{
 			// initialize pong timestamp on successful authentication
-			last_pong_at_ = std::chrono::steady_clock::now();
+			last_pong_at_.store(std::chrono::steady_clock::now().time_since_epoch().count());
 			missed_heartbeats_ = 0;
 			start_heartbeat();
 		}
@@ -367,7 +377,7 @@ namespace Network
 		if (msg.rfind(k_heartbeat_pong, 0) == 0)
 		{
 			Logger::handle().write(LogTypes::Debug, std::format("received heartbeat:pong from [{}:{}]", id(), sub_id()));
-			last_pong_at_ = std::chrono::steady_clock::now();
+			last_pong_at_.store(std::chrono::steady_clock::now().time_since_epoch().count());
 			missed_heartbeats_ = 0;
 			return {};
 		}
@@ -520,7 +530,8 @@ namespace Network
 					}
 					// Check missed heartbeats
 					auto now = std::chrono::steady_clock::now();
-					auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - self->last_pong_at_).count();
+					std::chrono::steady_clock::time_point last_pong{ std::chrono::steady_clock::duration(self->last_pong_at_.load()) };
+					auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - last_pong).count();
 					if (elapsed >= static_cast<long long>(self->heartbeat_interval_sec_) * self->max_missed_heartbeats_)
 					{
 						Utilities::Logger::handle().write(Utilities::LogTypes::Error,

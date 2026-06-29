@@ -38,6 +38,7 @@ namespace Utilities
 		{
 			file_watcher_->removeWatch(watch_id);
 		}
+		watch_ids_.clear();
 
 		file_watcher_.reset();
 	}

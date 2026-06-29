@@ -60,3 +60,6 @@ CMakeLists.txt.user
 .DS_Store
 Thumbs.db
 AGENTS.md
+
+# Project documentation (local only)
+docs/

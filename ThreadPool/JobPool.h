@@ -36,7 +36,7 @@ namespace Thread
 		auto job_pool_title(const std::string& title) -> void;
 		auto job_pool_title(void) -> const std::string;
 
-		auto job_count(std::vector<JobPriorities>& priorities) -> const size_t;
+		auto job_count(const std::vector<JobPriorities>& priorities) -> const size_t;
 
 		auto lock(bool condition) -> void;
 		auto lock(void) -> const bool;

@@ -47,6 +47,7 @@ namespace Thread
 		std::atomic_bool pause_;
 		std::atomic_bool working_;
 		std::mutex mutex_;
+		std::mutex lifecycle_mutex_;
 		std::string thread_title_;
 		std::shared_ptr<JobPool> job_pool_;
 		std::vector<std::shared_ptr<ThreadWorker>> thread_workers_;

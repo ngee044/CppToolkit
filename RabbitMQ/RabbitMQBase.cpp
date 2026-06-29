@@ -22,6 +22,36 @@ using namespace Utilities;
 
 namespace RabbitMQ
 {
+	namespace
+	{
+		class ConnectionGuard
+		{
+		public:
+			explicit ConnectionGuard(amqp_connection_state_t conn) : conn_(conn) {}
+			~ConnectionGuard()
+			{
+				if (conn_ != nullptr)
+				{
+					amqp_destroy_connection(conn_);
+				}
+			}
+
+			ConnectionGuard(const ConnectionGuard&) = delete;
+			auto operator=(const ConnectionGuard&) -> ConnectionGuard& = delete;
+
+			auto get() const -> amqp_connection_state_t { return conn_; }
+			auto release() -> amqp_connection_state_t
+			{
+				auto conn = conn_;
+				conn_ = nullptr;
+				return conn;
+			}
+
+		private:
+			amqp_connection_state_t conn_;
+		};
+	}
+
 	RabbitMQBase::RabbitMQBase(const std::string& host, int port, const std::string& user_name, const std::string& password, const SSLOptions& ssl_options)
 		: host_(host)
 		, port_(port)
@@ -72,9 +102,11 @@ namespace RabbitMQ
 
 	auto RabbitMQBase::stop() -> void
 	{
-		basic_disconnect();
+		continue_receiving_.store(false);
 
 		destroy_thread_pool();
+
+		basic_disconnect();
 
 		if (stop_promise_ != nullptr)
 		{
@@ -101,43 +133,17 @@ namespace RabbitMQ
 	{
 		Logger::handle().write(LogTypes::Sequence, std::format("attempt to publish message: routing_key[{}] => {} bytes", routing_key, message.length()));
 
-		auto conn = amqp_new_connection();
+		ConnectionGuard connection_guard(amqp_new_connection());
+		auto conn = connection_guard.get();
 
 		std::string socket_type = "";
-		amqp_socket_t* socket = nullptr;
-		if (!ssl_options_.use_ssl())
+		auto created_socket = create_socket(conn, socket_type);
+		if (!created_socket)
 		{
-			socket = amqp_tcp_socket_new(conn);
-			if (!socket)
-			{
-				return std::unexpected("create TCP socket failed");
-			}
-
-			socket_type = "TCP";
+			return std::unexpected(created_socket.error());
 		}
-#if RABBITMQ_SSL_AVAILABLE
-		else
-		{
-			socket = amqp_ssl_socket_new(conn);
-			if (!socket)
-			{
-				return std::unexpected("create SSL socket failed");
-			}
 
-			auto ssl_setup = basic_ssl_setup(socket);
-			if (!ssl_setup)
-			{
-				return std::unexpected(ssl_setup.error());
-			}
-
-			socket_type = "SSL/TLS";
-		}
-#else
-		else
-		{
-			return std::unexpected("SSL/TLS requested, but rabbitmq-c in this build lacks SSL support");
-		}
-#endif
+		amqp_socket_t* socket = created_socket.value();
 
 		auto status = amqp_socket_open(socket, host_.c_str(), port_);
 		if (status != AMQP_STATUS_OK)
@@ -202,10 +208,12 @@ namespace RabbitMQ
 		props.content_type = amqp_cstring_bytes(content_type.c_str());
 		props.delivery_mode = static_cast<uint8_t>(delivery_mode);
 
+		std::string expiration_str;
 		if (expiration_millisecond.has_value())
 		{
+			expiration_str = std::to_string(expiration_millisecond.value());
 			props._flags |= AMQP_BASIC_EXPIRATION_FLAG;
-			props.expiration = amqp_cstring_bytes(std::to_string(expiration_millisecond.value()).c_str());
+			props.expiration = amqp_cstring_bytes(expiration_str.c_str());
 		}
 
 		status = amqp_basic_publish(conn, target_channel_id, amqp_cstring_bytes(exchange.c_str()), amqp_cstring_bytes(routing_key.c_str()), 0, 0, &props, message_bytes);
@@ -236,14 +244,6 @@ namespace RabbitMQ
 			return std::unexpected(std::format("closing connection failed: {}", reply_message(reply)));
 		}
 
-		status = amqp_destroy_connection(conn);
-		if (status != AMQP_STATUS_OK)
-		{
-			return std::unexpected(std::format("destroying connection failed: {}", status_message(static_cast<amqp_status_enum_>(status))));
-		}
-
-		conn = nullptr;
-
 		return {};
 	}
 
@@ -267,6 +267,12 @@ namespace RabbitMQ
 			return std::unexpected(registered.error());
 		}
 
+		auto tag_stored = consume_information_container_->set_consumer_tag(target_queue_name, registered.value());
+		if (!tag_stored)
+		{
+			return std::unexpected(tag_stored.error());
+		}
+
 		return {};
 	}
 
@@ -285,7 +291,7 @@ namespace RabbitMQ
 
 		auto consume_information = removed_information.value();
 
-		auto unregistered = unregister_consumer(consume_information.get_channel_id());
+		auto unregistered = unregister_consumer(consume_information.get_channel_id(), consume_information.get_consumer_tag());
 		if (!unregistered)
 		{
 			return std::unexpected(unregistered.error());
@@ -305,66 +311,13 @@ namespace RabbitMQ
 		consume_information_container_ = std::make_unique<ConsumeInformationContainer>(heartbeat);
 
 		std::string socket_type = "";
-		amqp_socket_t* socket = nullptr;
-		if (!ssl_options_.use_ssl())
+		auto created_socket = create_socket(conn_, socket_type);
+		if (!created_socket)
 		{
-			try
-			{
-				socket = amqp_tcp_socket_new(conn_);
-			}
-			catch (const std::exception& e)
-			{
-				return std::unexpected(std::format("creating TCP socket failed: {}", e.what()));
-			}
-
-			if (!socket)
-			{
-				return std::unexpected("creating TCP socket failed");
-			}
-
-			socket_type = "TCP";
+			return std::unexpected(created_socket.error());
 		}
-#if RABBITMQ_SSL_AVAILABLE
-		else
-		{
-			try
-			{
-				socket = amqp_ssl_socket_new(conn_);
-			}
-			catch (const std::exception& e)
-			{
-				return std::unexpected(std::format("creating SSL/TLS socket failed: {}", e.what()));
-			}
 
-			if (!socket)
-			{
-				return std::unexpected("creating SSL/TLS socket failed");
-			}
-
-			try
-			{
-				auto ssl_setup = basic_ssl_setup(socket);
-
-				if (!ssl_setup)
-				{
-					return std::unexpected(ssl_setup.error());
-				}
-			}
-			catch (const std::exception& e)
-			{
-				return std::unexpected(std::format("SSL/TLS setup failed: {}", e.what()));
-			}
-
-			socket_type = "SSL/TLS";
-		}
-#else
-		else
-		{
-			return std::unexpected("SSL/TLS requested, but rabbitmq-c in this build lacks SSL support");
-		}
-#endif
-
-		return basic_login(socket, socket_type, heartbeat);
+		return basic_login(created_socket.value(), socket_type, heartbeat);
 	}
 	auto RabbitMQBase::basic_disconnect() -> std::expected<void, std::string>
 	{
@@ -373,21 +326,28 @@ namespace RabbitMQ
 			return {};
 		}
 
+		std::optional<std::string> close_error;
+
 		amqp_rpc_reply_t reply = amqp_connection_close(conn_, AMQP_REPLY_SUCCESS);
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-			return std::unexpected(std::format("closing connection failed: {}", reply_message(reply)));
+			close_error = std::format("closing connection failed: {}", reply_message(reply));
 		}
 
 		int status = amqp_destroy_connection(conn_);
-		if (status != AMQP_STATUS_OK)
+		if (status != AMQP_STATUS_OK && !close_error.has_value())
 		{
-			return std::unexpected(std::format("destroying connection failed: {}", status_message(static_cast<amqp_status_enum_>(status))));
+			close_error = std::format("destroying connection failed: {}", status_message(static_cast<amqp_status_enum_>(status)));
 		}
 
 		consume_information_container_.reset();
 
 		conn_ = nullptr;
+
+		if (close_error.has_value())
+		{
+			return std::unexpected(close_error.value());
+		}
 
 		return {};
 	}
@@ -476,7 +436,10 @@ namespace RabbitMQ
 						{
 							Logger::handle().write(LogTypes::Warning, std::format("message consume error: routing key not found"));
 
-							amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
+							{
+								std::lock_guard<std::mutex> lock(mutex_);
+								amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
+							}
 
 							continue;
 						}
@@ -489,10 +452,12 @@ namespace RabbitMQ
 							{
 								Logger::handle().write(LogTypes::Error, std::format("message consume error: {}", result.error()));
 
+								std::lock_guard<std::mutex> lock(mutex_);
 								amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
 							}
 							else
 							{
+								std::lock_guard<std::mutex> lock(mutex_);
 								amqp_basic_ack(conn_, envelope.channel, envelope.delivery_tag, 0);
 							}
 						}
@@ -501,6 +466,7 @@ namespace RabbitMQ
 							Logger::handle().write(LogTypes::Exception, std::format("message consume exception: {}", e.what()));
 							reconnection = true;
 
+							std::lock_guard<std::mutex> lock(mutex_);
 							amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
 						}
 						catch (...)
@@ -508,6 +474,7 @@ namespace RabbitMQ
 							Logger::handle().write(LogTypes::Exception, "message consume exception: unexpected error");
 							reconnection = true;
 
+							std::lock_guard<std::mutex> lock(mutex_);
 							amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
 						}
 					}
@@ -516,6 +483,7 @@ namespace RabbitMQ
 						Logger::handle().write(LogTypes::Exception, std::format("message consume exception: {}", message.what()));
 						reconnection = true;
 
+						std::lock_guard<std::mutex> lock(mutex_);
 						amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
 					}
 					catch (...)
@@ -523,6 +491,7 @@ namespace RabbitMQ
 						Logger::handle().write(LogTypes::Exception, "message consume exception: unexpected error");
 						reconnection = true;
 
+						std::lock_guard<std::mutex> lock(mutex_);
 						amqp_basic_nack(conn_, envelope.channel, envelope.delivery_tag, 0, 1);
 					}
 
@@ -729,6 +698,66 @@ namespace RabbitMQ
 		return {};
 	}
 
+	auto RabbitMQBase::create_socket(amqp_connection_state_t conn, std::string& socket_type) -> std::expected<amqp_socket_t*, std::string>
+	{
+		amqp_socket_t* socket = nullptr;
+		if (!ssl_options_.use_ssl())
+		{
+			try
+			{
+				socket = amqp_tcp_socket_new(conn);
+			}
+			catch (const std::exception& e)
+			{
+				return std::unexpected(std::format("creating TCP socket failed: {}", e.what()));
+			}
+
+			if (!socket)
+			{
+				return std::unexpected("creating TCP socket failed");
+			}
+
+			socket_type = "TCP";
+
+			return socket;
+		}
+#if RABBITMQ_SSL_AVAILABLE
+		try
+		{
+			socket = amqp_ssl_socket_new(conn);
+		}
+		catch (const std::exception& e)
+		{
+			return std::unexpected(std::format("creating SSL/TLS socket failed: {}", e.what()));
+		}
+
+		if (!socket)
+		{
+			return std::unexpected("creating SSL/TLS socket failed");
+		}
+
+		try
+		{
+			auto ssl_setup = basic_ssl_setup(socket);
+
+			if (!ssl_setup)
+			{
+				return std::unexpected(ssl_setup.error());
+			}
+		}
+		catch (const std::exception& e)
+		{
+			return std::unexpected(std::format("SSL/TLS setup failed: {}", e.what()));
+		}
+
+		socket_type = "SSL/TLS";
+
+		return socket;
+#else
+		return std::unexpected("SSL/TLS requested, but rabbitmq-c in this build lacks SSL support");
+#endif
+	}
+
 	auto RabbitMQBase::create_thread_pool() -> std::expected<void, std::string>
 	{
 		auto destroyed = destroy_thread_pool();
@@ -908,26 +937,28 @@ namespace RabbitMQ
 		return result;
 	}
 
-	auto RabbitMQBase::register_consumer(int target_channel_id, const std::string& target_queue) -> std::expected<void, std::string>
+	auto RabbitMQBase::register_consumer(int target_channel_id, const std::string& target_queue) -> std::expected<std::string, std::string>
 	{
 		std::unique_lock<std::mutex> unique(mutex_);
 		amqp_basic_consume_ok_t* result
 			= amqp_basic_consume(conn_, target_channel_id, amqp_cstring_bytes(target_queue.c_str()), amqp_empty_bytes, 0, 0, 0, amqp_empty_table);
 		auto reply = amqp_get_rpc_reply(conn_);
-		unique.unlock();
 
 		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
 			return std::unexpected(std::format("consuming_start failed: {}", reply_message(reply)));
 		}
 
-		return {};
+		std::string consumer_tag((char*)result->consumer_tag.bytes, result->consumer_tag.len);
+		unique.unlock();
+
+		return consumer_tag;
 	}
 
-	auto RabbitMQBase::unregister_consumer(int target_channel_id) -> std::expected<void, std::string>
+	auto RabbitMQBase::unregister_consumer(int target_channel_id, const std::string& consumer_tag) -> std::expected<void, std::string>
 	{
 		std::unique_lock<std::mutex> unique(mutex_);
-		amqp_basic_cancel_ok_t* result = amqp_basic_cancel(conn_, target_channel_id, amqp_empty_bytes);
+		amqp_basic_cancel_ok_t* result = amqp_basic_cancel(conn_, target_channel_id, amqp_cstring_bytes(consumer_tag.c_str()));
 		auto reply = amqp_get_rpc_reply(conn_);
 		unique.unlock();
 

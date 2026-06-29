@@ -265,10 +265,10 @@ namespace Utilities
 			auto write_result = new_file.write_bytes(file_data);
 			if (!write_result)
 			{
-				source.close();
+				new_file.close();
 				return std::unexpected(write_result.error());
 			}
-			source.close();
+			new_file.close();
 		}
 
 		return {};

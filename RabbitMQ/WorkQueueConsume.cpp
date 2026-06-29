@@ -106,16 +106,10 @@ namespace RabbitMQ
 		std::tie(channel_id, std::ignore) = declare_.value();
 
 		amqp_basic_qos_ok_t* result = amqp_basic_qos(conn_, channel_id, 0, 1, 0);
-		switch (amqp_get_rpc_reply(conn_).reply_type)
+		auto reply = amqp_get_rpc_reply(conn_);
+		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-		case AMQP_RESPONSE_SERVER_EXCEPTION:
-			return std::unexpected(std::format("server exception: {}", amqp_get_rpc_reply(conn_).reply.id));
-		case AMQP_RESPONSE_LIBRARY_EXCEPTION:
-			return std::unexpected(std::format("library exception: {}", amqp_get_rpc_reply(conn_).reply.id));
-		case AMQP_RESPONSE_NONE:
-			return std::unexpected("no response from server");
-		default:
-			break;
+			return std::unexpected(reply_message(reply));
 		}
 
 		return {};
@@ -201,16 +195,10 @@ namespace RabbitMQ
 		}
 
 		amqp_basic_qos_ok_t* result = amqp_basic_qos(conn_, channel_id, 0, 1, 0);
-		switch (amqp_get_rpc_reply(conn_).reply_type)
+		auto reply = amqp_get_rpc_reply(conn_);
+		if (reply.reply_type != AMQP_RESPONSE_NORMAL)
 		{
-		case AMQP_RESPONSE_SERVER_EXCEPTION:
-			return std::unexpected(std::format("server exception: {}", amqp_get_rpc_reply(conn_).reply.id));
-		case AMQP_RESPONSE_LIBRARY_EXCEPTION:
-			return std::unexpected(std::format("library exception: {}", amqp_get_rpc_reply(conn_).reply.id));
-		case AMQP_RESPONSE_NONE:
-			return std::unexpected("no response from server");
-		default:
-			break;
+			return std::unexpected(reply_message(reply));
 		}
 
 		return {};

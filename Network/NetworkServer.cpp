@@ -112,6 +112,7 @@ namespace Network
 			snapshot = sessions_;
 		}
 
+		std::string broadcast_error;
 		for (auto& session : snapshot)
 		{
 			if (session == nullptr)
@@ -124,7 +125,11 @@ namespace Network
 				auto send_result = session->send_binary(binary, message);
 				if (!send_result)
 				{
-					return std::unexpected(send_result.error());
+					if (!broadcast_error.empty())
+					{
+						broadcast_error += "; ";
+					}
+					broadcast_error += send_result.error();
 				}
 
 				continue;
@@ -147,6 +152,11 @@ namespace Network
 			}
 		}
 
+		if (!broadcast_error.empty())
+		{
+			return std::unexpected(broadcast_error);
+		}
+
 		return {};
 	}
 
@@ -158,6 +168,7 @@ namespace Network
 			snapshot = sessions_;
 		}
 
+		std::string broadcast_error;
 		for (auto& session : snapshot)
 		{
 			if (session == nullptr)
@@ -170,7 +181,11 @@ namespace Network
 				auto send_result = session->send_message(message);
 				if (!send_result)
 				{
-					return std::unexpected(send_result.error());
+					if (!broadcast_error.empty())
+					{
+						broadcast_error += "; ";
+					}
+					broadcast_error += send_result.error();
 				}
 
 				continue;
@@ -193,6 +208,11 @@ namespace Network
 			}
 		}
 
+		if (!broadcast_error.empty())
+		{
+			return std::unexpected(broadcast_error);
+		}
+
 		return {};
 	}
 
@@ -206,6 +226,7 @@ namespace Network
 			snapshot = sessions_;
 		}
 
+		std::string broadcast_error;
 		for (auto& session : snapshot)
 		{
 			if (session == nullptr)
@@ -218,7 +239,11 @@ namespace Network
 				auto send_result = session->send_files(file_informations);
 				if (!send_result)
 				{
-					return std::unexpected(send_result.error());
+					if (!broadcast_error.empty())
+					{
+						broadcast_error += "; ";
+					}
+					broadcast_error += send_result.error();
 				}
 
 				continue;
@@ -239,6 +264,11 @@ namespace Network
 			{
 				return std::unexpected(send_result.error());
 			}
+		}
+
+		if (!broadcast_error.empty())
+		{
+			return std::unexpected(broadcast_error);
 		}
 
 		return {};
@@ -728,6 +758,21 @@ namespace Network
 		{
 			Logger::handle().write(LogTypes::Error, std::format("invalid connection json: {}", e.what()));
 			return std::unexpected("invalid connection json");
+		}
+
+		if (!condition_message.if_contains("id") || !condition_message.at("id").is_string())
+		{
+			return std::unexpected("invalid connection message: missing id");
+		}
+
+		if (!condition_message.if_contains("sub_id") || !condition_message.at("sub_id").is_string())
+		{
+			return std::unexpected("invalid connection message: missing sub_id");
+		}
+
+		if (!condition_message.if_contains("condition") || !condition_message.at("condition").is_bool())
+		{
+			return std::unexpected("invalid connection message: missing condition");
 		}
 
 		Logger::handle().write(LogTypes::Debug,

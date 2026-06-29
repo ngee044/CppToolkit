@@ -29,7 +29,7 @@ namespace Utilities
 		locale_mode(std::locale(""));
 		log_root_ = std::format("{}/", std::filesystem::current_path().string());
 
-		log_types_ = std::max(file_mode_, console_mode_);
+		log_types_ = std::max(file_mode_.load(), console_mode_.load());
 	}
 
 	Logger::~Logger(void) { stop(); }
@@ -71,27 +71,27 @@ namespace Utilities
 	{
 		file_mode_ = mode;
 
-		log_types_ = std::max(file_mode_, console_mode_);
+		log_types_ = std::max(file_mode_.load(), console_mode_.load());
 	}
 
-	LogTypes Logger::file_mode(void) const { return file_mode_; }
+	LogTypes Logger::file_mode(void) const { return file_mode_.load(); }
 
 	void Logger::console_mode(const LogTypes& mode)
 	{
 		console_mode_ = mode;
 
-		log_types_ = std::max(file_mode_, console_mode_);
+		log_types_ = std::max(file_mode_.load(), console_mode_.load());
 	}
 
-	LogTypes Logger::console_mode(void) const { return console_mode_; }
+	LogTypes Logger::console_mode(void) const { return console_mode_.load(); }
 
 	void Logger::database_mode(bool mode) { database_mode_ = mode; }
 
-	bool Logger::database_mode(void) const { return database_mode_; }
+	bool Logger::database_mode(void) const { return database_mode_.load(); }
 
 	void Logger::write_interval(uint16_t milli_seconds) { write_interval_ = milli_seconds; }
 
-	uint16_t Logger::write_interval(void) const { return write_interval_; }
+	uint16_t Logger::write_interval(void) const { return write_interval_.load(); }
 
 	void Logger::set_notification_for_database(const std::function<bool(const std::string&, const std::vector<std::string>&)>& notification)
 	{
@@ -223,18 +223,20 @@ namespace Utilities
 		check_life_cycle();
 
 		write_log({ std::dynamic_pointer_cast<Log>(std::make_shared<StringLog>(LogTypes::None, "[START]")) });
-		while (!thread_stop_.load() || !messages_.empty())
+		while (true)
 		{
 			std::unique_lock<std::mutex> unique(mutex_);
 
-			if (write_interval_ == 0)
+			if (write_interval_.load() == 0)
 			{
 				condition_.wait(unique, [this]() { return thread_stop_.load() || !messages_.empty(); });
 			}
 			else
 			{
-				condition_.wait_for(unique, std::chrono::milliseconds(write_interval_), [this]() { return thread_stop_.load() || !messages_.empty(); });
+				condition_.wait_for(unique, std::chrono::milliseconds(write_interval_.load()), [this]() { return thread_stop_.load() || !messages_.empty(); });
 			}
+
+			const bool stop_requested = thread_stop_.load();
 
 			std::vector<std::shared_ptr<Log>> messages;
 			messages.swap(messages_);
@@ -242,6 +244,11 @@ namespace Utilities
 
 			if (messages.empty())
 			{
+				if (stop_requested)
+				{
+					break;
+				}
+
 				continue;
 			}
 
@@ -257,7 +264,8 @@ namespace Utilities
 		const auto now = std::chrono::system_clock::now();
 		std::string file_name = std::format("{}{}_{:%Y-%m-%d}", log_root_, log_name_, now);
 
-		const auto [console_messages, file_messages, database_messages] = convert_log(messages);
+		const bool include_database = database_mode_.load() && notification_ != nullptr;
+		const auto [console_messages, file_messages, database_messages] = convert_log(messages, include_database);
 
 		write_console(console_messages);
 		write_database(database_messages);
@@ -277,26 +285,30 @@ namespace Utilities
 		backup_file(std::format("{}.log", file_name), std::format("{}.backup", file_name));
 	}
 
-	std::tuple<std::vector<std::string>, std::vector<std::string>, std::vector<std::string>> Logger::convert_log(const std::vector<std::shared_ptr<Log>>& messages)
+	std::tuple<std::vector<std::string>, std::vector<std::string>, std::vector<std::string>> Logger::convert_log(const std::vector<std::shared_ptr<Log>>& messages,
+																													 bool include_database)
 	{
-		std::string temp_json;
 		std::string temp_string;
 		std::vector<std::string> database_messages;
 		std::vector<std::string> console_messages;
 		std::vector<std::string> file_messages;
+		const LogTypes console_mode = console_mode_.load();
+		const LogTypes file_mode = file_mode_.load();
 		for (auto& message : messages)
 		{
-			temp_json = message->to_json();
 			temp_string = message->to_string();
 
-			database_messages.push_back(temp_json);
+			if (include_database)
+			{
+				database_messages.push_back(message->to_json());
+			}
 
-			if (message->log_type() <= console_mode_)
+			if (message->log_type() <= console_mode)
 			{
 				console_messages.push_back(temp_string);
 			}
 
-			if (message->log_type() <= file_mode_)
+			if (message->log_type() <= file_mode)
 			{
 				file_messages.push_back(temp_string);
 			}
