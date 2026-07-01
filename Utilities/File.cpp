@@ -209,58 +209,58 @@ namespace Utilities
 		return {};
 	}
 
-	auto File::read_bytes(void) -> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>
+	auto File::read_bytes(void) -> std::expected<std::vector<uint8_t>, std::string>
 	{
 		if (openmode_ & std::ios::out)
 		{
-			return { std::nullopt, std::format("cannot read file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
+			return std::unexpected(std::format("cannot read file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_));
 		}
 
 		if (!stream_.is_open())
 		{
-			return { std::nullopt, std::format("cannot read file by unopened condition : {}", file_path_) };
+			return std::unexpected(std::format("cannot read file by unopened condition : {}", file_path_));
 		}
 
 		stream_.seekg(0, std::ios::beg);
 
-		return { std::vector<uint8_t>((std::istreambuf_iterator<char>(stream_)), std::istreambuf_iterator<char>()), std::nullopt };
+		return std::vector<uint8_t>((std::istreambuf_iterator<char>(stream_)), std::istreambuf_iterator<char>());
 	}
 
-	auto File::read_bytes(size_t index, size_t size) -> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>
+	auto File::read_bytes(size_t index, size_t size) -> std::expected<std::vector<uint8_t>, std::string>
 	{
 		if (openmode_ & std::ios::out)
 		{
-			return { std::nullopt, std::format("cannot read file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
+			return std::unexpected(std::format("cannot read file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_));
 		}
 
 		if (!stream_.is_open())
 		{
-			return { std::nullopt, std::format("cannot read file by unopened condition : {}", file_path_) };
+			return std::unexpected(std::format("cannot read file by unopened condition : {}", file_path_));
 		}
 
 		stream_.seekg(index, std::ios::beg);
 		if (stream_.fail())
 		{
-			return { std::nullopt, std::format("failed to seek position: {} in file: {}", index, file_path_) };
+			return std::unexpected(std::format("failed to seek position: {} in file: {}", index, file_path_));
 		}
 
 		std::vector<uint8_t> buffer(size);
 		stream_.read(reinterpret_cast<char*>(buffer.data()), size);
 		buffer.resize(stream_.gcount());
 
-		return { buffer, std::nullopt };
+		return buffer;
 	}
 
-	auto File::read_lines(bool include_new_line) -> std::tuple<std::optional<std::deque<std::string>>, std::optional<std::string>>
+	auto File::read_lines(bool include_new_line) -> std::expected<std::deque<std::string>, std::string>
 	{
 		if (openmode_ & std::ios::out)
 		{
-			return { std::nullopt, std::format("cannot read file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_) };
+			return std::unexpected(std::format("cannot read file by wrong openmode : {} -> {}", static_cast<int>(openmode_), file_path_));
 		}
 
 		if (!stream_.is_open())
 		{
-			return { std::nullopt, std::format("cannot read file by unopened condition : {}", file_path_) };
+			return std::unexpected(std::format("cannot read file by unopened condition : {}", file_path_));
 		}
 
 		stream_.seekg(0, std::ios::beg);
@@ -277,7 +277,7 @@ namespace Utilities
 			file_lines.push_back(line);
 		}
 
-		return { file_lines, std::nullopt };
+		return file_lines;
 	}
 
 	void File::close(void)
@@ -302,18 +302,18 @@ namespace Utilities
 			return std::unexpected(open_result.error());
 		}
 
-		auto [read_data, read_message] = source.read_bytes();
-		if (read_data == std::nullopt)
+		auto read_data = source.read_bytes();
+		if (!read_data)
 		{
 			source.close();
-			return std::unexpected(read_message.value_or("unknown read error"));
+			return std::unexpected(read_data.error());
 		}
 		source.close();
 
-		auto [compressed_bytes, compressed_message] = Compressor::compression(read_data.value(), block_bytes);
-		if (compressed_bytes == std::nullopt)
+		auto compressed_bytes = Compressor::compression(read_data.value(), block_bytes);
+		if (!compressed_bytes)
 		{
-			return std::unexpected(std::format("cannot compress file : {}", compressed_message.value()));
+			return std::unexpected(std::format("cannot compress file : {}", compressed_bytes.error()));
 		}
 
 		auto open_result2 = source.open(path, std::ios::out | std::ios::binary | std::ios::trunc);
@@ -342,18 +342,18 @@ namespace Utilities
 			return std::unexpected(open_result.error());
 		}
 
-		auto [read_data, read_message] = source.read_bytes();
-		if (read_data == std::nullopt)
+		auto read_data = source.read_bytes();
+		if (!read_data)
 		{
 			source.close();
-			return std::unexpected(read_message.value_or("unknown read error"));
+			return std::unexpected(read_data.error());
 		}
 		source.close();
 
-		auto [decompressed_bytes, decompressed_message] = Compressor::decompression(read_data.value(), block_bytes);
-		if (decompressed_bytes == std::nullopt)
+		auto decompressed_bytes = Compressor::decompression(read_data.value(), block_bytes);
+		if (!decompressed_bytes)
 		{
-			return std::unexpected(std::format("cannot compress file : {}", decompressed_message.value()));
+			return std::unexpected(std::format("cannot compress file : {}", decompressed_bytes.error()));
 		}
 
 		auto open_result2 = source.open(path, std::ios::out | std::ios::binary | std::ios::trunc);

@@ -58,19 +58,19 @@ namespace Utilities
 		return {};
 	}
 
-	auto Folder::get_folders(const std::string& target_path, bool search_sub_folder) -> std::tuple<std::optional<std::vector<std::string>>, std::optional<std::string>>
+	auto Folder::get_folders(const std::string& target_path, bool search_sub_folder) -> std::expected<std::vector<std::string>, std::string>
 	{
 		std::vector<std::string> result;
 
 		if (target_path.empty())
 		{
-			return { std::nullopt, "target path is empty" };
+			return std::unexpected("target path is empty");
 		}
 
 		std::filesystem::path target(target_path);
 		if (!std::filesystem::exists(target))
 		{
-			return { std::nullopt, "there is no target folder" };
+			return std::unexpected("there is no target folder");
 		}
 
 		std::filesystem::directory_iterator iterator(target);
@@ -85,7 +85,7 @@ namespace Utilities
 
 			if (search_sub_folder)
 			{
-				auto [sub_folders, error_message] = get_folders(entry.path().string(), search_sub_folder);
+				auto sub_folders = get_folders(entry.path().string(), search_sub_folder);
 				if (!sub_folders.has_value())
 				{
 					continue;
@@ -96,22 +96,22 @@ namespace Utilities
 			}
 		}
 
-		return { result, std::nullopt };
+		return result;
 	}
 
-	auto Folder::get_files(const std::string& target_path, bool search_sub_folder, const std::vector<std::string>& extensions) -> std::tuple<std::optional<std::vector<std::string>>, std::optional<std::string>>
+	auto Folder::get_files(const std::string& target_path, bool search_sub_folder, const std::vector<std::string>& extensions) -> std::expected<std::vector<std::string>, std::string>
 	{
 		std::vector<std::string> result;
 
 		if (target_path.empty())
 		{
-			return { std::nullopt, "target path is empty" };
+			return std::unexpected("target path is empty");
 		}
 
 		std::filesystem::path target(target_path);
 		if (!std::filesystem::exists(target))
 		{
-			return { std::nullopt, "there is no target folder" };
+			return std::unexpected("there is no target folder");
 		}
 
 		std::filesystem::directory_iterator iterator(target);
@@ -119,7 +119,7 @@ namespace Utilities
 		{
 			if (std::filesystem::is_directory(entry) && search_sub_folder)
 			{
-				auto [sub_folders, error_message] = get_files(entry.path().string(), search_sub_folder, extensions);
+				auto sub_folders = get_files(entry.path().string(), search_sub_folder, extensions);
 				if (!sub_folders.has_value())
 				{
 					continue;
@@ -144,7 +144,7 @@ namespace Utilities
 			}
 		}
 
-		return { result, std::nullopt };
+		return result;
 	}
 
 
@@ -156,10 +156,10 @@ namespace Utilities
 		-> std::expected<void, std::string>
 	{
 		Folder folder;
-		auto [search_files, search_message] = folder.get_files(source_path, search_sub_folder, extensions);
+		auto search_files = folder.get_files(source_path, search_sub_folder, extensions);
 		if (!search_files.has_value())
 		{
-			return std::unexpected(search_message.value_or("unknown search error"));
+			return std::unexpected(search_files.error());
 		}
 
 		File target_file;
@@ -178,11 +178,11 @@ namespace Utilities
 				return std::unexpected(open_result.error());
 			}
 
-			auto [read_data, read_message] = source.read_bytes();
-			if (read_data == std::nullopt)
+			auto read_data = source.read_bytes();
+			if (!read_data)
 			{
 				source.close();
-				return std::unexpected(read_message.value_or("unknown read error"));
+				return std::unexpected(read_data.error());
 			}
 			source.close();
 
@@ -226,11 +226,11 @@ namespace Utilities
 			return std::unexpected(open_result.error());
 		}
 
-		auto [read_data, read_message] = source.read_bytes();
-		if (read_data == std::nullopt)
+		auto read_data = source.read_bytes();
+		if (!read_data)
 		{
 			source.close();
-			return std::unexpected(read_message.value_or("unknown read error"));
+			return std::unexpected(read_data.error());
 		}
 		source.close();
 

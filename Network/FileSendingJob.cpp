@@ -42,10 +42,10 @@ namespace Network
 
 		File source;
 		source.open(file_path, std::ios::in | std::ios::binary, std::locale(""));
-		const auto [source_data, message] = source.read_bytes();
+		const auto source_data = source.read_bytes();
 		source.close();
 
-		if (source_data == std::nullopt)
+		if (!source_data)
 		{
 			std::vector<uint8_t> data;
 			Combiner::append(data, guid);

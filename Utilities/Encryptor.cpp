@@ -31,16 +31,16 @@ namespace Utilities
 	auto Encryptor::encryption(const std::vector<uint8_t>& original_data,
 							   const std::string& key_string,
 							   const std::string& iv_string)
-		-> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>
+		-> std::expected<std::vector<uint8_t>, std::string>
 	{
 		if (original_data.empty())
 		{
-			return { std::nullopt, "the data field is empty." };
+			return std::unexpected("the data field is empty.");
 		}
 
 		if (key_string.empty() || iv_string.empty())
 		{
-			return { std::nullopt, "Key or IV is not provided. encryption cannot be performed." };
+			return std::unexpected("Key or IV is not provided. encryption cannot be performed.");
 		}
 
 		std::vector<uint8_t> encrypted;
@@ -58,22 +58,22 @@ namespace Utilities
 
 		encrypted.resize((size_t)cs.TotalPutLength());
 
-		return { encrypted, std::nullopt };
+		return encrypted;
 	}
 
 	auto Encryptor::decryption(const std::vector<uint8_t>& encrypted_data,
 							   const std::string& key_string,
 							   const std::string& iv_string)
-		-> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>
+		-> std::expected<std::vector<uint8_t>, std::string>
 	{
 		if (encrypted_data.empty())
 		{
-			return { std::nullopt, "the data field is empty." };
+			return std::unexpected("the data field is empty.");
 		}
 
 		if (key_string.empty() || iv_string.empty())
 		{
-			return { std::nullopt, "Key or IV is not provided. decryption cannot be performed." };
+			return std::unexpected("Key or IV is not provided. decryption cannot be performed.");
 		}
 
 		std::vector<uint8_t> decrypted;
@@ -91,7 +91,7 @@ namespace Utilities
 
 		decrypted.resize((size_t)rs.TotalPutLength());
 
-		return { decrypted, std::nullopt };
+		return decrypted;
 	}
 }
 

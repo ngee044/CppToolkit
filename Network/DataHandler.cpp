@@ -837,8 +837,8 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 			return std::unexpected("thread pool has no handle");
 		}
 
-		auto [buffer, message] = Compressor::compression(data);
-		if (buffer == std::nullopt)
+		auto buffer = Compressor::compression(data);
+		if (!buffer)
 		{
 			buffer = data;
 		}
@@ -860,8 +860,8 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 			return std::unexpected("thread pool has no handle");
 		}
 
-		auto [buffer, message] = Compressor::decompression(data);
-		if (buffer == std::nullopt)
+		auto buffer = Compressor::decompression(data);
+		if (!buffer)
 		{
 			buffer = data;
 		}
@@ -901,8 +901,8 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 			return result;
 		}
 
-		auto [buffer, message] = Encryptor::encryption(data, key(), iv());
-		if (buffer == std::nullopt)
+		auto buffer = Encryptor::encryption(data, key(), iv());
+		if (!buffer)
 		{
 			buffer = data;
 		}
@@ -933,8 +933,8 @@ auto DataHandler::socket(std::shared_ptr<boost::asio::ip::tcp::socket> new_socke
 			return result;
 		}
 
-		auto [buffer, message] = Encryptor::decryption(data, key(), iv());
-		if (buffer == std::nullopt)
+		auto buffer = Encryptor::decryption(data, key(), iv());
+		if (!buffer)
 		{
 			buffer = data;
 		}

@@ -85,7 +85,7 @@ namespace Thread
 		}
 	}
 
-	auto ThreadPool::remove_workers(JobPriorities priority) -> std::tuple<size_t, std::optional<std::string>>
+	auto ThreadPool::remove_workers(JobPriorities priority) -> std::expected<size_t, std::string>
 	{
 		// Serialize lifecycle operations (start/stop/remove_workers) so two of them cannot
 		// call worker->stop()/start() on the same worker concurrently outside mutex_.
@@ -93,7 +93,7 @@ namespace Thread
 
 		if (job_pool_ == nullptr)
 		{
-			return { 0, "cannot remove workers due to null JobPool" };
+			return std::unexpected("cannot remove workers due to null JobPool");
 		}
 
 		job_pool_->clear(priority);
@@ -128,7 +128,7 @@ namespace Thread
 
 			if (workers_to_stop.size() == 0)
 			{
-				return { 0, "no worker to remove" };
+				return std::unexpected("no worker to remove");
 			}
 
 			thread_workers_.erase(new_end, thread_workers_.end());
@@ -139,7 +139,7 @@ namespace Thread
 			worker->stop();
 		}
 
-		return { workers_to_stop.size(), std::nullopt };
+		return workers_to_stop.size();
 	}
 
 	auto ThreadPool::lock(bool lock_condition) -> void

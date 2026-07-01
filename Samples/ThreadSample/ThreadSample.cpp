@@ -17,7 +17,6 @@
 #include "boost/json.hpp"
 #include "boost/json/parse.hpp"
 
-#include <tuple>
 #include <string>
 #include <vector>
 #include <optional>
@@ -58,10 +57,10 @@ auto main(int32_t argc, char* argv[]) -> int32_t
 			continue;
 		}
 
-		auto [removed_count, remove_error] = pool->remove_workers(JobPriorities::Normal);
-		if (removed_count == 0)
+		auto removed = pool->remove_workers(JobPriorities::Normal);
+		if (!removed)
 		{
-			Logger::handle().write(LogTypes::Error, std::format("Failed to remove a worker: {}", remove_error.value()));
+			Logger::handle().write(LogTypes::Error, std::format("Failed to remove a worker: {}", removed.error()));
 		}
 
 		auto push_result = pool->push(std::make_shared<Job>(JobPriorities::High,

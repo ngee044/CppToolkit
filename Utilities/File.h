@@ -1,13 +1,11 @@
 #pragma once
 
-#include <tuple>
 #include <cstdint>
 #include <locale>
 #include <fstream>
 #include <deque>
 #include <string>
 #include <vector>
-#include <optional>
 #include <expected>
 
 namespace Utilities
@@ -31,10 +29,10 @@ namespace Utilities
 			-> std::expected<void, std::string>;
 		auto write_lines(const std::vector<std::string>& lines, bool append_newline = false)
 			-> std::expected<void, std::string>;
-		auto read_bytes(void) -> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>;
-		auto read_bytes(size_t index, size_t size) -> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>;
+		auto read_bytes(void) -> std::expected<std::vector<uint8_t>, std::string>;
+		auto read_bytes(size_t index, size_t size) -> std::expected<std::vector<uint8_t>, std::string>;
 		auto read_lines(bool include_new_line = true)
-			-> std::tuple<std::optional<std::deque<std::string>>, std::optional<std::string>>;
+			-> std::expected<std::deque<std::string>, std::string>;
 		void close(void);
 
 		static auto compression(const std::string& path, uint16_t block_bytes = 1024) -> std::expected<void, std::string>;

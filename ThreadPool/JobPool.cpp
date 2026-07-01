@@ -98,7 +98,7 @@ namespace Thread
 
 			File source;
 			source.open(iterator->path().string(), std::ios::in | std::ios::binary, std::locale(""));
-			const auto [source_data, message] = source.read_bytes();
+			const auto source_data = source.read_bytes();
 			source.close();
 
 			std::error_code ec;
@@ -108,7 +108,7 @@ namespace Thread
 				Logger::handle().write(LogTypes::Error, std::format("cannot destroy a file : {} => {}", iterator->path().string(), ec.message()));
 			}
 
-			if (source_data == std::nullopt)
+			if (!source_data)
 			{
 				continue;
 			}

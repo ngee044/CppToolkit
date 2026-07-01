@@ -7,7 +7,6 @@
 #include <future>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <vector>
 
 namespace Thread
@@ -26,7 +25,7 @@ namespace Thread
 		auto uncompleted_jobs(const std::string& backup_folder) -> std::vector<std::vector<uint8_t>>;
 		auto push(std::shared_ptr<Job> job) -> std::expected<void, std::string>;
 		auto push(std::shared_ptr<ThreadWorker> worker) -> void;
-		auto remove_workers(JobPriorities priority) -> std::tuple<size_t, std::optional<std::string>>;
+		auto remove_workers(JobPriorities priority) -> std::expected<size_t, std::string>;
 
 		auto lock(bool lock_condition) -> void;
 		auto lock(void) -> bool;

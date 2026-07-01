@@ -1,19 +1,15 @@
 #include "Compressor.h"
 
-#include "Logger.h"
-
 #include "lz4.h"
-
-#include <format>
 
 namespace Utilities
 {
 	auto Compressor::compression(const std::vector<uint8_t>& original_data, uint16_t block_bytes)
-		-> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>
+		-> std::expected<std::vector<uint8_t>, std::string>
 	{
 		if (original_data.empty())
 		{
-			return { std::nullopt, "the data field is empty." };
+			return std::unexpected("the data field is empty.");
 		}
 
 		LZ4_stream_t lz4Stream_body;
@@ -85,21 +81,18 @@ namespace Utilities
 
 		if (compressed_data.empty())
 		{
-			return { std::nullopt, "cannot compress data" };
+			return std::unexpected("cannot compress data");
 		}
 
-		return { compressed_data,
-				 std::format("compressing(buffer {}): ({} -> {} : {:.2f} %)", block_bytes, original_data.size(),
-							 compressed_data.size(),
-							 (((double)compressed_data.size() / (double)original_data.size()) * 100)) };
+		return compressed_data;
 	}
 
 	auto Compressor::decompression(const std::vector<uint8_t>& compressed_data, uint16_t block_bytes)
-		-> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>
+		-> std::expected<std::vector<uint8_t>, std::string>
 	{
 		if (compressed_data.empty())
 		{
-			return { std::nullopt, "the data field is empty." };
+			return std::unexpected("the data field is empty.");
 		}
 
 		LZ4_streamDecode_t lz4StreamDecode_body;
@@ -171,12 +164,9 @@ namespace Utilities
 
 		if (decompressed_data.empty())
 		{
-			return { std::nullopt, "cannot decompress data" };
+			return std::unexpected("cannot decompress data");
 		}
 
-		return { decompressed_data,
-				 std::format("decompressing(buffer {}): ({} -> {} : {:.2f} %)", block_bytes, compressed_data.size(),
-							 decompressed_data.size(),
-							 (((double)compressed_data.size() / (double)decompressed_data.size()) * 100)) };
+		return decompressed_data;
 	}
 }

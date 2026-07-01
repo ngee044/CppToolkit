@@ -2,11 +2,11 @@
 
 #ifdef USE_ENCRYPT_MODULE
 
-#include <tuple>
 #include <cstdint>
 #include <string>
 #include <vector>
-#include <optional>
+#include <utility>
+#include <expected>
 
 namespace Utilities
 {
@@ -15,10 +15,10 @@ namespace Utilities
 	public:
 		static auto create_key(void) -> std::pair<std::string, std::string>;
 		static auto encryption(const std::vector<uint8_t>& original_data, const std::string& key, const std::string& iv)
-			-> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>;
+			-> std::expected<std::vector<uint8_t>, std::string>;
 		static auto
 		decryption(const std::vector<uint8_t>& encrypted_data, const std::string& key, const std::string& iv)
-			-> std::tuple<std::optional<std::vector<uint8_t>>, std::optional<std::string>>;
+			-> std::expected<std::vector<uint8_t>, std::string>;
 	};
 }
 

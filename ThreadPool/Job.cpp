@@ -260,10 +260,10 @@ namespace Thread
 
 		File source;
 		source.open(temporary_file_, std::ios::in | std::ios::binary);
-		const auto [source_data, message] = source.read_bytes();
+		const auto source_data = source.read_bytes();
 		source.close();
 
-		if (source_data == std::nullopt)
+		if (!source_data)
 		{
 			data_.clear();
 			return;

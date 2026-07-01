@@ -1,9 +1,7 @@
 #pragma once
 
-#include <tuple>
 #include <string>
 #include <vector>
-#include <optional>
 #include <expected>
 
 #include <cstdint>
@@ -18,9 +16,9 @@ namespace Utilities
 
 		auto create_folder(const std::string& target_path) -> std::expected<void, std::string>;
 		auto delete_folder(const std::string& target_path) -> std::expected<void, std::string>;
-		auto get_folders(const std::string& target_path, bool search_sub_folder) -> std::tuple<std::optional<std::vector<std::string>>, std::optional<std::string>>;
+		auto get_folders(const std::string& target_path, bool search_sub_folder) -> std::expected<std::vector<std::string>, std::string>;
 		auto get_files(const std::string& target_path, bool search_sub_folder, const std::vector<std::string>& extensions)
-			-> std::tuple<std::optional<std::vector<std::string>>, std::optional<std::string>>;
+			-> std::expected<std::vector<std::string>, std::string>;
 
 		static auto compression(const std::string& target_path,
 								const std::string& source_path,

@@ -253,10 +253,10 @@ auto read_query_from_file(const std::string& filename) -> std::tuple<std::option
 		return { std::nullopt, std::format("Failed to open query file: {}", filename) };
 	}
 
-	auto [bytes, read_error] = file.read_bytes();
+	auto bytes = file.read_bytes();
 	if (!bytes.has_value())
 	{
-		return { std::nullopt, std::format("Failed to read query file: {}", *read_error) };
+		return { std::nullopt, std::format("Failed to read query file: {}", bytes.error()) };
 	}
 
 	return { Converter::to_string(bytes.value()), std::nullopt };

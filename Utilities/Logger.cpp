@@ -387,10 +387,10 @@ namespace Utilities
 		auto open_result = file.open(target_path, std::ios::in, locale_);
 		if (open_result)
 		{
-			const auto [file_lines, read_message] = file.read_lines();
+			const auto file_lines = file.read_lines();
 			file.close();
 
-			if (file_lines != std::nullopt)
+			if (file_lines)
 			{
 				read_lines = file_lines.value();
 			}
@@ -432,8 +432,8 @@ namespace Utilities
 
 		File source;
 		source.open(source_path, std::ios::in | std::ios::binary, locale_);
-		auto [source_data, message] = source.read_bytes();
-		if (source_data == std::nullopt)
+		auto source_data = source.read_bytes();
+		if (!source_data)
 		{
 			return;
 		}
