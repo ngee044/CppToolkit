@@ -110,5 +110,6 @@ boost-asio, boost-json, boost-filesystem, boost-process, boost-algorithm, boost-
 | FolderWatcher | FolderWatcherSample | TC-4.1 ~ TC-4.3 |
 | Folder (compression/decompression) | FolderCompressionSample | TC-5.1 ~ TC-5.6 |
 | Kafka | KafkaSample | TC-6.1 ~ TC-6.4 |
+| AWSService (S3, SQS) | AWSServiceSample (`BUILD_AWS=1`) | TC-7.1 ~ TC-7.6 |
 
 새로운 기능을 추가할 때는 관련 샘플에 테스트 시나리오를 추가하고, `docs/sample_test_cases.md`에 테스트 케이스를 함께 업데이트한다.

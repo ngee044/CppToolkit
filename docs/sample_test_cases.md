@@ -305,6 +305,65 @@ CppToolkit 프레임워크 코드 변경 시, 아래 테스트 케이스를 통�
 
 ---
 
+## 7. AWSServiceSample
+
+**검증 모듈:** AWSS3Client, AWSSQSPublisher, AWSSQSConsumer, AWSSQSBase
+
+> `BUILD_AWS_LIB` 기본 OFF이므로 `BUILD_AWS=1 ./build.sh`로 빌드해야 실행 파일이 생성된다.
+> LocalStack(`http://localhost:4566`)에서 `s3`, `sqs` 서비스가 실행 중이어야 하며, 아래 "외부 서비스 환경 구성 > LocalStack" 참고. 실제 AWS로 검증할 경우 `--endpoint`를 생략하고 유효한 자격증명/리전을 지정한다.
+
+### TC-7.1: S3 전체 흐름 (버킷 생성 → 업로드 → 목록 → 다운로드 → presigned URL → 삭제)
+
+| 항목 | 내용 |
+|------|------|
+| 사전 조건 | LocalStack 실행(`s3`) |
+| 실행 | `./build/bin/AWSServiceSample --mode s3 --endpoint http://localhost:4566 --access_key test --secret_key test --bucket demo-bucket` |
+| 기대 결과 | 버킷 생성 → 업로드 → 목록 → 다운로드 → presigned URL 생성 → 삭제가 순서대로 성공한다 |
+| 확인 포인트 | `bucket created:`(또는 `already exists`), `uploaded:`, `object: sample.txt`, `downloaded to:`, `presigned GET url (1h):`, `deleted object: sample.txt` 로그가 출력되고 Error 로그가 없다 |
+
+### TC-7.2: SQS publish + consume
+
+| 항목 | 내용 |
+|------|------|
+| 사전 조건 | LocalStack 실행(`sqs`) + 큐 생성(아래 환경 구성 참고) |
+| 실행 | `./build/bin/AWSServiceSample --mode sqs --endpoint http://localhost:4566 --access_key test --secret_key test --queue_url http://localhost:4566/000000000000/demo-queue --consume_seconds 5` |
+| 기대 결과 | 메시지 1건 전송 후 consumer가 해당 메시지를 수신·삭제한다 |
+| 확인 포인트 | `message sent:` 로그, 이어서 `[consumer] received: Hello from CppToolkit AWSService sample` 로그가 출력되고 `SQS demo finished.`로 종료된다 |
+
+### TC-7.3: S3 모드만 실행 (sqs 건너뜀)
+
+| 항목 | 내용 |
+|------|------|
+| 실행 | `./build/bin/AWSServiceSample --mode s3 --endpoint http://localhost:4566 --access_key test --secret_key test` |
+| 기대 결과 | S3 데모만 수행되고 SQS 데모는 실행되지 않는다 |
+| 확인 포인트 | `=== S3 demo ===`만 출력되고 `=== SQS demo ===`는 출력되지 않는다 |
+
+### TC-7.4: SQS 모드에서 --queue_url 누락
+
+| 항목 | 내용 |
+|------|------|
+| 실행 | `./build/bin/AWSServiceSample --mode sqs --endpoint http://localhost:4566 --access_key test --secret_key test` |
+| 기대 결과 | 큐 URL이 없으므로 SQS 데모를 건너뛴다 |
+| 확인 포인트 | `SQS demo skipped: --queue_url is required.` Error 로그 출력 후 크래시 없이 종료된다 |
+
+### TC-7.5: 도움말 / 잘못된 mode
+
+| 항목 | 내용 |
+|------|------|
+| 실행 | `./build/bin/AWSServiceSample --help` 또는 `--mode invalid` |
+| 기대 결과 | 사용법(`Usage: AWSServiceSample [OPTIONS]`)이 출력된다 |
+| 확인 포인트 | 크래시 없이 종료된다 |
+
+### TC-7.6: AWS SDK 생명주기 (InitAPI/ShutdownAPI)
+
+| 항목 | 내용 |
+|------|------|
+| 실행 | 임의의 정상 실행(예: TC-7.1) |
+| 기대 결과 | `Aws::InitAPI` → 데모 → `Aws::ShutdownAPI` → Logger 정리 순서로 종료된다 |
+| 확인 포인트 | `AWSServiceSample completed.` 로그 출력, 프로세스 종료 코드 0, 크래시/hang 없음 |
+
+---
+
 ## 공통 검증 항목
 
 모든 샘플에 대해 아래 항목을 추가로 확인한다.
@@ -386,10 +445,25 @@ docker exec kafka-test /opt/kafka/bin/kafka-topics.sh \
   --partitions 1 --replication-factor 1
 ```
 
+### LocalStack (TC-7)
+
+```bash
+docker run -d --name localstack-test \
+  -p 4566:4566 \
+  -e SERVICES=s3,sqs \
+  localstack/localstack
+
+# SQS 큐 생성 (TC-7.2용). 계정 ID는 LocalStack 기본값 000000000000
+aws --endpoint-url=http://localhost:4566 --region us-east-1 \
+  sqs create-queue --queue-name demo-queue
+```
+
+> LocalStack에서는 자격증명이 검증되지 않으므로 `--access_key test --secret_key test`처럼 임의 값을 넘기면 된다. S3 커스텀 엔드포인트는 path-style 주소가 필요하며, 샘플/`AWSS3Client`가 이를 자동 처리한다.
+
 ### 환경 정리
 
 ```bash
-docker rm -f postgres-test kafka-test
+docker rm -f postgres-test kafka-test localstack-test
 ```
 
 > **참고**: Kafka 브로커는 초기화에 시간이 걸리므로 컨테이너 시작 후 약 20초 대기 후 테스트를 실행한다. Producer의 첫 메시지 전송 시 메타데이터 fetch 지연으로 재시도가 발생할 수 있으며, 이는 정상 동작이다.

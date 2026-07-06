@@ -29,3 +29,7 @@ endif()
 if(BUILD_KAFKA_LIB AND BUILD_SAMPLES)
 	add_subdirectory(KafkaSample)
 endif()
+
+if(BUILD_AWS_LIB AND BUILD_SAMPLES)
+	add_subdirectory(AWSServiceSample)
+endif()
