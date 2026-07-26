@@ -36,4 +36,4 @@ AllowShortCaseLabelsOnASingleLine: false
 BreakArrays: false
 BreakConstructorInitializers: BeforeComma
 SpaceBeforeParens: ControlStatements
-Standard: c++23
+Standard: Latest
