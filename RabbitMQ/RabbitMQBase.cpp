@@ -507,7 +507,6 @@ namespace RabbitMQ
 	{
 		continue_receiving_.store(false);
 
-		// Tear down the consume loop and its worker even on an inconsistent conn_/pool state, otherwise consuming can never be restarted
 		if (thread_pool_ != nullptr)
 		{
 			thread_pool_->remove_workers(JobPriorities::LongTerm);

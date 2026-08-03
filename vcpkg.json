@@ -1,5 +1,5 @@
 {
-    "builtin-baseline": "7066011e27c97dbcfff739be2b69b592a41fc74a",
+    "builtin-baseline": "40f3c709db80acf154ac4b17a1f83c564ebd022e",
     "dependencies": [
       "lz4",
       "cryptopp",
@@ -21,7 +21,12 @@
       "boost-filesystem",
       "boost-process",
       "curl",
-      "librabbitmq",
+      {
+        "name": "librabbitmq",
+        "features": [
+          "ssl"
+        ]
+      },
       "modern-cpp-kafka",
       "openssl"
     ],

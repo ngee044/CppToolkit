@@ -6,6 +6,7 @@
 #include <boost/asio/steady_timer.hpp>
 
 #include <mutex>
+#include <atomic>
 #include <future>
 #include <memory>
 #include <thread>
@@ -128,6 +129,8 @@ namespace Network
 		std::shared_ptr<boost::asio::io_context> io_context_;
 		std::shared_ptr<boost::asio::ip::tcp::acceptor> acceptor_;
 		std::shared_ptr<boost::asio::steady_timer> maintenance_timer_;
+
+		std::atomic<bool> tearing_down_;
 
 		// Session cleaner interval (seconds)
 		uint32_t maintenance_interval_sec_;

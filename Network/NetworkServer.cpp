@@ -34,6 +34,7 @@ namespace Network
 			, encrypt_mode_(false)
 #endif
 			, heartbeat_missed_tolerance_(3)
+			, tearing_down_(false)
 			, maintenance_interval_sec_(5)
 		{
 		}
@@ -532,6 +533,8 @@ namespace Network
 			return false;
 		}
 
+		tearing_down_.store(false);
+
 		create_thread_pool();
 
 		return true;
@@ -539,7 +542,7 @@ namespace Network
 
 	auto NetworkServer::start_maintenance_job(void) -> void
 	{
-		if (io_context_ == nullptr)
+		if (tearing_down_.load() || io_context_ == nullptr)
 		{
 			return;
 		}
@@ -600,29 +603,34 @@ namespace Network
 
 	auto NetworkServer::destroy_io_context(void) -> void
 	{
-		std::scoped_lock<std::mutex> lock(mutex_);
-
-		stop_maintenance_job();
-
-		if (thread_pool_ != nullptr)
 		{
-			thread_pool_->lock(true);
+			std::scoped_lock<std::mutex> lock(mutex_);
+
+			tearing_down_.store(true);
+
+			stop_maintenance_job();
+
+			if (thread_pool_ != nullptr)
+			{
+				thread_pool_->lock(true);
+			}
+
+			if (acceptor_ != nullptr)
+			{
+				boost::system::error_code ignored;
+				acceptor_->cancel(ignored);
+				acceptor_->close(ignored);
+			}
+
+			if (io_context_ != nullptr)
+			{
+				io_context_->stop();
+			}
 		}
 
-		// cancel/close wakes any pending accept handler so the worker can be joined
-		if (acceptor_ != nullptr)
-		{
-			acceptor_->cancel();
-			acceptor_->close();
-		}
-
-		if (io_context_ != nullptr)
-		{
-			io_context_->stop();
-		}
-
-		// io_context_ and acceptor_ are still used by the run()/accept handler worker, so release them only after the join
 		destroy_thread_pool();
+
+		std::scoped_lock<std::mutex> lock(mutex_);
 
 		acceptor_.reset();
 		io_context_.reset();
@@ -856,7 +864,6 @@ namespace Network
 		{
 			io_context_->run();
 		}
-		// Destroying io_context_ here would race destroy_io_context(): this runs on the worker being joined. Teardown belongs to destroy_io_context() alone.
 		catch (const std::overflow_error& message)
 		{
 			return std::unexpected(std::format("stop io_context on NetworkServer for {} => {}", id_, message.what()));
