@@ -162,7 +162,8 @@ namespace RabbitMQ
 		bool passive = false;
 		bool durable = true;
 		bool exclusive = false;
-		bool auto_delete = true;
+		// A work queue must retain messages after the last consumer disconnects, so auto_delete stays off
+		bool auto_delete = false;
 
 		auto declared = basic_declare_queue(conn_, channel_id, queue_name, passive, durable, exclusive, auto_delete);
 		if (!declared)

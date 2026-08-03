@@ -602,25 +602,30 @@ namespace Network
 	{
 		std::scoped_lock<std::mutex> lock(mutex_);
 
+		stop_maintenance_job();
+
 		if (thread_pool_ != nullptr)
 		{
 			thread_pool_->lock(true);
 		}
 
+		// cancel/close wakes any pending accept handler so the worker can be joined
 		if (acceptor_ != nullptr)
 		{
 			acceptor_->cancel();
 			acceptor_->close();
-			acceptor_.reset();
 		}
 
 		if (io_context_ != nullptr)
 		{
 			io_context_->stop();
-			io_context_.reset();
 		}
 
+		// io_context_ and acceptor_ are still used by the run()/accept handler worker, so release them only after the join
 		destroy_thread_pool();
+
+		acceptor_.reset();
+		io_context_.reset();
 	}
 
 	auto NetworkServer::create_thread_pool(void) -> void
@@ -851,24 +856,21 @@ namespace Network
 		{
 			io_context_->run();
 		}
+		// Destroying io_context_ here would race destroy_io_context(): this runs on the worker being joined. Teardown belongs to destroy_io_context() alone.
 		catch (const std::overflow_error& message)
 		{
-			io_context_.reset();
 			return std::unexpected(std::format("stop io_context on NetworkServer for {} => {}", id_, message.what()));
 		}
 		catch (const std::runtime_error& message)
 		{
-			io_context_.reset();
 			return std::unexpected(std::format("stop io_context on NetworkServer for {} => {}", id_, message.what()));
 		}
 		catch (const std::exception& message)
 		{
-			io_context_.reset();
 			return std::unexpected(std::format("stop io_context on NetworkServer for {} => {}", id_, message.what()));
 		}
 		catch (...)
 		{
-			io_context_.reset();
 			return std::unexpected(std::format("stop io_context on NetworkServer for {} => unexpected error", id_));
 		}
 

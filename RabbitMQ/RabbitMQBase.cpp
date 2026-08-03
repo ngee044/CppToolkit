@@ -505,21 +505,22 @@ namespace RabbitMQ
 
 	auto RabbitMQBase::basic_stop_consume() -> std::expected<void, std::string>
 	{
+		continue_receiving_.store(false);
+
+		// Tear down the consume loop and its worker even on an inconsistent conn_/pool state, otherwise consuming can never be restarted
+		if (thread_pool_ != nullptr)
+		{
+			thread_pool_->remove_workers(JobPriorities::LongTerm);
+		}
+
 		if (conn_ == nullptr)
 		{
-			return std::unexpected("cannot start to consuming_stop: connection is not established");
+			return std::unexpected("cannot stop consuming: connection is not established");
 		}
 
 		if (thread_pool_ == nullptr)
 		{
-			return std::unexpected("cannot start to consuming_stop: thread pool is not created");
-		}
-
-		continue_receiving_.store(false);
-
-		if (thread_pool_ != nullptr)
-		{
-			thread_pool_->remove_workers(JobPriorities::LongTerm);
+			return std::unexpected("cannot stop consuming: thread pool is not created");
 		}
 
 		return {};

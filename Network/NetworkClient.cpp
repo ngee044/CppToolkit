@@ -226,8 +226,15 @@ namespace Network
 			pool.reset();
 		}
 
-		io_context_.reset();
+		if (io_context_ != nullptr)
+		{
+			io_context_->stop();
+		}
+
+		// Asio requires every run() to return before the io_context is destroyed, so release it only after the join
 		destroy_thread_pool();
+
+		io_context_.reset();
 	}
 
 	auto NetworkClient::create_socket(const std::string& ip, uint16_t port) -> bool
