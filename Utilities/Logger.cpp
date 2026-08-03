@@ -333,6 +333,10 @@ namespace Utilities
 		{
 			std::cout << msg;
 		}
+
+		// stdout is fully buffered when it is a pipe, so without this the log stays invisible
+		// to `docker logs` until the buffer fills or the process exits
+		std::cout.flush();
 	}
 
 	void Logger::write_database(const std::vector<std::string>& messages)

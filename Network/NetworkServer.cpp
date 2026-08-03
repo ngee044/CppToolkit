@@ -41,7 +41,6 @@ namespace Network
 
 	NetworkServer::~NetworkServer(void)
 	{
-		stop_maintenance_job();
 		drop_sessions();
 		destroy_io_context();
 
@@ -298,7 +297,6 @@ namespace Network
 			future_status_.wait_for(std::chrono::seconds(seconds));
 		}
 
-		stop_maintenance_job();
 		drop_sessions();
 		destroy_io_context();
 
@@ -328,7 +326,6 @@ namespace Network
 			return {};
 		}
 
-		stop_maintenance_job();
 		drop_sessions();
 		destroy_io_context();
 
@@ -542,6 +539,8 @@ namespace Network
 
 	auto NetworkServer::start_maintenance_job(void) -> void
 	{
+		std::scoped_lock<std::mutex> lock(mutex_);
+
 		if (tearing_down_.load() || io_context_ == nullptr)
 		{
 			return;
@@ -702,7 +701,7 @@ namespace Network
 		acceptor_->async_accept(
 			[this](boost::system::error_code ec, boost::asio::ip::tcp::socket new_socket)
 			{
-				if (ec)
+				if (ec || tearing_down_.load())
 				{
 					return;
 				}
