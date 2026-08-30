@@ -364,6 +364,74 @@ CppToolkit 프레임워크 코드 변경 시, 아래 테스트 케이스를 통�
 
 ---
 
+## 8. RedisSample
+
+**검증 모듈:** RedisClient, RedisConnector, TLSOptions, ArgumentParser, Logger
+
+> Redis 서버가 `127.0.0.1:6379`에서 실행 중이어야 하며, 아래 "외부 서비스 환경 구성 > Redis" 참고.
+> `BUILD_REDIS_LIB` 기본 ON이므로 `./build.sh`로 빌드하면 실행 파일이 생성된다.
+> 샘플은 기본값 `TLSOptions()`로 평문 접속한다. TLS 경로는 이 샘플에서 검증되지 않는다.
+
+### TC-8.1: 전체 흐름 (connect → set → get → set_ttl → del → get 실패 확인 → disconnect)
+
+| 항목 | 내용 |
+|------|------|
+| 사전 조건 | Redis 서버 실행 |
+| 실행 | `./build/bin/RedisSample` |
+| 기대 결과 | 7단계가 순서대로 성공하고 종료된다 |
+| 확인 포인트 - 로그 | `connector ready for 127.0.0.1:6379 (db 0)`, `set 'cpptoolkit:sample:greeting' = 'hello redis' (ttl 60s)`, `get 'cpptoolkit:sample:greeting' = 'hello redis'`, `set_ttl 'cpptoolkit:sample:greeting' -> 120s`, `del 'cpptoolkit:sample:greeting' removed 1 key(s)`, `removal confirmed - get() reports:`, `disconnected` 가 Information 레벨로 순서대로 출력된다 |
+| 확인 포인트 - 종료 | Error 로그 없이 프로세스 종료 코드 0 |
+
+### TC-8.2: 키/값/TTL 커스텀
+
+| 항목 | 내용 |
+|------|------|
+| 실행 | `./build/bin/RedisSample --key demo:key --value demo-value --ttl_seconds 300` |
+| 기대 결과 | 지정한 키/값으로 저장되고, set_ttl 단계에서 TTL이 2배(600초)로 갱신된다 |
+| 확인 포인트 | `set 'demo:key' = 'demo-value' (ttl 300s)`, `set_ttl 'demo:key' -> 600s` 로그가 출력된다 |
+
+### TC-8.3: DB 인덱스 지정
+
+| 항목 | 내용 |
+|------|------|
+| 실행 | `./build/bin/RedisSample --db_index 1` |
+| 기대 결과 | 1번 DB에 대해서만 전체 흐름이 수행된다 |
+| 확인 포인트 | `connector ready for 127.0.0.1:6379 (db 1)` 로그가 출력되고, `docker exec redis-test redis-cli -n 0 keys "cpptoolkit:*"` 결과가 비어 있다 |
+
+### TC-8.4: 삭제 후 조회 실패를 기대 결과로 처리
+
+| 항목 | 내용 |
+|------|------|
+| 실행 | `./build/bin/RedisSample` |
+| 기대 결과 | `get()`은 키가 없을 때 빈 값이 아니라 `std::unexpected`를 돌려주므로, 6단계의 실패가 정상 경로로 처리된다 |
+| 확인 포인트 | `removal confirmed - get() reports: failed to get value cpptoolkit:sample:greeting` 가 Information 레벨로 출력되고, `still holds` Error 로그가 없으며 종료 코드는 0이다 |
+
+### TC-8.5: Redis 미기동 상태 처리 (connect 성공 → set 실패)
+
+| 항목 | 내용 |
+|------|------|
+| 실행 | `./build/bin/RedisSample --host 127.0.0.1 --port 1` |
+| 기대 결과 | `connect()`는 소켓/PING을 열지 않으므로 성공하고, 첫 명령인 `set()`에서 연결 실패가 드러난다 |
+| 확인 포인트 | `connector ready for 127.0.0.1:1 (db 0)` Information 로그 뒤에 `failed to set 'cpptoolkit:sample:greeting': ... Connection refused` Error 로그가 출력된다. 크래시 없이 `[STOP]` 로그 출력 후 종료 코드 1 |
+
+### TC-8.6: --ttl_seconds 유효성 가드
+
+| 항목 | 내용 |
+|------|------|
+| 실행 | `./build/bin/RedisSample --ttl_seconds 0` (또는 음수 값) |
+| 기대 결과 | Redis 접속 이전 단계에서 중단된다. EXPIRE에 0 이하를 주면 만료가 아니라 즉시 삭제이고 `set_ttl()`이 이를 성공으로 보고하기 때문이다 |
+| 확인 포인트 | `Error: --ttl_seconds must be greater than 0.` 출력 후 도움말이 표시되고 종료 코드 0. Logger가 시작되지 않아 로그가 출력되지 않는다 |
+
+### TC-8.7: 도움말 출력
+
+| 항목 | 내용 |
+|------|------|
+| 실행 | `./build/bin/RedisSample --help` |
+| 기대 결과 | `Usage: RedisSample [OPTIONS]` 와 Flow/Notes/Examples가 출력된다 |
+| 확인 포인트 | 종료 코드 0, Logger 미초기화로 로그 파일이 생성되지 않는다 |
+
+---
+
 ## 공통 검증 항목
 
 모든 샘플에 대해 아래 항목을 추가로 확인한다.
@@ -400,7 +468,7 @@ CppToolkit 프레임워크 코드 변경 시, 아래 테스트 케이스를 통�
 
 ## 외부 서비스 환경 구성
 
-일부 테스트 케이스(TC-3, TC-6)는 외부 서비스(PostgreSQL, Kafka)가 필요하다.
+일부 테스트 케이스(TC-3, TC-6, TC-7, TC-8)는 외부 서비스(PostgreSQL, Kafka, LocalStack, Redis)가 필요하다.
 로컬에 해당 서비스가 설치되어 있지 않은 경우 Docker를 사용하여 테스트 환경을 구성할 수 있다.
 
 ### PostgreSQL (TC-3)
@@ -460,10 +528,24 @@ aws --endpoint-url=http://localhost:4566 --region us-east-1 \
 
 > LocalStack에서는 자격증명이 검증되지 않으므로 `--access_key test --secret_key test`처럼 임의 값을 넘기면 된다. S3 커스텀 엔드포인트는 path-style 주소가 필요하며, 샘플/`AWSS3Client`가 이를 자동 처리한다.
 
+### Redis (TC-8)
+
+```bash
+docker run -d --name redis-test \
+  -p 6379:6379 \
+  redis:7
+
+# 접속 확인 (PONG 출력)
+docker exec redis-test redis-cli ping
+
+# 키 확인 (TC-8.3 등)
+docker exec redis-test redis-cli -n 0 keys "cpptoolkit:*"
+```
+
 ### 환경 정리
 
 ```bash
-docker rm -f postgres-test kafka-test localstack-test
+docker rm -f postgres-test kafka-test localstack-test redis-test
 ```
 
 > **참고**: Kafka 브로커는 초기화에 시간이 걸리므로 컨테이너 시작 후 약 20초 대기 후 테스트를 실행한다. Producer의 첫 메시지 전송 시 메타데이터 fetch 지연으로 재시도가 발생할 수 있으며, 이는 정상 동작이다.
